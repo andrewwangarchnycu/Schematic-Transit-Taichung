@@ -308,6 +308,8 @@
         <div id="line-badges"></div>
     </div>
 
+    <!-- 本機開發用金鑰 (gitignore)；公開網站沒有此檔，訪客自行輸入金鑰 -->
+    <script src="tdx-key.local.js"></script>
     <script>
         // ==========================================
         //  PART 0: 設定
@@ -315,8 +317,8 @@
 
         // 注意：clientSecret 放在前端任何人都看得到，正式上線請改由後端代理取得 Token
         const TDX_CONFIG = {
-            clientId: "",
-            clientSecret: "",
+            clientId: (window.TDX_LOCAL_KEY || {}).id || "",
+            clientSecret: (window.TDX_LOCAL_KEY || {}).secret || "",
             authUrl: "https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token",
             etaUrl: "https://tdx.transportdata.tw/api/basic/v2/Bus/EstimatedTimeOfArrival/City/Taichung"
         };

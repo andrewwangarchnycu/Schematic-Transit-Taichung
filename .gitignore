@@ -1,2 +1,10 @@
+# 本機開發用 TDX 金鑰 (不可上傳)
+tdx-key.local.js
+# 備份與暫存
 backups/
+for upload/
 *.bak
+# 開發工具 (路線圖編輯器，不部署到網站)
+map-editor.html
+map-editor-geo.js
+open-map-editor.bat

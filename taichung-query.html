@@ -10,7 +10,7 @@
     :root { --bg: #161719; --panel: #1f2124; --line: #34373c; --text: #ececec; --muted: #9aa0a6; --accent: #4caf50; --live: #00bcd4; }
     * { box-sizing: border-box; }
     html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif; }
-    #app { display: grid; grid-template-columns: 440px 1fr; grid-template-rows: auto 1fr; height: 100%; }
+    #app { display: grid; grid-template-columns: 440px minmax(0, 1fr); grid-template-rows: auto 1fr; height: 100%; }
     header { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--line); padding-top: max(8px, env(safe-area-inset-top)); }
     header h1 { font-size: 16px; margin: 0 8px 0 0; white-space: nowrap; }
     header a { color: var(--muted); font-size: 12px; text-decoration: none; }
@@ -25,7 +25,7 @@
     #api { font-size: 12px; color: #ccc; background: #2a2d31; border: 1px solid #44484e; border-radius: 14px; padding: 3px 10px; cursor: pointer; font-variant-numeric: tabular-nums; }
     #api.warn { color: #ffeb3b; } #api.err { color: #ff8a80; }
     #api-detail { position: absolute; z-index: 2000; background: #26292d; border: 1px solid #44484e; border-radius: 10px; padding: 8px 12px; font-size: 12px; color: #ccc; line-height: 1.7; display: none; max-width: 320px; }
-    #panel { overflow-y: auto; border-right: 1px solid var(--line); padding: 10px 12px 60px; }
+    #panel { overflow-x: hidden; overflow-y: auto; border-right: 1px solid var(--line); padding: 10px 12px 60px; }
     #map { height: 100%; background: #222; }
     .muted { color: var(--muted); }
     .hint { color: var(--muted); font-size: 13px; margin: 8px 0; }
@@ -70,6 +70,11 @@
     .bike-box .bk:first-of-type { border-top: 0; }
     .bike-box .num { font-family: ui-monospace, monospace; white-space: nowrap; text-align: right; }
     .bike-box .num b { color: #ffd54f; } .bike-box .num i { font-style: normal; color: #80cbc4; }
+    .go-btn { flex: none; margin-left: auto; display: inline-flex; flex-direction: column; align-items: center; gap: 1px; padding: 4px 6px; border-radius: 8px; background: #1a73e8; color: #fff; text-decoration: none; font-size: 10px; line-height: 1; }
+    .go-btn:hover { background: #1765cc; }
+    .map-btn { display: block; min-width: 34px; height: 34px; line-height: 32px; padding: 0 8px; text-align: center; font-size: 16px; background: #2a2d31 !important; color: #eee !important; text-decoration: none; cursor: pointer; white-space: nowrap; }
+    .map-btn.near-btn { font-size: 14px; font-weight: bold; background: #1a73e8 !important; color: #fff !important; height: 40px; line-height: 38px; padding: 0 14px; border-radius: 20px !important; }
+    .bs-opt { display: block; padding: 3px 0; cursor: pointer; }
     .ico { flex: none; width: 28px; height: 28px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; }
     .ico.bus { background: #ffd600; } .ico.bike { background: #2e7d32; }
     .bike-item .num { font-family: ui-monospace, monospace; font-size: 12px; }
@@ -109,7 +114,9 @@
     #base-set { position: absolute; z-index: 2000; right: 12px; top: 56px; width: min(360px, calc(100vw - 24px)); background: #26292d; border: 1px solid #44484e; border-radius: 10px; padding: 10px 12px; display: none; }
     .stn-icon { background: #fff; border: 2px solid #333; border-radius: 50%; color: #111; font-weight: bold; font-size: 11px; display: flex; align-items: center; justify-content: center; }
     @media (max-width: 760px) {
-        #app { grid-template-columns: 1fr; grid-template-rows: auto 36vh 1fr; }
+        #app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 36vh 1fr; }
+        input[type=search] { min-width: 0; flex-basis: 100%; order: 5; }
+        #panel { min-width: 0; }
         #map { grid-row: 2; }
         #panel { grid-row: 3; border-right: 0; border-top: 1px solid var(--line); padding-bottom: max(60px, env(safe-area-inset-bottom)); }
         header h1 { font-size: 15px; }
@@ -123,8 +130,6 @@
         <div class="tabs"><button id="tab-station" class="on">站位</button><button id="tab-route">路線</button></div>
         <input type="search" id="q" placeholder="輸入站名，例：臺中車站" autocomplete="off">
         <select id="date" title="時刻表日期"></select>
-        <button class="btn" id="btn-near" title="依目前位置列出附近站位；路線模式下列出附近所有公車路線 (依到站先後)">📍 附近</button>
-        <button class="btn" id="btn-base" title="底圖設定 (Mapbox 深色)">🗺</button>
         <span id="api" title="點擊查看 API 用量">--</span>
         <a href="taichung.html">← 路線圖</a>
     </header>
@@ -135,6 +140,8 @@
 <div id="base-set"></div>
 <div id="key-dlg"></div>
 <script src="taichung-network.js"></script>
+<!-- 本機開發用金鑰 (gitignore)；公開網站沒有此檔，訪客自行輸入金鑰 -->
+<script src="tdx-key.local.js"></script>
 <script>
 'use strict';
 // ==========================================================
@@ -144,8 +151,8 @@
 //   API 額度與 taichung.html 共用 (localStorage 同一組計數，每分鐘 3 次)
 // ==========================================================
 const TDX = {
-    clientId: "",
-    clientSecret: "",
+    clientId: (window.TDX_LOCAL_KEY || {}).id || "",
+    clientSecret: (window.TDX_LOCAL_KEY || {}).secret || "",
     authUrl: "https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token",
     bus: "https://tdx.transportdata.tw/api/basic/v2/Bus"
 };
@@ -656,14 +663,27 @@ function nextLine(r, pos, t, nm, row) {
 
 // ---------- 地圖 ----------
 const map = L.map('map', { zoomControl: true, preferCanvas: true }).setView([24.15, 120.67], 13);
-// 底圖：Mapbox 深色樣式 (需 access token，可寫在 MAPBOX_TOKEN 或在頁面「🗺」設定貼上)；沒有 token 時用國土測繪電子地圖加深色濾鏡
+// 底圖 (可自選)：OSM / OSM 大眾運輸 (ÖPNVKarte) / Mapbox (需 access token) / 內政部國土測繪電子地圖
+//   非 Mapbox 底圖可加深色濾鏡 (反相)，配合深色介面；Mapbox 沒有 token 時暫用內政部
 const MAPBOX_TOKEN = '';   // 例：'pk.eyJ1Ijo...'，建議在 Mapbox 帳號設定網址限制
 const MAPBOX_STYLES = {
     'mapbox/navigation-night-v1': 'Mapbox 夜間導航 (道路與大眾運輸較清楚)',
     'mapbox/dark-v11': 'Mapbox 深色',
     'custom': '自訂樣式 (Mapbox Studio 樣式網址)'
 };
-const baseCfg = Object.assign({ token: MAPBOX_TOKEN, style: 'mapbox/navigation-night-v1', custom: '' }, store.get('txg_basemap') || {});
+const OSM_ATTR = '地圖資料 © <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> 貢獻者';
+const BASES = {
+    osm: { name: 'OpenStreetMap', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', maxZoom: 19, attr: OSM_ATTR },
+    osmpt: { name: 'OSM 大眾運輸 (ÖPNVKarte)', url: 'https://tileserver.memomaps.de/tilegen/{z}/{x}/{y}.png', maxZoom: 18,
+        attr: '圖磚 <a href="https://memomaps.de/" target="_blank">memomaps.de</a> CC-BY-SA · ' + OSM_ATTR },
+    mapbox: { name: 'Mapbox (需 access token)' },
+    nlsc: { name: '內政部 國土測繪電子地圖', url: 'https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}', maxZoom: 19,
+        attr: '底圖 © <a href="https://maps.nlsc.gov.tw/" target="_blank">內政部國土測繪中心</a>' }
+};
+const DARK_FILTER = 'invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9) saturate(0.6)';
+const baseCfg = Object.assign({ token: MAPBOX_TOKEN, style: 'mapbox/navigation-night-v1', custom: '', src: null, dark: true }, store.get('txg_basemap') || {});
+if (!BASES[baseCfg.src]) baseCfg.src = baseCfg.token ? 'mapbox' : 'nlsc';
+const saveBase = () => store.set('txg_basemap', { token: baseCfg.token, style: baseCfg.style, custom: baseCfg.custom, src: baseCfg.src, dark: baseCfg.dark });
 let baseLayer = null;
 function mapboxStyleId() {
     if (baseCfg.style !== 'custom') return baseCfg.style;
@@ -673,40 +693,64 @@ function mapboxStyleId() {
 function applyBase() {
     if (baseLayer) map.removeLayer(baseLayer);
     const pane = map.getPane('tilePane');
-    if (baseCfg.token) {
+    const src = baseCfg.src === 'mapbox' && !baseCfg.token ? 'nlsc' : baseCfg.src;
+    if (src === 'mapbox') {
         pane.style.filter = '';
         baseLayer = L.tileLayer(`https://api.mapbox.com/styles/v1/${mapboxStyleId()}/tiles/512/{z}/{x}/{y}@2x?access_token=${encodeURIComponent(baseCfg.token)}`, {
             tileSize: 512, zoomOffset: -1, maxZoom: 20,
-            attribution: '© <a href="https://www.mapbox.com/about/maps/" target="_blank">Mapbox</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>'
+            attribution: '© <a href="https://www.mapbox.com/about/maps/" target="_blank">Mapbox</a> ' + OSM_ATTR
         });
-        baseLayer.on('tileerror', () => { $('base-note') && ($('base-note').textContent = 'Mapbox 圖磚載入失敗：請確認 token 與樣式網址 (以及 token 的網址限制)'); });
     } else {
-        // 暫代：國土測繪電子地圖反相成深色
-        pane.style.filter = 'invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9) saturate(0.6)';
-        baseLayer = L.tileLayer('https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}', {
-            maxZoom: 19, attribution: '底圖 © <a href="https://maps.nlsc.gov.tw/" target="_blank">內政部國土測繪中心</a> (深色濾鏡)'
-        });
+        const B = BASES[src];
+        pane.style.filter = baseCfg.dark ? DARK_FILTER : '';
+        baseLayer = L.tileLayer(B.url, { maxZoom: 20, maxNativeZoom: B.maxZoom, attribution: B.attr + (baseCfg.dark ? ' (深色濾鏡)' : '') });
     }
+    baseLayer.on('tileerror', () => {
+        const n = $('base-note');
+        if (n) n.textContent = src === 'mapbox' ? 'Mapbox 圖磚載入失敗：請確認 token 與樣式網址 (以及 token 的網址限制)'
+            : `${BASES[src].name} 圖磚載入失敗${src === 'osm' ? '（OSM 需由網站開啟，本機 file:// 會被拒絕）' : ''}`;
+    });
     baseLayer.addTo(map);
 }
 applyBase();
-// 底圖設定面板
+// 底圖選擇面板 (地圖右上 🗺)
 function openBaseSettings() {
     const d = $('base-set');
     if (d.style.display === 'block') { d.style.display = 'none'; return; }
-    d.innerHTML = `<b>深色底圖 (Mapbox)</b>
+    const r = $('map').getBoundingClientRect();
+    d.style.top = (r.top + 10) + 'px'; d.style.right = Math.max(12, innerWidth - r.right + 56) + 'px';
+    d.innerHTML = `<b>底圖</b>
+        ${Object.entries(BASES).map(([k, B]) => `<label class="bs-opt"><input type="radio" name="bs-src" value="${k}" ${k === baseCfg.src ? 'checked' : ''}> ${B.name}</label>`).join('')}
+        <label class="bs-opt"><input type="checkbox" id="bs-dark" ${baseCfg.dark ? 'checked' : ''}> 深色濾鏡 (Mapbox 以外)</label>
+        <div id="bs-mb" style="display:${baseCfg.src === 'mapbox' ? 'block' : 'none'}">
         <div class="row"><input id="bs-token" type="search" placeholder="Mapbox access token (pk.…)" value="${esc(baseCfg.token)}" style="flex:1"></div>
         <div class="row"><select id="bs-style">${Object.entries(MAPBOX_STYLES).map(([k, v]) => `<option value="${k}" ${k === baseCfg.style ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
         <div class="row" id="bs-custom-row" style="display:${baseCfg.style === 'custom' ? 'flex' : 'none'}"><input id="bs-custom" type="search" placeholder="mapbox://styles/帳號/樣式ID" value="${esc(baseCfg.custom)}" style="flex:1"></div>
-        <div class="row"><button class="btn" id="bs-ok">套用</button><button class="btn" id="bs-clear">清除 token</button></div>
-        <div class="hint" id="base-note">token 只存在這台裝置的瀏覽器。沒有 token 時使用國土測繪電子地圖深色濾鏡。Mapbox 免費額度：每月 20 萬張圖磚 (Static Tiles API)。</div>`;
+        <div class="row"><button class="btn" id="bs-ok">套用 token</button><button class="btn" id="bs-clear">清除 token</button></div></div>
+        <div class="hint" id="base-note">${baseCfg.src === 'mapbox' && !baseCfg.token ? '尚未設定 Mapbox token，暫用內政部底圖。' : ''}token 只存在這台裝置的瀏覽器。</div>`;
     d.style.display = 'block';
+    d.querySelectorAll('input[name=bs-src]').forEach(e => e.onchange = () => {
+        baseCfg.src = e.value; saveBase(); applyBase();
+        $('bs-mb').style.display = e.value === 'mapbox' ? 'block' : 'none';
+        $('base-note').textContent = e.value === 'mapbox' && !baseCfg.token ? '請貼上 Mapbox token 後按「套用 token」，目前暫用內政部底圖。' : '';
+    });
+    $('bs-dark').onchange = e => { baseCfg.dark = e.target.checked; saveBase(); applyBase(); };
     $('bs-style').onchange = e => { $('bs-custom-row').style.display = e.target.value === 'custom' ? 'flex' : 'none'; };
-    $('bs-ok').onclick = () => { baseCfg.token = $('bs-token').value.trim(); baseCfg.style = $('bs-style').value; baseCfg.custom = $('bs-custom').value.trim();
-        store.set('txg_basemap', { token: baseCfg.token, style: baseCfg.style, custom: baseCfg.custom }); applyBase(); };
-    $('bs-clear').onclick = () => { baseCfg.token = ''; store.set('txg_basemap', { ...baseCfg, token: '' }); applyBase(); d.style.display = 'none'; };
+    $('bs-ok').onclick = () => { baseCfg.token = $('bs-token').value.trim(); baseCfg.style = $('bs-style').value; baseCfg.custom = $('bs-custom').value.trim(); saveBase(); applyBase();
+        $('base-note').textContent = baseCfg.token ? '已套用。' : '請貼上 token。'; };
+    $('bs-clear').onclick = () => { baseCfg.token = ''; saveBase(); applyBase(); $('bs-token').value = ''; $('base-note').textContent = '已清除，暫用內政部底圖。'; };
 }
-$('btn-base').onclick = openBaseSettings;
+// 地圖上的按鈕：右上 🗺 底圖、右下 📍 附近
+const MapBtn = L.Control.extend({
+    onAdd() {
+        const b = L.DomUtil.create('a', 'map-btn leaflet-bar ' + (this.options.cls || ''));
+        b.href = '#'; b.title = this.options.title; b.innerHTML = this.options.html;
+        L.DomEvent.on(b, 'click', e => { L.DomEvent.stop(e); this.options.click(); });
+        L.DomEvent.disableClickPropagation(b);
+        return b;
+    }
+});
+map.addControl(new MapBtn({ position: 'topright', html: '🗺', title: '選擇底圖 (OSM / OSM 大眾運輸 / Mapbox / 內政部)', click: openBaseSettings }));
 const layerSel = L.layerGroup().addTo(map), layerAll = L.layerGroup().addTo(map);
 // 放大到 15 級以上時顯示可視範圍內的站位，點選即查詢
 function drawNearbyStations() {
@@ -742,24 +786,61 @@ function locBtnState() {
     Loc.btn.className = 'loc-btn leaflet-bar' + (Loc.watch === null ? '' : Loc.follow ? ' follow' : ' on') + (Loc.err ? ' err' : '');
     Loc.btn.title = Loc.err || (Loc.watch === null ? '持續顯示我的位置' : Loc.follow ? '跟隨中 (再按關閉定位)' : '定位中 (按一下回到我的位置並跟隨)');
 }
-function meIcon(heading) {
-    const arrow = isFinite(heading) && heading !== null ? `<path d="M0 -20 L7 -9 L-7 -9 Z" fill="#1a73e8" opacity=".9" transform="rotate(${heading})"/>` : '';
+// 定位點：藍點 + 朝向小三角 (裝置指北針優先；沒有指北針時用移動方向)
+function meIcon() {
     return L.divIcon({ className: 'me-ico', iconSize: [44, 44], iconAnchor: [22, 22],
-        html: `<svg width="44" height="44" viewBox="-22 -22 44 44" style="overflow:visible">${arrow}<circle class="me-pulse" r="9" fill="#1a73e8" opacity=".35"/><circle r="8" fill="#1a73e8" stroke="#fff" stroke-width="3"/></svg>` });
+        html: `<svg width="44" height="44" viewBox="-22 -22 44 44" style="overflow:visible"><path class="me-dir" d="M0 -21 L7.5 -10 L-7.5 -10 Z" fill="#1a73e8" stroke="#fff" stroke-width="1.5" style="display:none"/><circle class="me-pulse" r="9" fill="#1a73e8" opacity=".35"/><circle r="8" fill="#1a73e8" stroke="#fff" stroke-width="3"/></svg>` });
+}
+function updateMeArrow() {
+    const el = Loc.marker && Loc.marker.getElement(), p = el && el.querySelector('.me-dir');
+    if (!p) return;
+    const h = Loc.compass !== null && Loc.compass !== undefined ? Loc.compass : Loc.moveHd;
+    if (h === null || h === undefined || !isFinite(h)) { p.style.display = 'none'; return; }
+    p.style.display = '';
+    p.setAttribute('transform', `rotate(${Math.round(h)})`);
+}
+// 裝置朝向 (DeviceOrientation)：iOS 需在點按時取得權限 (webkitCompassHeading)；Android 用 deviceorientationabsolute 的 alpha
+const screenAngle = () => (screen.orientation && screen.orientation.angle) || window.orientation || 0;
+function onOrient(e) {
+    let h = null;
+    if (typeof e.webkitCompassHeading === 'number' && e.webkitCompassHeading >= 0) h = e.webkitCompassHeading;
+    else if ((e.absolute || e.type === 'deviceorientationabsolute') && e.alpha !== null) h = 360 - e.alpha;
+    if (h === null) return;
+    Loc.compass = (h + screenAngle() + 360) % 360;
+    const now = Date.now();
+    if (now - (Loc.orientAt || 0) < 80) return;   // 約 12 次/秒
+    Loc.orientAt = now;
+    updateMeArrow();
+}
+function startCompass() {
+    if (Loc.compassEv || !window.DeviceOrientationEvent) return;
+    const go = () => {
+        const ev = 'ondeviceorientationabsolute' in window ? 'deviceorientationabsolute' : 'deviceorientation';
+        window.addEventListener(ev, onOrient, true);
+        Loc.compassEv = ev;
+    };
+    const DOE = window.DeviceOrientationEvent;
+    if (typeof DOE.requestPermission === 'function') DOE.requestPermission().then(s => { if (s === 'granted') go(); }).catch(() => {});
+    else go();
+}
+function stopCompass() {
+    if (Loc.compassEv) window.removeEventListener(Loc.compassEv, onOrient, true);
+    Loc.compassEv = null; Loc.compass = null;
 }
 function onLoc(p) {
     Loc.err = '';
     const { latitude: lat, longitude: lng, accuracy, heading, speed } = p.coords;
     Loc.pos = { lat, lng, accuracy, at: Date.now() };
     const ll = [lat, lng];
-    const hd = speed > 0.5 ? heading : null;   // 靜止時 heading 不可靠
+    Loc.moveHd = speed > 0.5 && heading !== null && isFinite(heading) ? heading : null;   // 靜止時 heading 不可靠
     if (!Loc.marker) {
         Loc.circle = L.circle(ll, { radius: accuracy, color: '#1a73e8', weight: 1, fillColor: '#1a73e8', fillOpacity: .12, interactive: false }).addTo(map);
-        Loc.marker = L.marker(ll, { icon: meIcon(hd), zIndexOffset: 3000, interactive: true }).bindTooltip('我的位置').addTo(map);
+        Loc.marker = L.marker(ll, { icon: meIcon(), zIndexOffset: 3000, interactive: true }).bindTooltip('我的位置').addTo(map);
     } else {
         Loc.circle.setLatLng(ll).setRadius(accuracy);
-        Loc.marker.setLatLng(ll).setIcon(meIcon(hd));
+        Loc.marker.setLatLng(ll);
     }
+    updateMeArrow();
     Loc.marker.setTooltipContent(`我的位置 (誤差約 ${Math.round(accuracy)} 公尺)`);
     if (Loc.follow) {
         if (Loc.first) map.setView(ll, Math.max(map.getZoom(), 16)); else map.panTo(ll, { animate: true });
@@ -776,11 +857,13 @@ function startLoc() {
     if (!navigator.geolocation) { alert('此裝置不支援定位'); return; }
     Loc.follow = true; Loc.first = true;
     Loc.watch = navigator.geolocation.watchPosition(onLoc, onLocErr, { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
+    startCompass();
     store.set('txg_loc_on', true);
     locBtnState();
 }
 function stopLoc() {
     if (Loc.watch !== null) navigator.geolocation.clearWatch(Loc.watch);
+    stopCompass();
     Loc.watch = null; Loc.follow = false;
     if (Loc.marker) { map.removeLayer(Loc.marker); map.removeLayer(Loc.circle); Loc.marker = Loc.circle = null; }
     store.set('txg_loc_on', false);
@@ -788,7 +871,8 @@ function stopLoc() {
 }
 function toggleLoc() {
     if (Loc.watch === null) startLoc();
-    else if (!Loc.follow) { Loc.follow = true; if (Loc.pos) map.setView([Loc.pos.lat, Loc.pos.lng], Math.max(map.getZoom(), 16)); locBtnState(); }
+    // 自動恢復定位時 (非點按) iOS 無法取得指北針權限，點一下按鈕時再要一次
+    else if (!Loc.follow) { Loc.follow = true; startCompass(); if (Loc.pos) map.setView([Loc.pos.lat, Loc.pos.lng], Math.max(map.getZoom(), 16)); locBtnState(); }
     else stopLoc();
 }
 // 手動拖曳地圖＝暫停跟隨 (定位持續更新)
@@ -844,6 +928,8 @@ function renderSearch() {
         const m = panel.querySelector('[data-mrt]'); if (m) m.onclick = openMrt;
     }
 }
+// 前往：Google 地圖步行導航 (起點＝目前位置)
+const navBtn = (lat, lng, name) => `<a class="go-btn" href="https://www.google.com/maps/dir/?api=1&destination=${lat.toFixed(6)},${lng.toFixed(6)}&travelmode=walking" target="_blank" rel="noopener" title="Google 地圖步行導航到 ${esc(name)}"><svg width="18" height="18" viewBox="-9 -9 18 18"><path d="M -6 1 L 6 -6 L 1 6 L 0 1 Z" fill="#fff"/></svg><span>前往</span></a>`;
 // 清單圖示：公車站位 / YouBike 站
 const ICO_BUS = `<span class="ico bus" title="公車站位"><svg width="16" height="16" viewBox="-8 -8 16 16"><path d="M -5.5 -6 h 11 a 1.5 1.5 0 0 1 1.5 1.5 v 8.5 h -14 v -8.5 a 1.5 1.5 0 0 1 1.5 -1.5 z" fill="#111"/><rect x="-4.6" y="-4.6" width="9.2" height="3.6" rx=".6" fill="#ffd600"/><circle cx="-3.6" cy="1.6" r="1" fill="#ffd600"/><circle cx="3.6" cy="1.6" r="1" fill="#ffd600"/><path d="M -5 4 v 2.4 M 5 4 v 2.4" stroke="#111" stroke-width="2"/></svg></span>`;
 const ICO_BIKE = `<span class="ico bike" title="YouBike 公共自行車"><svg width="18" height="16" viewBox="-9 -8 18 16"><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-4.6" cy="3" r="3.6"/><circle cx="4.6" cy="3" r="3.6"/><path d="M -4.6 3 L -1.4 -3.4 H 3.4 L 4.6 3 M -1.4 -3.4 L 0.6 3 L 3.4 -3.4 M -2.6 -5.4 H 0" stroke-linecap="round" stroke-linejoin="round"/></g></svg></span>`;
@@ -858,15 +944,15 @@ function listStations(list, head, place = null, fit = true) {
     panel.innerHTML = `<div class="hint">${head}</div>${bikeHead}` + items.map(it => {
         if (it.kind === 'bus') { const s = it.s;
             return `<div class="list-item" data-id="${esc(s.id)}">${ICO_BUS}
-            <div style="min-width:0"><div>${esc(s.name)}${s.dist !== undefined ? ` <small class="muted">${Math.round(s.dist)} m</small>` : ''} <small class="muted">· ${boardsOf(STATIONS.get(s.id)).length} 支站牌</small></div><div class="sub">${[...s.routes].slice(0, 14).map(esc).join('、')}${s.routes.size > 14 ? ` 等 ${s.routes.size} 條` : ''}</div></div></div>`; }
+            <div style="min-width:0"><div>${esc(s.name)}${s.dist !== undefined ? ` <small class="muted">${Math.round(s.dist)} m</small>` : ''} <small class="muted">· ${boardsOf(STATIONS.get(s.id)).length} 支站牌</small></div><div class="sub">${[...s.routes].slice(0, 14).map(esc).join('、')}${s.routes.size > 14 ? ` 等 ${s.routes.size} 條` : ''}</div></div>${navBtn(s.lat, s.lng, s.name)}</div>`; }
         const b = it.b, a = av && av.map[b.uid];
         const num = !a ? '<span class="muted">--</span>' : a.status !== 1 ? `<span class="muted">${STAT[a.status] || '狀態不明'}</span>`
             : `可借 <b>${a.rent}</b>${a.ebike ? `<span class="muted">（電輔 ${a.ebike}）</span>` : ''} · 可還 <i>${a.ret}</i>`;
         return `<div class="list-item bike-item" data-bike="${esc(b.uid)}">${ICO_BIKE}<div style="min-width:0;flex:1"><div>${esc(b.name)} <small class="muted">${Math.round(b.dist)} m</small></div>
-            <div class="num">${num}</div><div class="sub">${esc(b.addr)}</div></div></div>`;
+            <div class="num">${num}</div><div class="sub">${esc(b.addr)}</div></div>${navBtn(b.lat, b.lng, 'YouBike ' + b.name)}</div>`;
     }).join('');
-    panel.querySelectorAll('[data-id]').forEach(e => e.onclick = () => openStation(e.dataset.id));
-    panel.querySelectorAll('[data-bike]').forEach(e => e.onclick = () => { const b = bikes.find(x => x.uid === e.dataset.bike); if (b) map.setView([b.lat, b.lng], Math.max(map.getZoom(), 17)); });
+    panel.querySelectorAll('[data-id]').forEach(e => e.onclick = ev => { if (ev.target.closest('.go-btn')) return; openStation(e.dataset.id); });
+    panel.querySelectorAll('[data-bike]').forEach(e => e.onclick = ev => { if (ev.target.closest('.go-btn')) return; const b = bikes.find(x => x.uid === e.dataset.bike); if (b) map.setView([b.lat, b.lng], Math.max(map.getZoom(), 17)); });
     if ($('b-bike')) $('b-bike').onclick = () => { loadBikes(place, true).catch(e => alert('YouBike 載入失敗：' + e.message)); rerender(); };
     if (place) drawBikes(place, bikeList(place), av); else clearBikes();
     if (!fit) return;
@@ -874,7 +960,7 @@ function listStations(list, head, place = null, fit = true) {
     list.forEach(s => L.circleMarker([s.lat, s.lng], { radius: 7, color: '#111', weight: 2, fillColor: '#ffeb3b', fillOpacity: 1 }).bindTooltip(s.name).on('click', () => openStation(s.id)).addTo(layerSel));
     if (list.length) map.fitBounds(L.latLngBounds(list.map(s => [s.lat, s.lng]).concat(place ? [[place.lat, place.lng]] : [])).pad(0.2), { maxZoom: 16 });
 }
-$('btn-near').onclick = () => {
+function nearClick() {
     if (!navigator.geolocation) { alert('此裝置不支援定位'); return; }
     // 持續定位中且位置夠新就直接用
     const fresh = Loc.pos && Date.now() - Loc.pos.at < 30000;
@@ -890,7 +976,8 @@ $('btn-near').onclick = () => {
         if (!Loc.marker) L.circleMarker([lat, lng], { radius: 8, color: '#1a73e8', fillColor: '#1a73e8', fillOpacity: .6 }).addTo(layerSel);
         loadBikes(place).catch(() => {});
     });
-};
+}
+map.addControl(new MapBtn({ position: 'bottomright', cls: 'near-btn', html: '📍 附近', title: '站位：附近公車站位與 YouBike；路線：附近所有公車路線 (依到站先後)', click: nearClick }));
 
 // ---------- 1. 站位 → 站牌 ----------
 function openStation(id) {
