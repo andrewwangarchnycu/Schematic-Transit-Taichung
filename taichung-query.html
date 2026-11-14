@@ -264,18 +264,46 @@ const STOPS = NET.stops.map(([uid, name, lat, lng, sid], i) => ({ i, uid: 'TXG' 
 const ROUTES = NET.routes.map(([sub, route, dir, seq], i) => ({ i, sub, route, dir, seq }));
 const routeOfStop = STOPS.map(() => []);
 ROUTES.forEach(r => r.seq.forEach((si, pos) => routeOfStop[si].push([r.i, pos])));
-const STATIONS = new Map();
-STOPS.forEach(s => { if (!STATIONS.has(s.sid)) STATIONS.set(s.sid, { id: s.sid, stops: [] }); STATIONS.get(s.sid).stops.push(s.i); });
-STATIONS.forEach(st => {
-    const cnt = {};
-    st.stops.forEach(i => cnt[STOPS[i].name] = (cnt[STOPS[i].name] || 0) + 1);
-    st.name = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0][0];
-    st.lat = st.stops.reduce((a, i) => a + STOPS[i].lat, 0) / st.stops.length;
-    st.lng = st.stops.reduce((a, i) => a + STOPS[i].lng, 0) / st.stops.length;
-    st.routes = new Set(st.stops.flatMap(i => routeOfStop[i].map(([ri]) => ROUTES[ri].sub)));
-});
-// 臺中市每條路線在同一支站牌各有自己的 StopUID → 依位置 (15 公尺內) 合併成實體站牌
+// 名詞 (TDX 臺中資料)：
+//   站牌 StopUID：每條路線在每個停靠點各一筆 (同一支實體站牌常有多筆)
+//   站位 StationID：同一側 (同一行車方向) 的停靠位置，通常一個方向一個
+//   同站：同名且彼此 500 公尺內的站位合併，例如路口兩側往返兩個站位 → 查詢以「同站」為單位
+//   實體站牌：同站內 15 公尺內的 StopUID 合併成一支，依停靠位置與行車方位編號 1、2、3…
 const mDist = (a, b) => Math.hypot((a.lng - b.lng) * 101700, (a.lat - b.lat) * 110900);
+const STATIONS = new Map();          // 同站 id → { id, name, sids, stops, lat, lng, routes }
+const SAME_OF = new Array(STOPS.length);
+(function buildSameStations() {
+    const bySid = new Map();
+    STOPS.forEach(s => { const k = s.name + '\u0000' + s.sid; if (!bySid.has(k)) bySid.set(k, { name: s.name, sid: s.sid, stops: [] }); bySid.get(k).stops.push(s.i); });
+    const byName = new Map();
+    bySid.forEach(g => {
+        g.lat = g.stops.reduce((a, i) => a + STOPS[i].lat, 0) / g.stops.length;
+        g.lng = g.stops.reduce((a, i) => a + STOPS[i].lng, 0) / g.stops.length;
+        if (!byName.has(g.name)) byName.set(g.name, []);
+        byName.get(g.name).push(g);
+    });
+    let n = 0;
+    byName.forEach((gs, name) => {
+        // 同名站位：500 公尺內串連成同一站 (single-link)
+        const clusters = [];
+        gs.forEach(g => {
+            const hit = clusters.filter(c => c.some(x => mDist(x, g) <= 500));
+            const merged = [g, ...hit.flat()];
+            hit.forEach(c => clusters.splice(clusters.indexOf(c), 1));
+            clusters.push(merged);
+        });
+        clusters.forEach(c => {
+            const id = 'S' + (n++);
+            const stops = c.flatMap(g => g.stops);
+            const st = { id, name, sids: c.map(g => g.sid), stops,
+                lat: stops.reduce((a, i) => a + STOPS[i].lat, 0) / stops.length, lng: stops.reduce((a, i) => a + STOPS[i].lng, 0) / stops.length,
+                routes: new Set(stops.flatMap(i => routeOfStop[i].map(([ri]) => ROUTES[ri].sub))) };
+            stops.forEach(i => SAME_OF[i] = id);
+            STATIONS.set(id, st);
+        });
+    });
+})();
+const SID_COUNT = new Set(STOPS.map(s => s.sid)).size;
 function boardsOf(st) {
     if (st.boards) return st.boards;
     const boards = [];
@@ -288,9 +316,10 @@ function boardsOf(st) {
     boards.forEach(b => {
         b.items = b.stops.flatMap(si => routeOfStop[si].map(([ri, pos]) => ({ si, r: ROUTES[ri], pos })));
         b.head = boardHeading(b.items);
+        b.sids = [...new Set(b.stops.map(si => STOPS[si].sid))];
     });
-    // 依行車方向排序 (北起順時針)
-    boards.sort((a, b) => DIR8.indexOf(a.head.label) - DIR8.indexOf(b.head.label));
+    // 編號：先依行車方位 (北起順時針)，同方位再依位置 (由北往南、由西往東)
+    boards.sort((a, b) => DIR8.indexOf(a.head.label) - DIR8.indexOf(b.head.label) || b.lat - a.lat || a.lng - b.lng);
     return (st.boards = boards);
 }
 const SUBS = [...new Set(ROUTES.map(r => r.sub))];
@@ -651,7 +680,7 @@ function rerender() { if (!view) return; if (view.type === 'station') renderStat
 function renderSearch() {
     const q = $('q').value.trim();
     if (mode === 'station') {
-        if (!q) { panel.innerHTML = `<div class="hint">輸入站名搜尋、按「📍 附近」，或把地圖放大後點選站位。<br>全市 ${STATIONS.size} 個站位、${STOPS.length} 個站牌、${SUBS.length} 條路線 (靜態資料 ${NET.gen})。</div>`; return; }
+        if (!q) { panel.innerHTML = `<div class="hint">輸入站名搜尋、按「📍 附近」，或把地圖放大後點選站位。<br>全市 ${STATIONS.size} 個同名站（${SID_COUNT} 個站位、${STOPS.length} 筆站牌）、${SUBS.length} 條路線 (靜態資料 ${NET.gen})。</div>`; return; }
         const hits = [...STATIONS.values()].filter(s => s.name.includes(q)).sort((a, b) => (a.name === q ? -1 : 0) - (b.name === q ? -1 : 0) || b.routes.size - a.routes.size).slice(0, 60);
         listStations(hits, `「${esc(q)}」${hits.length >= 60 ? '前 60 個' : hits.length + ' 個'}站位`);
     } else {
@@ -709,8 +738,8 @@ function renderStation() {
         const h = b.head;
         const rows = b.items.slice().sort((a, c) => a.r.sub.localeCompare(c.r.sub, 'zh-Hant', { numeric: true }) || a.r.dir - c.r.dir);
         const names = [...new Set(b.stops.map(si => STOPS[si].name))];
-        return `<div class="stop-card"><div class="stop-head"><span class="stop-no">${k + 1}</span><b>往${h.label}</b>
-                <span class="muted">${names.map(esc).join('／')}${h.nexts.length ? ' · 下一站 ' + h.nexts.slice(0, 4).map(esc).join('、') : ''}</span></div>` +
+        return `<div class="stop-card"><div class="stop-head"><span class="stop-no">${k + 1}</span><b>站牌 ${k + 1} · 往${h.label}</b>
+                <span class="muted">${h.nexts.length ? '下一站 ' + h.nexts.slice(0, 4).map(esc).join('、') + ' · ' : ''}站位 ${b.sids.map(esc).join('、')}</span></div>` +
             rows.map(({ si, r, pos }) => {
                 routeSet.add(r.route);
                 const last = pos === r.seq.length - 1;
@@ -731,7 +760,7 @@ function renderStation() {
     const need = [...routeSet].filter(rt => isToday ? !todaySched(rt) : !weekSched(rt) || !todaySched(rt));
     const nLoading = [...loading.keys()].filter(k => k.startsWith('t:') || k.startsWith('w:')).length;
     panel.innerHTML = `<h2>${esc(st.name)}</h2>
-        <div class="muted">${boards.length} 支站牌 · ${routeSet.size} 條路線 · ${eta ? `即時 ${new Date(eta.at).toLocaleTimeString('zh-TW', { hour12: false })}` : loading.has('e:st:' + view.id) ? '即時資料載入中…' : '尚無即時資料'}</div>
+        <div class="muted">同名站 · ${boards.length} 支站牌 (${st.sids.length} 個站位) · ${routeSet.size} 條路線 · ${eta ? `即時 ${new Date(eta.at).toLocaleTimeString('zh-TW', { hour12: false })}` : loading.has('e:st:' + view.id) ? '即時資料載入中…' : '尚無即時資料'}</div>
         <div class="row"><button class="btn" id="b-eta">更新即時 (1 次 API)</button>
         ${need.length ? `<button class="btn" id="b-all">載入全部時刻表 (${need.length} 條路線，約 ${need.length}~${need.length * 2} 次 API)</button>` : ''}
         ${nLoading ? `<span class="muted">排隊載入 ${nLoading} 筆…</span>` : ''}</div>
@@ -770,7 +799,7 @@ function drawRouteMap(r) {
     if (sh) sh.forEach(line => L.polyline(line, { color: c, weight: 6, opacity: .85 }).addTo(layerSel));
     else L.polyline(pts, { color: c, weight: 5, opacity: .8, dashArray: '8 6' }).addTo(layerSel);
     r.seq.forEach((si, k) => L.circleMarker([STOPS[si].lat, STOPS[si].lng], { radius: k === 0 || k === r.seq.length - 1 ? 7 : 5, color: c, weight: 3, fillColor: '#fff', fillOpacity: 1 })
-        .bindTooltip(`${k + 1}. ${STOPS[si].name}`).on('click', () => openStation(STOPS[si].sid)).addTo(layerSel));
+        .bindTooltip(`${k + 1}. ${STOPS[si].name}`).on('click', () => openStation(SAME_OF[si])).addTo(layerSel));
     map.fitBounds(L.latLngBounds(pts).pad(0.1));
 }
 function loadShape(r) {
