@@ -69,7 +69,14 @@
     .daytab .mins .past { color: #5f6368; }
     .daytab .mins .next { color: #ffeb3b; font-weight: bold; }
     .bus-ico { width: 26px; height: 26px; }
-    .bus-ico svg { overflow: visible; }
+    /* 公車圖示：白底正圓＋路線色公車；方向箭頭為路線色；塞車＝紅色外框呼吸燈 */
+    .bdot { position: relative; width: 100%; height: 100%; }
+    .bdot svg.arr { position: absolute; inset: 0; overflow: visible; }
+    .bdot-c { position: absolute; inset: 2px; border-radius: 50%; background: #fff; border: 2.5px solid var(--rc); color: var(--rc); display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,.5); }
+    .bdot-c svg { width: 64%; height: 64%; }
+    .bdot.jam .bdot-c { border-color: #ff1744; animation: jam 1.2s ease-in-out infinite; }
+    @keyframes jam { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,23,68,.85); } 50% { box-shadow: 0 0 0 7px rgba(255,23,68,0); } }
+    .seq-bus { position: absolute; left: 13px; width: 22px; height: 22px; margin: -11px 0 0 -11px; z-index: 3; transition: top 1s linear; cursor: pointer; }
     .soon { color: #ffeb3b; font-weight: bold; } .now { color: #ff5252; font-weight: bold; }
     .tag { font-size: 10px; padding: 0 5px; border-radius: 3px; background: #3b4148; color: #ccc; margin-left: 4px; white-space: nowrap; }
     .tag.api { background: #1b5e20; color: #b9f6ca; } .tag.freq { background: #4a148c; color: #e1bee7; }
@@ -108,7 +115,8 @@
     .seq-row .times { grid-column: 2 / -1; }
     .seq-row.here { background: rgba(255,235,59,.08); }
     /* 附近追蹤：最接近我的站 — 框線＋藍色呼吸燈站點 */
-    .seq-row.track, .seq-row.track:hover { background: #eceff1; color: #111; border-radius: 6px; }
+    /* 反白左右滿版：用陰影補滿 .seq 左側 (6px＋面板內距 12px) 與右側內距 12px */
+    .seq-row.track, .seq-row.track:hover { background: #eceff1; color: #111; box-shadow: -18px 0 0 #eceff1, 12px 0 0 #eceff1; }
     .seq-row.track .seq-name small, .seq-row.track .muted { color: #555 !important; }
     .seq-row.track .seq-eta { color: #00695c; }
     .seq-row.track .times { color: #222; }
@@ -1188,7 +1196,14 @@ function onTrack(lat, lng) {
     else Track.mk = L.marker([s.lat, s.lng], { icon: L.divIcon({ className: 'trk-ico', html: '<div></div>', iconSize: [22, 22], iconAnchor: [11, 11] }), interactive: false, zIndexOffset: 2500 }).addTo(map);
     map.setView([s.lat, s.lng], Math.max(map.getZoom(), 17));
     const row = panel.querySelector('.seq-row.track');
-    if (row) panel.scrollTop = row.offsetTop - panel.clientHeight / 3;
+    if (row) {
+        // 手機版 (面板在地圖下方、高度小)：該站置於面板正中 (比桌面版多往上捲約 2.5 站)
+        if (matchMedia('(max-width: 760px)').matches) {
+            const top = row.getBoundingClientRect().top - panel.getBoundingClientRect().top + panel.scrollTop;
+            const hd = panel.querySelector('.rt-head'), hh = hd ? hd.offsetHeight - 10 : 0;   // 扣掉置頂標題
+            panel.scrollTop = top - hh - (panel.clientHeight - hh - row.offsetHeight) / 2;
+        } else panel.scrollTop = row.offsetTop - panel.clientHeight / 3;
+    }
 }
 function startTrack() {
     if (!navigator.geolocation) { alert('此裝置不支援定位'); return; }
@@ -1631,7 +1646,7 @@ function loadVehicles(route, force = false) {
             { high: true, label: `${route} 公車位置` });
         // 同一車牌只留最新一筆
         const byPlate = new Map();
-        js.forEach(x => { if (!x.BusPosition) return; const p = byPlate.get(x.PlateNumb); if (!p || Date.parse(x.GPSTime) > Date.parse(p.GPSTime)) byPlate.set(x.PlateNumb, x); });
+        js.forEach(x => { if (!x.BusPosition) return; vehHistPush(x); const p = byPlate.get(x.PlateNumb); if (!p || Date.parse(x.GPSTime) > Date.parse(p.GPSTime)) byPlate.set(x.PlateNumb, x); });
         const v = { at: Date.now(), rows: [...byPlate.values()].map(x => ({
             plate: x.PlateNumb, op: x.OperatorID, sub: (x.SubRouteName && x.SubRouteName.Zh_tw) || x.RouteName.Zh_tw, dir: x.Direction,
             lat: x.BusPosition.PositionLat, lng: x.BusPosition.PositionLon, az: x.Azimuth, speed: x.Speed, gps: Date.parse(x.GPSTime), status: x.BusStatus })) };
@@ -1640,17 +1655,93 @@ function loadVehicles(route, force = false) {
     });
 }
 const agoText = ms => { const s = Math.max(0, Math.round((Date.now() - ms) / 1000)); return s >= 60 ? `${Math.floor(s / 60)} 分 ${s % 60} 秒前` : `${s} 秒前`; };
-function busIcon(color, az, dim) {
-    // 圓形公車圖示＋行駛方向箭頭 (方位角 0＝北，順時針)
-    const a = isFinite(az) ? az : null;
-    return L.divIcon({ className: 'bus-ico', iconSize: [26, 26], iconAnchor: [13, 13], html:
-        `<svg width="26" height="26" viewBox="-13 -13 26 26" style="opacity:${dim ? .45 : 1}">
-            ${a !== null ? `<path d="M 0 -16 L 6.5 -7 L -6.5 -7 Z" fill="#ffd600" stroke="#111" stroke-width="1.5" transform="rotate(${a})"/>` : ''}
-            <circle r="9.5" fill="#ffd600" stroke="${color}" stroke-width="3"/>
-            <path d="M -4.5 -4 h 9 a 1 1 0 0 1 1 1 v 6 h -11 v -6 a 1 1 0 0 1 1 -1 z M -4 3 v 1.6 M 4 3 v 1.6" fill="#111" stroke="#111" stroke-width="1.2"/>
-            <rect x="-3.5" y="-2.8" width="7" height="2.6" fill="#ffd600"/>
-        </svg>` });
+// 公車圖示 HTML：白底正圓內放路線色公車，az 有值時外加路線色方向箭頭 (0＝北，順時針)
+const BUS_GLYPH = '<svg viewBox="-8 -8 16 16"><path d="M -5.5 -6.5 h 11 a 1.5 1.5 0 0 1 1.5 1.5 v 9 h -14 v -9 a 1.5 1.5 0 0 1 1.5 -1.5 z" fill="currentColor"/><rect x="-4.6" y="-5" width="9.2" height="4" rx=".6" fill="#fff"/><circle cx="-3.4" cy="1.8" r="1.1" fill="#fff"/><circle cx="3.4" cy="1.8" r="1.1" fill="#fff"/><path d="M -4.6 4 v 2.6 M 4.6 4 v 2.6" stroke="currentColor" stroke-width="2.2"/></svg>';
+function busDot(color, az, jam, dim) {
+    const a = az !== null && az !== undefined && isFinite(az) ? az : null;
+    return `<div class="bdot${jam ? ' jam' : ''}" style="--rc:${color};${dim ? 'opacity:.45' : ''}">${a !== null ? `<svg class="arr" viewBox="-13 -13 26 26"><path d="M 0 -16.5 L 5.5 -9.5 L -5.5 -9.5 Z" fill="${color}" stroke="#fff" stroke-width="1.2" transform="rotate(${a})"/></svg>` : ''}<span class="bdot-c">${BUS_GLYPH}</span></div>`;
 }
+function busIcon(color, az, dim, jam) {
+    return L.divIcon({ className: 'bus-ico', iconSize: [26, 26], iconAnchor: [13, 13], html: busDot(color, az, jam, dim) });
+}
+// ---------- 公車在路線上的位置與塞車判斷 ----------
+//   位置：GPS 投影到站牌連線 → 沿線里程 m (公尺)；兩次資料之間依車速外推，左側站序線上平順移動
+//   塞車：不在站牌 (40 m) 與起訖站 (200 m) 附近，車速 < 10 km/h，並且
+//         有 40 秒～5 分鐘前的軌跡時，平均移動速率 < 2.5 m/s (≈9 km/h)；沒有軌跡時車速 < 3 km/h
+const vehHist = new Map();   // 車牌 → [{ t, lat, lng, sp }]
+function vehHistPush(x) {
+    const t = Date.parse(x.GPSTime);
+    if (!isFinite(t)) return;
+    const h = vehHist.get(x.PlateNumb) || [];
+    if (!h.some(p => p.t === t)) h.push({ t, lat: x.BusPosition.PositionLat, lng: x.BusPosition.PositionLon, sp: x.Speed });
+    h.sort((p, q) => p.t - q.t);
+    while (h.length && h[0].t < t - 10 * 60000) h.shift();
+    vehHist.set(x.PlateNumb, h);
+}
+const alongMemo = new Map();
+const alongOf = r => { if (!alongMemo.has(r.i)) alongMemo.set(r.i, distAlong(r)); return alongMemo.get(r.i); };
+const vehM = new Map();      // 路線:車牌 → 上次沿線里程 (避免環狀/往返重疊路段投影跳段)
+function vehState(r, v) {
+    const M = alongOf(r), n = r.seq.length, px = v.lng * 101700, py = v.lat * 110900, prev = vehM.get(r.i + ':' + v.plate);
+    let best = null, near = Infinity;
+    for (let k = 0; k < n; k++) {
+        const a = STOPS[r.seq[k]], ax = a.lng * 101700, ay = a.lat * 110900;
+        near = Math.min(near, Math.hypot(ax - px, ay - py));
+        if (k === n - 1) break;
+        const b = STOPS[r.seq[k + 1]], bx = b.lng * 101700 - ax, by = b.lat * 110900 - ay, L2 = bx * bx + by * by;
+        const t = L2 ? Math.max(0, Math.min(1, ((px - ax) * bx + (py - ay) * by) / L2)) : 0;
+        const d = Math.hypot(px - ax - t * bx, py - ay - t * by), m = M[k] + t * (M[k + 1] - M[k]);
+        const score = d + (prev !== undefined ? Math.abs(m - prev) * 0.1 : 0);
+        if (!best || score < best.score) best = { score, d, m };
+    }
+    if (!best || best.d > 400) return null;   // 離路線太遠 (調度中/繞駛)
+    vehM.set(r.i + ':' + v.plate, best.m);
+    const sp = isFinite(v.speed) && v.speed !== null ? v.speed : null;
+    // 位置變化：40 秒～5 分鐘前那一筆到現在的平均速率
+    const h = vehHist.get(v.plate) || [], old = h.find(p => v.gps - p.t >= 40000 && v.gps - p.t <= 300000);
+    const rate = old ? Math.hypot((v.lng - old.lng) * 101700, (v.lat - old.lat) * 110900) / ((v.gps - old.t) / 1000) : null;
+    const total = M[n - 1], end = best.m < 200 || best.m > total - 200;
+    const jam = !end && near > 40 && (sp === null || sp < 10) && (rate !== null ? rate < 2.5 : sp !== null && sp < 3);
+    // 外推：資料時間到現在依車速前進 (塞車視為不動)，最多 2 分鐘、600 m
+    const ms = jam ? 0 : sp !== null ? sp / 3.6 : rate !== null ? rate : 0;
+    const dt = Math.max(0, Math.min(120, (Date.now() - v.gps) / 1000));
+    const mNow = Math.min(total, best.m + Math.min(600, ms * dt * 0.8));
+    return { m: best.m, mNow, jam, near, sp, rate };
+}
+// 左側站序線上的公車：每秒更新位置，CSS transition 平順移動
+const seqBusY = new Map();
+function seqBuses() {
+    if (!view || view.type !== 'route') return;
+    const box = panel.querySelector('.seq');
+    if (!box) return;
+    const r = ROUTES.find(x => x.sub === view.sub && x.dir === view.dir), rows = box.querySelectorAll('.seq-row');
+    if (!r || rows.length !== r.seq.length || rows.length < 2) return;
+    const c = selDate() === todayKey() ? vehCache.get(r.route) : null, M = alongOf(r);
+    const ys = [...rows].map(e => e.offsetTop + 15);   // 站圓圈中心
+    const yOf = m => { let k = 0; while (k < M.length - 2 && m > M[k + 1]) k++; const seg = M[k + 1] - M[k] || 1; return ys[k] + Math.max(0, Math.min(1, (m - M[k]) / seg)) * (ys[k + 1] - ys[k]); };
+    const want = new Map();
+    if (c) c.rows.filter(v => v.sub === r.sub && v.dir === r.dir).forEach(v => { const st = vehState(r, v); if (st) want.set(v.plate, { v, st, y: yOf(st.mNow) }); });
+    box.querySelectorAll('.seq-bus').forEach(e => { if (!want.has(e.dataset.plate)) e.remove(); });
+    const color = colorOf(r.sub);
+    want.forEach(({ v, st, y }, plate) => {
+        const k = r.i + ':' + plate;
+        let e = [...box.querySelectorAll('.seq-bus')].find(x => x.dataset.plate === plate);
+        if (!e) {
+            e = document.createElement('div');
+            e.className = 'seq-bus'; e.dataset.plate = plate;
+            e.style.top = (seqBusY.has(k) ? seqBusY.get(k) : y) + 'px';
+            box.appendChild(e);
+            void e.offsetTop;   // 先套用舊位置，之後設定新位置才有過渡動畫
+        }
+        e.onclick = ev => { ev.stopPropagation(); map.setView([v.lat, v.lng], Math.max(map.getZoom(), 16)); };
+        const html = busDot(color, null, st.jam);
+        if (e.dataset.html !== html) { e.innerHTML = html; e.dataset.html = html; }
+        e.title = `${plate}${st.sp !== null ? ` · ${Math.round(st.sp)} km/h` : ''}${st.jam ? ' · 疑似塞車' : ''} · ${agoText(v.gps)}的位置`;
+        e.style.top = y + 'px';
+        seqBusY.set(k, y);
+    });
+}
+setInterval(seqBuses, 1000);
 function vehPopup(v, r) {
     const ops = opsMap(), op = ops ? (ops[v.op] || '') : '';
     const q = encodeURIComponent(`${v.plate} ${op || '臺中 公車'}`);
@@ -1675,7 +1766,8 @@ function drawVehicles() {
         const c = vehCache.get(r.route);
         if (!c) return;
         c.rows.filter(v => v.sub === r.sub && v.dir === r.dir).forEach(v => {
-            const m = L.marker([v.lat, v.lng], { icon: busIcon(colorOf(v.sub), v.az, false), zIndexOffset: 1000 });
+            const st = vehState(r, v);
+            const m = L.marker([v.lat, v.lng], { icon: busIcon(colorOf(v.sub), v.az, false, st && st.jam), zIndexOffset: 1000 });
             m.bindPopup(() => vehPopup(v, r));
             m.on('popupopen', () => { if (!opsMap()) loadOperators().then(() => { if (m.isPopupOpen()) m.setPopupContent(vehPopup(v, r)); }).catch(() => {}); });
             m.addTo(layerVeh);
@@ -1740,6 +1832,7 @@ function renderRoute() {
     if ($('b-veh-auto')) $('b-veh-auto').onchange = e => setVehAuto(e.target.checked);
     drawVehicles();
     panel.querySelectorAll('.seq-row').forEach(e => e.onclick = () => { open.has(e.dataset.key) ? open.delete(e.dataset.key) : open.add(e.dataset.key); renderRoute(); });
+    seqBuses();
 }
 
 // ---------- 2b. 捷運綠線：路線簡圖 + 實際線形 + 依班距的時刻表 ----------
