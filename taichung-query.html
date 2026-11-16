@@ -34,6 +34,15 @@
     .list-item .sub { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .badge { display: inline-block; min-width: 34px; text-align: center; padding: 2px 7px; border-radius: 5px; font-weight: bold; font-size: 13px; color: #fff; white-space: nowrap; }
     h2 { font-size: 18px; margin: 4px 0 2px; }
+    /* 路線頁標題：捲動時置頂 (蓋住 #panel 的內距) */
+    .rt-head { position: sticky; top: -10px; z-index: 5; margin: -10px -12px 4px; padding: 8px 12px 6px; background: var(--bg); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; }
+    .rt-head h2 { margin: 0; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .rt-head button { background: none; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); font: inherit; cursor: pointer; padding: 3px 8px; white-space: nowrap; }
+    .rt-head button:hover { color: var(--text); background: #26292d; }
+    .rt-head .rev { font-size: 12px; max-width: 42%; overflow: hidden; text-overflow: ellipsis; }
+    .rt-head .ref { font-size: 16px; line-height: 1; padding: 3px 6px; }
+    .rt-head .ref.spin span { display: inline-block; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
     .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 6px 0; }
     .msel { margin-left: auto; padding: 4px 6px; display: flex; align-items: center; cursor: pointer; }
     .msel input { width: 18px; height: 18px; cursor: pointer; margin: 0; }
@@ -98,6 +107,13 @@
     .seq-eta { font-family: ui-monospace, monospace; font-size: 13px; color: var(--live); text-align: right; white-space: nowrap; }
     .seq-row .times { grid-column: 2 / -1; }
     .seq-row.here { background: rgba(255,235,59,.08); }
+    /* 附近追蹤：最接近我的站 — 框線＋藍色呼吸燈站點 */
+    .seq-row.track { outline: 2px solid #1a73e8; outline-offset: -2px; border-radius: 6px; background: rgba(26,115,232,.12); }
+    .seq-row.track .seq-dot { background: #1a73e8; border-color: #8ab4f8 !important; animation: breathe 1.6s ease-in-out infinite; }
+    .trk-d { color: #8ab4f8 !important; font-weight: bold; }
+    @keyframes breathe { 0%, 100% { box-shadow: 0 0 0 0 rgba(26,115,232,.7); } 50% { box-shadow: 0 0 0 7px rgba(26,115,232,0); } }
+    .trk-ico div { width: 22px; height: 22px; border-radius: 50%; border: 3px solid #1a73e8; background: rgba(26,115,232,.25); animation: breathe 1.6s ease-in-out infinite; }
+    .map-btn.near-btn.tracking { background: #0b3d91 !important; box-shadow: 0 0 0 3px rgba(138,180,248,.6); }
     .mrt-svg text { fill: #eee; font-size: 12px; }
     .leaflet-container { background: #1d1f22; font: inherit; }
     .leaflet-control-attribution { background: rgba(20,20,22,.75) !important; color: #aaa; }
@@ -1055,6 +1071,7 @@ let view = null;               // { type:'station', id } | { type:'route', sub, 
 const open = new Set();        // 展開的全日時刻表
 const panel = $('panel');
 function setMode(m) {
+    if (Track.on) stopTrack();
     mode = m;
     $('tab-station').classList.toggle('on', m === 'station');
     $('tab-route').classList.toggle('on', m === 'route');
@@ -1138,7 +1155,56 @@ function listStations(list, head, place = null, fit = true) {
     list.forEach(s => L.circleMarker([s.lat, s.lng], { radius: 7, color: '#111', weight: 2, fillColor: '#ffeb3b', fillOpacity: 1 }).bindTooltip(s.name).on('click', () => openStation(s.id)).addTo(layerSel));
     if (list.length) map.fitBounds(L.latLngBounds(list.map(s => [s.lat, s.lng]).concat(place ? [[place.lat, place.lng]] : [])).pad(0.2), { maxZoom: 16 });
 }
+// ---------- 路線頁「附近」：追蹤最接近我的站 (持續定位，再按一次停止) ----------
+const Track = { on: false, watch: null, ll: null, key: '', mk: null };
+function trackInfo(r) {
+    if (!Track.on || !Track.ll) return null;
+    let best = null;
+    r.seq.forEach((si, pos) => { const d = mDist(STOPS[si], { lat: Track.ll[0], lng: Track.ll[1] }); if (!best || d < best.d) best = { pos, d }; });
+    return best;
+}
+function trackBtn() {
+    const b = document.querySelector('.near-btn');
+    if (!b) return;
+    b.classList.toggle('tracking', Track.on);
+    b.innerHTML = Track.on ? '📍 停止追蹤' : '📍 附近';
+}
+function onTrack(lat, lng) {
+    if (!Track.on) return;
+    if (!view || view.type !== 'route') { stopTrack(); return; }
+    Track.ll = [lat, lng];
+    const r = ROUTES.find(x => x.sub === view.sub && x.dir === view.dir), t = trackInfo(r);
+    if (!t) return;
+    const key = r.i + ':' + t.pos, s = STOPS[r.seq[t.pos]];
+    renderRoute();
+    if (key === Track.key) return;
+    // 最近的站換了：地圖放大到該站、清單捲到該站
+    Track.key = key;
+    if (Track.mk) Track.mk.setLatLng([s.lat, s.lng]);
+    else Track.mk = L.marker([s.lat, s.lng], { icon: L.divIcon({ className: 'trk-ico', html: '<div></div>', iconSize: [22, 22], iconAnchor: [11, 11] }), interactive: false, zIndexOffset: 2500 }).addTo(map);
+    map.setView([s.lat, s.lng], Math.max(map.getZoom(), 17));
+    const row = panel.querySelector('.seq-row.track');
+    if (row) panel.scrollTop = row.offsetTop - panel.clientHeight / 3;
+}
+function startTrack() {
+    if (!navigator.geolocation) { alert('此裝置不支援定位'); return; }
+    Track.on = true; Track.key = ''; Track.ll = null;
+    if (Loc.follow) { Loc.follow = false; locBtnState(); }   // 不讓「跟隨我的位置」把地圖拉走
+    trackBtn();
+    if (Loc.pos && Date.now() - Loc.pos.at < 30000) onTrack(Loc.pos.lat, Loc.pos.lng);
+    Track.watch = navigator.geolocation.watchPosition(p => onTrack(p.coords.latitude, p.coords.longitude),
+        e => { if (e.code === 1) { alert('定位權限被拒，請在瀏覽器設定允許'); stopTrack(); } }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
+}
+function stopTrack() {
+    if (Track.watch !== null) navigator.geolocation.clearWatch(Track.watch);
+    if (Track.mk) map.removeLayer(Track.mk);
+    Object.assign(Track, { on: false, watch: null, ll: null, key: '', mk: null });
+    trackBtn();
+    if (view && view.type === 'route') renderRoute();
+}
 function nearClick() {
+    if (Track.on) { stopTrack(); return; }
+    if (view && view.type === 'route') { startTrack(); return; }
     if (!navigator.geolocation) { alert('此裝置不支援定位'); return; }
     // 持續定位中且位置夠新就直接用
     const fresh = Loc.pos && Date.now() - Loc.pos.at < 30000;
@@ -1155,7 +1221,7 @@ function nearClick() {
         loadBikes(place).catch(() => {});
     });
 }
-map.addControl(new MapBtn({ position: 'bottomright', cls: 'near-btn', html: '📍 附近', title: '站位：附近公車站位與 YouBike；路線：附近所有公車路線 (依到站先後)', click: nearClick }));
+map.addControl(new MapBtn({ position: 'bottomright', cls: 'near-btn', html: '📍 附近', title: '站位：附近公車站位與 YouBike；路線清單：附近所有公車路線；路線頁：追蹤最接近我的站 (再按停止)', click: nearClick }));
 
 // ---------- 1. 站位 → 站牌 ----------
 function openStation(id) {
@@ -1451,6 +1517,7 @@ function openRoute(sub, dir, here) {
     loadVehicles(r.route).catch(() => {});
     if (selDate() === todayKey()) loadA2(r.route, false, true).catch(() => {});
     renderRoute();
+    if (Track.on && Track.ll) { Track.key = ''; onTrack(...Track.ll); }
 }
 function drawRouteMap(r, fit = true) {
     layerSel.clearLayers();
@@ -1627,6 +1694,7 @@ function renderRoute() {
     const hasShape = !!shapeOf(r);
     const vc = vehCache.get(r.route);
     const t0 = timesAt(r, 0, ds);
+    const trk = trackInfo(r);
     const rows = r.seq.map((si, pos) => {
         const s = STOPS[si];
         const row = eta && eta.rows.filter(x => x.name === s.name && x.sub === r.sub && x.dir === r.dir).sort((a, b) => (a.dl ?? Infinity) - (b.dl ?? Infinity))[0];
@@ -1639,14 +1707,16 @@ function renderRoute() {
         const full = open.has(key) ? (t.times && t.times.length
             ? dayTable(t.times, isToday, nm, t.note, '2/-1')
             : `<div class="times muted">${t.pending ? '載入中…' : esc(t.note || '無資料')}</div>`) : '';
-        return `<div class="seq-row${view.here === s.name ? ' here' : ''}" data-key="${key}" data-sid="${esc(s.sid)}"><div class="seq-dot" style="border-color:${c}"></div>
-            <div class="seq-name">${esc(s.name)}<br><small>${tt}</small></div><div class="seq-eta">${isToday ? etaHtml(row) + cmpHtml(compareEta(r, s.name, row)) : ''}</div>${full}</div>`;
+        const tk = trk && trk.pos === pos;
+        return `<div class="seq-row${view.here === s.name ? ' here' : ''}${tk ? ' track' : ''}" data-key="${key}" data-sid="${esc(s.sid)}"><div class="seq-dot" style="border-color:${c}"></div>
+            <div class="seq-name">${esc(s.name)}${tk ? ` <small class="trk-d">📍 距你 ${Math.round(trk.d)} m</small>` : ''}<br><small>${tt}</small></div><div class="seq-eta">${isToday ? etaHtml(row) + cmpHtml(compareEta(r, s.name, row)) : ''}</div>${full}</div>`;
     }).join('');
-    panel.innerHTML = `<h2>${badge(r.sub)} 往 ${esc(destOf(r))}</h2>
+    const busy = loading.has('e:rt:' + r.route) || loading.has('a2:' + r.route);
+    panel.innerHTML = `<div class="rt-head"><h2>${badge(r.sub)} 往 ${esc(destOf(r))}</h2>
+        ${other ? `<button class="rev" id="b-rev" title="切換方向">⇄ 往 ${esc(destOf(other))}</button>` : ''}
+        ${isToday ? `<button class="ref${busy ? ' spin' : ''}" id="b-eta" title="更新即時＋班次配對 (2 次 API)"><span>🔄</span></button>` : ''}</div>
         <div class="muted">${r.seq.length} 站 · ${isToday ? (eta ? `即時 ${new Date(eta.at).toLocaleTimeString('zh-TW', { hour12: false })}` : '即時資料載入中…') : `${ds} 時刻表`}${t0.note ? ' · ' + esc(t0.note) : ''}</div>
-        <div class="row">${other ? `<button class="btn" id="b-rev">⇄ 往 ${esc(destOf(other))}</button>` : ''}
-        ${isToday ? '<button class="btn" id="b-eta">更新即時＋班次配對 (2 次 API)</button>' : ''}
-        <button class="btn" id="b-madd">${multi.some(m => m.sub === r.sub && m.dir === r.dir) ? '✓ 已在多選' : '＋ 加入多選'}</button>
+        <div class="row">        <button class="btn" id="b-madd">${multi.some(m => m.sub === r.sub && m.dir === r.dir) ? '✓ 已在多選' : '＋ 加入多選'}</button>
         ${multi.length ? `<button class="btn" id="b-mopen">多選 (${multi.length})</button>` : ''}</div>
         <div class="row">${isToday ? `<button class="btn" id="b-veh">🚌 更新公車位置 (1 次 API)</button>
             <label class="muted"><input type="checkbox" id="b-veh-auto" ${vehAuto ? 'checked' : ''}> 每分鐘自動更新</label>
@@ -1655,7 +1725,7 @@ function renderRoute() {
         <div class="seq" style="--rc:${c}">${rows}</div>`;
     if (!view.scrolled && view.here) { const h = panel.querySelector('.seq-row.here'); if (h) { panel.scrollTop = h.offsetTop - panel.clientHeight / 3; view.scrolled = true; } } else panel.scrollTop = keep;
     if ($('b-rev')) $('b-rev').onclick = () => openRoute(r.sub, other.dir, view.here);
-    if ($('b-eta')) $('b-eta').onclick = () => { loadEta('rt:' + r.route, `EstimatedTimeOfArrival/City/Taichung/${encodeURIComponent(r.route)}`, {}, `${r.route} 即時`, true).catch(() => {}); loadA2(r.route, true, true).catch(() => {}); };
+    if ($('b-eta')) $('b-eta').onclick = () => { loadEta('rt:' + r.route, `EstimatedTimeOfArrival/City/Taichung/${encodeURIComponent(r.route)}`, {}, `${r.route} 即時`, true).catch(() => {}); loadA2(r.route, true, true).catch(() => {}); renderRoute(); };
     $('b-madd').onclick = () => {
         const i = multi.findIndex(m => m.sub === r.sub);
         if (i >= 0 && multi[i].dir === r.dir) multi.splice(i, 1); else if (i >= 0) multi[i].dir = r.dir; else multi.push({ sub: r.sub, dir: r.dir });
