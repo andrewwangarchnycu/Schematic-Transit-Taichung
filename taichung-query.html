@@ -35,6 +35,9 @@
     .badge { display: inline-block; min-width: 34px; text-align: center; padding: 2px 7px; border-radius: 5px; font-weight: bold; font-size: 13px; color: #fff; white-space: nowrap; }
     h2 { font-size: 18px; margin: 4px 0 2px; }
     .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 6px 0; }
+    .msel { margin-left: auto; padding: 4px 6px; display: flex; align-items: center; cursor: pointer; }
+    .msel input { width: 18px; height: 18px; cursor: pointer; margin: 0; }
+    .multi-bar .badge { margin-right: 2px; }
     .stop-card { background: #222428; border: 1px solid #2f3236; border-radius: 10px; margin: 10px 0; overflow: hidden; }
     .stop-head { padding: 7px 10px; background: #2a2d31; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
     .stop-head b { font-size: 15px; }
@@ -60,7 +63,8 @@
     .bus-ico svg { overflow: visible; }
     .soon { color: #ffeb3b; font-weight: bold; } .now { color: #ff5252; font-weight: bold; }
     .tag { font-size: 10px; padding: 0 5px; border-radius: 3px; background: #3b4148; color: #ccc; margin-left: 4px; white-space: nowrap; }
-    .tag.api { background: #1b5e20; color: #b9f6ca; } .tag.sched { background: #283593; color: #c5cae9; } .tag.est { background: #5d4037; color: #ffccbc; }
+    .tag.api { background: #1b5e20; color: #b9f6ca; } .tag.freq { background: #4a148c; color: #e1bee7; }
+    .last { color: #ff5252; font-weight: bold; margin-left: 2px; font-size: 11px; } .tag.sched { background: #283593; color: #c5cae9; } .tag.est { background: #5d4037; color: #ffccbc; }
     .dly { font-size: 11px; padding: 0 4px; border-radius: 3px; white-space: nowrap; font-family: inherit; }
     .dly.late { background: #5a2323; color: #ff9e9e; } .dly.early { background: #1f3f5a; color: #9fd3ff; } .dly.ontime { background: #24452a; color: #a5e0ad; }
     .cmp { font-size: 11px; color: #aaa; white-space: nowrap; font-family: inherit; }
@@ -81,10 +85,14 @@
     .bike-item .num b { color: #ffd54f; } .bike-item .num i { font-style: normal; color: #80cbc4; }
     .bike-ico { background: #2e7d32; color: #fff; border: 2px solid #fff; border-radius: 8px; font-size: 10px; font-weight: bold; display: flex; align-items: center; justify-content: center; }
     .seq { position: relative; margin: 8px 0 0 6px; }
-    .seq-row { display: grid; grid-template-columns: 26px 1fr auto; gap: 0 8px; align-items: start; padding: 5px 0; cursor: pointer; }
+    .seq-row { position: relative; display: grid; grid-template-columns: 26px 1fr auto; gap: 0 8px; align-items: start; padding: 5px 0; cursor: pointer; }
+    /* 每列畫一段線：上半接上一站、下半接下一站；中心 x = 26/2 = 13px，與站圓圈 (14px，置中) 同心 */
+    .seq-row::before { content: ''; position: absolute; left: 10px; top: 0; bottom: 0; width: 6px; background: var(--rc); }
+    .seq-row:first-child::before { top: 15px; }
+    .seq-row:last-child::before { bottom: auto; height: 15px; }
+    .seq-row:only-child::before { display: none; }
     .seq-row:hover { background: #222428; }
     .seq-dot { width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 3px solid; margin: 3px auto 0; position: relative; z-index: 1; }
-    .seq-line { position: absolute; left: 17px; top: 12px; bottom: 12px; width: 6px; border-radius: 3px; }
     .seq-name { overflow: hidden; }
     .seq-name small { color: var(--muted); }
     .seq-eta { font-family: ui-monospace, monospace; font-size: 13px; color: var(--live); text-align: right; white-space: nowrap; }
@@ -127,8 +135,8 @@
 <div id="app">
     <header>
         <h1>臺中公車查詢</h1>
-        <div class="tabs"><button id="tab-station" class="on">站位</button><button id="tab-route">路線</button></div>
-        <input type="search" id="q" placeholder="輸入站名，例：臺中車站" autocomplete="off">
+        <div class="tabs"><button id="tab-station">站位</button><button id="tab-route" class="on">路線</button></div>
+        <input type="search" id="q" placeholder="輸入路線，例：300、綠線" autocomplete="off">
         <select id="date" title="時刻表日期"></select>
         <span id="api" title="點擊查看 API 用量">--</span>
         <a href="taichung.html">← 路線圖</a>
@@ -216,7 +224,7 @@ const Api = {
     q: [], busy: false, timer: null, lastError: null, label: '',
     // api：'Bus' (預設) 或 'Bike' (公共自行車)
     run(path, params, { high = false, label = '', api = 'Bus' } = {}) {
-        const base = api === 'Bus' ? TDX.bus : TDX.bus.replace(/\/Bus$/, '/' + api);
+        const base = api === 'Bus' ? TDX.bus : api === 'V3Map' ? 'https://tdx.transportdata.tw/api/premium/V3/Map' : TDX.bus.replace(/\/Bus$/, '/' + api);
         const url = `${base}/${path}?` + new URLSearchParams({ ...params, '$format': 'JSON' });
         return new Promise((resolve, reject) => {
             const t = { url, resolve, reject, high, label };
@@ -377,24 +385,97 @@ function boardHeading(items) {
     return { label: (x || y) ? dir8((Math.atan2(x, y) * 180 / Math.PI + 360) % 360) : '', nexts: [...nexts] };
 }
 
-// ---------- 時刻表快取 ----------
-//   今日：DailyTimeTable (逐班逐站；無則 DailyStopTimeTable 起訖站＋里程內插)，鍵與路線圖共用
-//   未來日：Schedule (路線班表，依星期 ServiceDay，通常只有起站發車時刻)
-const TODAY_PREFIX = 'txg_sched_v1:', WEEK_PREFIX = 'txg_week_v1:';
-const loading = new Map();
+// ---------- 時刻表 (今日與未來日共用) ----------
+//   1. 路線班表 /v2/Bus/Schedule/City/Taichung/{RouteName}：依星期 (ServiceDay) 的起站發車時刻 (Timetables＝表定)
+//      (Frequencys 班距只作說明，不依班距排出班次)
+//   2. 站站推估班表 /V3/Map/Estimation/Bus/Schedule/City/Taichung/RouteName/{RouteName} (TDX 加值 API)：
+//      近 3 個月公車動態產製的平日／週末各站歷史到站時刻 → 取發車時刻最接近的一班，算出各站相對起站的時間差
+//   各站時刻＝班表發車時刻 + 歷史推估站間時間；班表沒有此方向時直接用推估班表
+//   推估班表無法取得 (例如金鑰沒有加值 API 權限) 時，今日改用每日營運時刻表 (DailyTimeTable) 備援
+const TODAY_PREFIX = 'txg_sched_v1:', SCH_PREFIX = 'txg_sch_v2:', EST_PREFIX = 'txg_est_v1:';
+const loading = new Map(), estErr = new Map();
 const cacheGet = (k, valid) => { const v = store.get(k); return v && valid(v) ? v : null; };
 const distAlong = r => { let acc = 0; return r.seq.map((si, k) => { if (k) { const a = STOPS[r.seq[k - 1]], b = STOPS[si]; acc += Math.hypot((b.lng - a.lng) * 101700, (b.lat - a.lat) * 110900); } return acc; }); };
-// ver 2：每班保留 TripID / 序號 (ids，與 trips 對齊)，供線上車輛配對班次；格式與路線圖共用
-const todaySched = route => cacheGet(TODAY_PREFIX + route, v => v.date === todayKey() && v.ver >= 2);
-const weekSched = route => cacheGet(WEEK_PREFIX + route, v => Date.now() - v.at < 7 * 86400000);
+const schedGet = route => cacheGet(SCH_PREFIX + route, v => Date.now() - v.at < 7 * 86400000);
+const estGet = route => cacheGet(EST_PREFIX + route, v => Date.now() - v.at < 30 * 86400000 && (!v.exp || todayKey() <= v.exp));
+// 備援：每日營運時刻表 (今日)
+const todayOld = route => cacheGet(TODAY_PREFIX + route, v => v.date === todayKey() && v.ver >= 2);
 function loadOnce(key, fn) {
     if (loading.has(key)) return loading.get(key);
-    const p = fn().finally(() => { loading.delete(key); rerender(); });
+    const p = fn().finally(() => { loading.delete(key); dayMemo.clear(); rerender(); });
     loading.set(key, p);
     return p;
 }
+const schedLoading = route => loading.has('sc:' + route) || loading.has('es:' + route) || loading.has('t:' + route);
+function loadSchedule(route, high = false) {
+    if (schedGet(route)) return Promise.resolve(schedGet(route));
+    return loadOnce('sc:' + route, async () => {
+        const js = await Api.run(`Schedule/City/Taichung/${encodeURIComponent(route)}`, {}, { high, label: `${route} 路線班表` });
+        const v = { at: Date.now(), subs: {} };
+        const days = sd => WD_KEY.map(k => sd ? (sd[k] ? 1 : 0) : 1);
+        js.filter(r => !r.RouteName || r.RouteName.Zh_tw === route).forEach(r => {
+            const sub = (r.SubRouteName && r.SubRouteName.Zh_tw) || r.RouteName.Zh_tw;
+            (v.subs[sub] = v.subs[sub] || {})[r.Direction] = {
+                trips: (r.Timetables || []).map((t, k) => ({ id: t.TripID || String(k + 1), days: days(t.ServiceDay),
+                    st: (t.StopTimes || []).slice().sort((a, b) => a.StopSequence - b.StopSequence).map(s => [s.StopName.Zh_tw, hm(s.DepartureTime || s.ArrivalTime)]) }))
+                    .filter(t => t.st.length),
+                freq: (r.Frequencys || []).map(f => ({ days: days(f.ServiceDay), s: hm(f.StartTime), e: hm(f.EndTime), min: f.MinHeadwayMins, max: f.MaxHeadwayMins }))
+            };
+        });
+        store.set(SCH_PREFIX + route, v);
+        return v;
+    });
+}
+function loadEst(route, high = false) {
+    if (estGet(route)) return Promise.resolve(estGet(route));
+    return loadOnce('es:' + route, async () => {
+        let js;
+        try { js = await Api.run(`Estimation/Bus/Schedule/City/Taichung/RouteName/${encodeURIComponent(route)}`, {}, { high, label: `${route} 站站推估班表`, api: 'V3Map' }); }
+        catch (e) { estErr.set(route, e.message); throw e; }
+        estErr.delete(route);
+        const v = { at: Date.now(), exp: null, subs: {} };
+        const raw = new Map();   // sub|dir|tag → [[name, min]...][]
+        js.forEach(r => {
+            if (r.ExpireDate) v.exp = r.ExpireDate;
+            (r.Schedules || []).forEach(s => {
+                const sub = typeof s.SubRouteName === 'string' ? s.SubRouteName : (s.SubRouteName && s.SubRouteName.Zh_tw) || r.RouteName;
+                (s.Timetables || []).forEach(t => {
+                    const tag = t.ServiceDay && /末|假/.test(t.ServiceDay.ServiceTag || '') ? 'we' : 'wd';
+                    const st = (t.StopTimes || []).filter(x => x.HistoricalEstArrivalTime).sort((a, b) => a.StopSequence - b.StopSequence)
+                        .map(x => [x.StopName.Zh_tw, hm(x.HistoricalEstArrivalTime)]);
+                    if (st.length < 2) return;
+                    // 跨午夜：時間比前一站小就加 24 小時
+                    for (let i = 1; i < st.length; i++) if (st[i][1] < st[i - 1][1] - 600) st[i][1] += 1440;
+                    const key = `${sub}\u0000${s.Direction}\u0000${tag}`;
+                    if (!raw.has(key)) raw.set(key, []);
+                    raw.get(key).push(st);
+                });
+            });
+        });
+        raw.forEach((trips, key) => {
+            const [sub, dir, tag] = key.split('\u0000');
+            const stops = trips.reduce((a, t) => t.length > a.length ? t.map(x => x[0]) : a, []);
+            const pos = new Map(); stops.forEach((n, i) => { if (!pos.has(n)) pos.set(n, i); });
+            const rows = trips.map(t => { const row = new Array(stops.length).fill(null); t.forEach(([n, m]) => { const i = pos.get(n); if (i !== undefined && row[i] === null) row[i] = m; }); return row; })
+                .sort((a, b) => (a.find(x => x !== null) ?? 0) - (b.find(x => x !== null) ?? 0));
+            ((v.subs[sub] = v.subs[sub] || {})[dir] = v.subs[sub][dir] || {})[tag] = { stops, trips: rows };
+        });
+        store.set(EST_PREFIX + route, v);
+        return v;
+    });
+}
+// 時刻表一次載入：班表 + 站站推估 (推估失敗時今日改用每日營運時刻表)
+//   班表某方向今日沒有預排班次 (例如只給班距) → 今日改載每日營運時刻表 (預排逐班時刻)，不依班距推估
+const needDaily = S => { const wd = new Date().getDay(); return Object.values(S.subs).some(ds => Object.values(ds).some(x => !x.trips.some(t => t.days[wd]))); };
+function loadDay(route, high = false) {
+    return Promise.all([
+        loadSchedule(route, high).then(S => S && needDaily(S) ? loadToday(route, high).catch(() => null) : null).catch(() => null),
+        loadEst(route, high).catch(() => loadToday(route, high).catch(() => null))
+    ]);
+}
+// 每日營運時刻表 (備援)
 function loadToday(route, high = false) {
-    if (todaySched(route)) return Promise.resolve(todaySched(route));
+    if (todayOld(route)) return Promise.resolve(todayOld(route));
     return loadOnce('t:' + route, async () => {
         const f = { '$filter': `RouteName/Zh_tw eq '${route.replace(/'/g, "''")}'` };
         const v = { date: todayKey(), ver: 2, subs: {} };
@@ -438,61 +519,103 @@ function loadToday(route, high = false) {
         return v;
     });
 }
-function loadWeek(route, high = false) {
-    if (weekSched(route)) return Promise.resolve(weekSched(route));
-    return loadOnce('w:' + route, async () => {
-        const js = await Api.run('Schedule/City/Taichung', { '$filter': `RouteName/Zh_tw eq '${route.replace(/'/g, "''")}'` }, { high, label: `${route} 路線班表` });
-        const v = { at: Date.now(), subs: {} };
-        js.forEach(r => {
-            const sub = (r.SubRouteName && r.SubRouteName.Zh_tw) || r.RouteName.Zh_tw;
-            (v.subs[sub] = v.subs[sub] || {})[r.Direction] = (r.Timetables || []).map(t => ({
-                days: WD_KEY.map(k => t.ServiceDay ? t.ServiceDay[k] : 1),
-                st: (t.StopTimes || []).map(s => [s.StopName.Zh_tw, hm(s.DepartureTime || s.ArrivalTime)])
-            }));
-        });
-        store.set(WEEK_PREFIX + route, v);
-        return v;
-    });
-}
+const dayLoaded = route => !!(schedGet(route) || estGet(route) || todayOld(route));
 
-// 某路線某方向在某站、某日的時刻 → { times, kind, note } | { pending:[...] } | null
+// 組出某日 (dateStr) 的逐班逐站時刻 → { date, ver, subs: { sub: { dir: { kind, stops, trips, ids, hw } } }, none? }
+//   kind：table＝班表預排發車 (表定)、daily＝今日每日營運時刻表 (班表只給班距時)、est＝只有歷史推估班表；班距不推估班次
+const dayMemo = new Map();
+function daySched(route, ds) {
+    const S = schedGet(route), E = estGet(route);
+    if (!E && estErr.has(route) && ds === todayKey() && todayOld(route)) return todayOld(route);
+    if (!S && !E) return null;
+    if (!E && !estErr.has(route)) return null;   // 推估班表還在載入
+    const mk = `${route}|${ds}|${S ? S.at : 0}|${E ? E.at : 0}|${ds === todayKey() && todayOld(route) ? 1 : 0}`;
+    if (dayMemo.has(mk)) return dayMemo.get(mk);
+    const wd = new Date(ds + 'T00:00:00').getDay(), tag = wd === 0 || wd === 6 ? 'we' : 'wd';
+    const v = { date: ds, ver: 2, subs: {} };
+    const keys = new Set();
+    [S, E].forEach(X => X && Object.entries(X.subs).forEach(([sub, ds2]) => Object.keys(ds2).forEach(dir => keys.add(sub + '\u0000' + dir))));
+    keys.forEach(key => {
+        const [sub, dirS] = key.split('\u0000'), dir = +dirS;
+        const R = ROUTES.find(x => x.sub === sub && x.dir === dir);
+        const s = S && S.subs[sub] && S.subs[sub][dir];
+        const ee = E && E.subs[sub] && E.subs[sub][dir], et = ee && (ee[tag] || ee.wd || ee.we);
+        const stops = R ? R.seq.map(si => STOPS[si].name) : et ? et.stops : s && s.trips[0] ? s.trips[0].st.map(x => x[0]) : [];
+        if (!stops.length) return;
+        // 發車時刻
+        const deps = [];
+        if (s) {
+            s.trips.filter(t => t.days[wd]).forEach(t => deps.push({ t: t.st[0][1], id: t.id, st: t.st, kind: 'table' }));
+            // 班距 (Frequencys) 不推估班次，只採用預排班表
+        }
+        // 推估班表各站位置 (依站名對應)
+        const eIdx = et ? stops.map(n => et.stops.indexOf(n)) : null;
+        const eOrig = et ? et.trips.map(row => { const i = eIdx.find(i => i >= 0 && row[i] !== null); return i === undefined ? null : row[i]; }) : null;
+        let rows, ids, kind;
+        if (deps.length) {
+            deps.sort((a, b) => a.t - b.t);
+            kind = 'table';
+            rows = deps.map(d => {
+                const row = new Array(stops.length).fill(null);
+                row[0] = d.t;
+                if (d.st && d.st.length > 1) d.st.forEach(([n, m]) => { const i = stops.indexOf(n); if (i >= 0) row[i] = m; });
+                if (et) {
+                    // 發車時刻最接近的推估班次 → 各站相對起站的時間差
+                    let j = -1, best = Infinity;
+                    eOrig.forEach((o, k) => { if (o !== null && Math.abs(o - d.t) < best) { best = Math.abs(o - d.t); j = k; } });
+                    if (j >= 0) {
+                        const er = et.trips[j], base = eOrig[j];
+                        stops.forEach((_, i) => { if (row[i] === null && eIdx[i] >= 0 && er[eIdx[i]] !== null) row[i] = d.t + (er[eIdx[i]] - base); });
+                    }
+                }
+                return row;
+            });
+            ids = deps.map(d => d.id);
+        } else if (ds === todayKey() && todayOld(route) && todayOld(route).subs[sub] && todayOld(route).subs[sub][dir]) {
+            // 班表今日沒有預排班次 → 每日營運時刻表 (預排逐班逐站)
+            const o = todayOld(route).subs[sub][dir];
+            kind = 'daily';
+            rows = o.stops === stops ? o.trips : o.trips.map(row => stops.map(n => { const i = o.stops.indexOf(n); return i >= 0 ? row[i] : null; }));
+            ids = o.ids || rows.map((_, k) => String(k + 1));
+        } else if (et) {
+            kind = 'est';
+            rows = et.trips.map(er => stops.map((_, i) => eIdx[i] >= 0 ? er[eIdx[i]] : null)).filter(row => row.some(x => x !== null));
+            ids = rows.map((_, k) => 'E' + (k + 1));
+        } else return;
+        if (!rows.length) return;
+        const hw = s ? s.freq.filter(f => f.days[wd]).map(f => [f.s, f.e, f.min, f.max]) : [];
+        (v.subs[sub] = v.subs[sub] || {})[dir] = { kind, stops, trips: rows, ids, hw };
+    });
+    if (!Object.keys(v.subs).length) v.none = true;
+    dayMemo.set(mk, v);
+    return v;
+}
+const todaySched = route => daySched(route, todayKey());
+
+// 某路線某方向在某站、某日的時刻 → { times, kind, note, hw } | { pending: true }
 function timesAt(r, pos, dateStr) {
     const name = STOPS[r.seq[pos]].name;
-    if (dateStr === todayKey()) {
-        const v = todaySched(r.route);
-        if (!v) return { pending: ['today'] };
-        if (v.none) return { times: [], kind: 'none', note: '今日無班次' };
-        const e = v.subs[r.sub] && v.subs[r.sub][r.dir];
-        if (!e) return { times: [], kind: 'none', note: '今日無此方向班次' };
-        const i = e.stops.indexOf(name);
-        if (i < 0) return { times: [], kind: 'none', note: '時刻表無此站' };
-        const t = e.trips.map(x => x[i]).filter(x => x !== null).sort((a, b) => a - b);
-        const exact = e.kind === 'table' || (e.known && e.known.includes(i));
-        return { times: t, kind: exact ? 'sched' : 'est', note: exact ? '每日營運時刻表' : '起訖站時刻依里程推算' };
-    }
-    // 未來日：路線班表 (星期)
-    const w = weekSched(r.route);
-    if (!w) return { pending: ['week'] };
-    const trips = (w.subs[r.sub] && w.subs[r.sub][r.dir]) || [];
-    const wd = new Date(dateStr + 'T00:00:00').getDay();
-    const day = trips.filter(t => t.days[wd]);
-    if (!day.length) return { times: [], kind: 'none', note: `週${WD[wd]}無班次` };
-    // 班表若直接有此站時刻就用；否則以起站發車時刻 + 今日時刻表的站間時間推算
-    const direct = day.map(t => (t.st.find(s => s[0] === name) || [])[1]).filter(x => x !== undefined);
-    if (direct.length === day.length) return { times: direct.sort((a, b) => a - b), kind: 'sched', note: `路線班表 (週${WD[wd]})` };
-    const origin = day.map(t => t.st[0] && t.st[0][1]).filter(x => x !== undefined).sort((a, b) => a - b);
-    if (pos === 0) return { times: origin, kind: 'sched', note: `路線班表起站發車 (週${WD[wd]})` };
-    const tv = todaySched(r.route);
-    if (!tv) return { pending: ['today'], origin };
-    const e = tv.subs && tv.subs[r.sub] && tv.subs[r.sub][r.dir];
-    const i = e ? e.stops.indexOf(name) : -1;
-    if (!e || i < 0) return { times: origin, kind: 'origin', note: `只有起站發車時刻 (週${WD[wd]})` };
-    const offs = e.trips.map(x => x[0] !== null && x[i] !== null ? x[i] - x[0] : null).filter(x => x !== null && x >= 0).sort((a, b) => a - b);
-    if (!offs.length) return { times: origin, kind: 'origin', note: `只有起站發車時刻 (週${WD[wd]})` };
-    const off = offs[Math.floor(offs.length / 2)];
-    return { times: origin.map(t => t + off), kind: 'est', note: `起站發車 + 今日表定站間 ${Math.round(off)} 分推算 (週${WD[wd]})` };
+    const v = daySched(r.route, dateStr);
+    if (!v) return { pending: true };
+    const wd = new Date(dateStr + 'T00:00:00').getDay(), dayTxt = `週${WD[wd]}${wd === 0 || wd === 6 ? '・週末' : '・平日'}`;
+    if (v.none) return { times: [], kind: 'none', note: `${dayTxt}無班次` };
+    const e = v.subs[r.sub] && v.subs[r.sub][r.dir];
+    if (!e) return { times: [], kind: 'none', note: `${dayTxt}無此方向班次` };
+    const i = e.stops[pos] === name ? pos : e.stops.indexOf(name);
+    if (i < 0) return { times: [], kind: 'none', note: '班表無此站' };
+    const times = e.trips.map(x => x[i]).filter(x => x !== null && x !== undefined).sort((a, b) => a - b);
+    if (!times.length) return { times: [], kind: 'none', note: estErr.has(r.route) ? '只有起站發車時刻 (站站推估班表無法取得)' : '此站無推估時刻' };
+    const old = v === todayOld(r.route);
+    const kind = old ? (e.kind === 'table' ? 'sched' : 'est') : e.kind === 'table' || e.kind === 'daily' ? 'sched' : 'est';
+    const hwTxt = (e.hw || []).map(([s, en, a, b]) => `${fmt(s)}–${fmt(en)} 每 ${a === b || !b ? a : a + '–' + b} 分`).join('；');
+    const note = old ? '每日營運時刻表 (站站推估班表無法取得)'
+        : e.kind === 'daily' ? `每日營運時刻表 (路線班表為班距發車${hwTxt ? ' ' + hwTxt : ''})`
+        : kind === 'sched' ? `路線班表發車 (${dayTxt})${i ? '，各站時間依近 3 個月歷史推估' : ''}`
+        : `站站推估班表 (${dayTxt}，近 3 個月歷史)`;
+    const hwMin = (e.hw || []).length ? Math.min(...e.hw.map(h => h[2] || 99)) : null, hwMax = (e.hw || []).length ? Math.max(...e.hw.map(h => h[3] || h[2] || 0)) : null;
+    return { times, kind, note, hw: hwMin !== null ? [hwMin, hwMax] : null };
 }
-const TAG = { sched: '<span class="tag sched">表定</span>', est: '<span class="tag est">預估</span>', origin: '<span class="tag">起站</span>', none: '' };
+const TAG = { sched: '<span class="tag sched">表定</span>', est: '<span class="tag est">推估</span>', origin: '<span class="tag">起站</span>', none: '' };
 // 全日時刻表：00 到 24 時由上而下，每列一小時列出分鐘 (24 時＝跨午夜班次)
 function dayTable(times, isToday, nm, note, col) {
     const byH = new Map();
@@ -518,9 +641,10 @@ const etaCache = new Map();   // key → { at, rows }
 function etaRow(it, at) {
     let dl = null;
     if (it.EstimateTime != null) { const src = Date.parse(it.SrcUpdateTime); const lat = isNaN(src) ? 0 : Math.min(90, Math.max(0, (at - src) / 1000)); dl = Math.round(at + (it.EstimateTime - lat) * 1000); }
-    return { uid: it.StopUID, name: it.StopName.Zh_tw, sub: (it.SubRouteName && it.SubRouteName.Zh_tw) || it.RouteName.Zh_tw, dir: it.Direction, dl, status: it.StopStatus, next: it.NextBusTime || null, plate: it.PlateNumb || '' };
+    return { uid: it.StopUID, name: it.StopName.Zh_tw, sub: (it.SubRouteName && it.SubRouteName.Zh_tw) || it.RouteName.Zh_tw, dir: it.Direction, dl, status: it.StopStatus, next: it.NextBusTime || null, plate: it.PlateNumb || '',
+        ests: (it.Estimates || []).map(q => ({ plate: q.PlateNumb, dl: q.EstimateTime != null ? Math.round(at + q.EstimateTime * 1000) : null })) };
 }
-const ETA_SELECT = 'StopUID,StopName,RouteName,SubRouteName,Direction,EstimateTime,StopStatus,NextBusTime,SrcUpdateTime,PlateNumb';
+const ETA_SELECT = 'StopUID,StopName,RouteName,SubRouteName,Direction,EstimateTime,StopStatus,NextBusTime,SrcUpdateTime,PlateNumb,Estimates';
 function loadEta(key, path, params, label, force = false) {
     const c = etaCache.get(key);
     if (!force && c && Date.now() - c.at < FRESH_MS) return Promise.resolve(c);
@@ -635,30 +759,75 @@ function cmpHtml(c) {
     if (!c) return '';
     return `<div class="cmp" title="${esc(c.tip)}">表定 <s>${fmt(c.sched)}</s> <span class="dly ${lateCls(c.diff)}">${lateWord(c.diff)}</span></div>`;
 }
-// 下一班表定：「下一班 HH:MM ?分鐘後 [表定/預估] 遲?分」
-//   遲?分：這一班已配對到車 → 該車預估到此站 − 表定；尚未發車 → 現在 − 表定發車 (下限)
-function nextLine(r, pos, t, nm, row) {
-    const v = todaySched(r.route), e = v && v.subs[r.sub] && v.subs[r.sub][r.dir], name = STOPS[r.seq[pos]].name;
-    const mt = e ? matchTrips(r.route, r.sub, r.dir) : null, i = e ? e.stops.indexOf(name) : -1;
-    // 尚未發車的班次還沒經過這站：即使此站表定已過，仍是「下一班」
-    const pd0 = mt && i >= 0 ? mt.pending.find(p => e.trips[p.k][i] != null && e.trips[p.k][i] < nm - 0.5) : null;
-    if (pd0) {
-        const ts = e.trips[pd0.k][i];
-        return `下一班 ${fmt(ts)} <span class="muted">尚未發車</span>${TAG[t.kind]} <span class="dly late" title="${esc(pd0.label + ' 表定 ' + fmt(pd0.dep) + ' 發車，尚未發車')}">遲${pd0.late}分</span>`;
+// ---------- 預估延遲發車 ----------
+//   班表沒有車牌，所以用「回到起站的車」推估：同路線另一方向 (或其他子路線) 終點在本方向起站 300 m 內的車，
+//   依即時預估到達終點的時刻 (ETA 的 Estimates 可含多台車)；起站待命的車 (A2 在起站、未配對班次) 視為現在可發車。
+//   起站 ETA 若已指定車牌 (尚未發車且有 PlateNumb) 就用那台車。依先到先發依序對應尚未發出的班次：
+//   實際發車 ≈ max(表定, 車回到起站 + 折返 LAYOVER 分)，晚於表定即「預估延遲發車」
+const LAYOVER = 2;
+function predDepDelay(r) {
+    const c = etaCache.get('rt:' + r.route);
+    const v = todaySched(r.route), e = v && v.subs[r.sub] && v.subs[r.sub][r.dir];
+    if (!c || !e) return null;
+    const O = STOPS[r.seq[0]], nm = nowMin(), now = Date.now();
+    const back = new Map();   // 車牌 → 回到起站時刻 (ms)
+    const put = (plate, dl, where) => { if (plate && plate !== '-1' && dl !== null && dl !== undefined && (!back.has(plate) || dl < back.get(plate).t)) back.set(plate, { t: dl, where }); };
+    ROUTES.filter(x => x.route === r.route && !(x.sub === r.sub && x.dir === r.dir) && mDist(STOPS[x.seq[x.seq.length - 1]], O) <= 300).forEach(x => {
+        const T = STOPS[x.seq[x.seq.length - 1]].name;
+        c.rows.filter(w => w.sub === x.sub && w.dir === x.dir && w.name === T).forEach(w => {
+            if (w.ests && w.ests.length) w.ests.forEach(q => put(q.plate, q.dl, `${x.sub} 往 ${T}`));
+            else put(w.plate, w.dl, `${x.sub} 往 ${T}`);
+        });
+    });
+    // 已在本方向行駛中的車不算
+    c.rows.filter(w => w.sub === r.sub && w.dir === r.dir && w.dl !== null && w.plate).forEach(w => back.delete(w.plate));
+    const a2 = a2Cache.get(r.route), mt = matchTrips(r.route, r.sub, r.dir);
+    const where = p => { const x = a2 && a2.vehicles.find(v => v.plate === p); return x && x.stop ? x.stop : null; };
+    let avail = [...back].map(([plate, b]) => ({ plate, t: b.t, line: b.where }));
+    if (mt) mt.idle.filter(x => x.stop === O.name && !back.has(x.plate)).forEach(x => avail.push({ plate: x.plate, t: now, idle: true }));
+    avail.sort((a, b) => a.t - b.t);
+    // 起站 ETA 指定的車牌優先給第一班
+    const o = c.rows.find(w => w.sub === r.sub && w.dir === r.dir && w.name === O.name && w.status === 1 && w.plate);
+    if (o) { const i = avail.findIndex(a => a.plate === o.plate); if (i > 0) avail.unshift(avail.splice(i, 1)[0]); }
+    // 尚未發出的班次：已過表定未發 (配對結果) + 之後的班次
+    const info = tripInfo(e), done = mt ? mt.byTrip : new Map();
+    // 已過表定未發：要有線上車輛配對成功才可信 (車輛資料不完整時不推論)
+    const deps = (mt && mt.running.length ? mt.pending.map(p => p.k) : []).concat(info.order.filter(k => info.dep[k] >= nm - 0.5 && !done.has(k))).slice(0, 4);
+    return deps.map((k, j) => {
+        const a = avail[j], dep = info.dep[k];
+        if (!a) return dep < nm - 0.5 ? { k, dep, delay: Math.floor(nm - dep), atLeast: true } : null;
+        const ready = a.idle ? nm : minOfMs(a.t) + LAYOVER;
+        const act = Math.max(dep, ready, nm);
+        return { k, dep, delay: Math.round(act - dep), plate: a.plate, back: a.idle ? null : a.t, at: where(a.plate), line: a.line };
+    }).filter(Boolean);
+}
+function predHtml(p) {
+    if (!p || p.delay < 1) return '';
+    const tip = p.plate ? `${p.plate}${p.at ? ` 尚在 ${p.at}` : ''}${p.back ? `，約 ${fmt(minOfMs(p.back))} 回到起站` : '，在起站待命'}；表定 ${fmt(p.dep)} 發車`
+        : `表定 ${fmt(p.dep)} 發車，尚無車輛回到起站`;
+    return ` <span class="dly late" title="${esc(tip)}">預估延遲發車 ${p.atLeast ? '≥' : ''}${p.delay} 分</span>`;
+}
+// 站名下方：「表定 下下一班、下下下一班」(班距發車標「班距」)；末班紅字；尚未發車的下一班若車輛趕不回起站 → 預估延遲發車
+function upcomingLine(r, pos, t, nm, row) {
+    const times = t.times;
+    // 目前這班 (即時預估有車就以它對應的表定為準)，之後的才列出
+    let cur = null;
+    const c = compareEta(r, STOPS[r.seq[pos]].name, row);
+    if (c) cur = c.sched;
+    else { const nx = times.find(x => x >= nm - 0.5); cur = nx === undefined ? null : nx; }
+    if (cur === null) return `<span class="muted">今日已收班</span>`;
+    const last = times[times.length - 1];
+    const after = times.filter(x => x > cur + 0.01).slice(0, 2);
+    const lab = TAG[t.kind] || '';
+    const tm = x => `${fmt(x)}${Math.abs(x - last) < 0.01 ? '<span class="last">末班</span>' : ''}`;
+    const list = after.length ? after.map(tm).join('、') : (Math.abs(cur - last) < 0.01 ? '<span class="last">末班</span>' : '');
+    // 下一班尚未發車 (ETA 狀態 1)：看回起站的車趕不趕得上
+    let pred = '';
+    if (row ? row.dl === null && row.status === 1 : pos === 0) {
+        const ps = predDepDelay(r), p = ps && ps[0];
+        if (p) pred = predHtml(p);
     }
-    const nx = t.times.filter(x => x >= nm - 0.5);
-    if (!nx.length) return `<span class="muted">今日已收班</span>${TAG[t.kind]}`;
-    let late = '';
-    if (mt && i >= 0) {
-        const k = e.trips.findIndex(tr => tr[i] != null && Math.abs(tr[i] - nx[0]) < 0.01);
-        const run = k >= 0 && mt.byTrip.get(k), pd = k >= 0 && mt.pendingOf.get(k);
-        if (run) {
-            const eta = row && row.plate === run.v.plate && row.dl !== null ? Math.round(minOfMs(row.dl) - nx[0]) : run.late;
-            late = ` <span class="dly ${lateCls(eta)}" title="${esc(run.v.plate + ' ' + run.label + (row && row.plate === run.v.plate ? '，依即時預估' : '，依發車晚早'))}">${lateWord(eta)}</span>`;
-        } else if (pd) late = ` <span class="dly late" title="${esc(pd.label + ' 表定 ' + fmt(pd.dep) + ' 發車，尚未發車')}">遲${pd.late}分</span>`;
-    }
-    const more = nx.slice(1, 3).map(fmt).join('、');
-    return `下一班 ${fmt(nx[0])} <span data-in="${nx[0]}">${inMinTxt(nx[0])}</span>${TAG[t.kind]}${late}${more ? ` <span class="muted">之後 ${more}</span>` : ''}`;
+    return `${lab} ${list}${pred}`;
 }
 
 // ---------- 地圖 ----------
@@ -881,8 +1050,8 @@ map.on('dragstart', () => { if (Loc.follow) { Loc.follow = false; locBtnState();
 if (store.get('txg_loc_on')) setTimeout(() => { startLoc(); Loc.follow = false; locBtnState(); }, 300);
 
 // ---------- 狀態 ----------
-let mode = 'station';          // station | route
-let view = null;               // { type:'station', id } | { type:'route', sub, dir } | { type:'mrt' }
+let mode = 'route';            // station | route (預設路線)
+let view = null;               // { type:'station', id } | { type:'route', sub, dir } | { type:'multi' } | { type:'mrt' }
 const open = new Set();        // 展開的全日時刻表
 const panel = $('panel');
 function setMode(m) {
@@ -906,12 +1075,13 @@ $('q').oninput = () => { view = null; renderSearch(); };
 const selDate = () => $('date').value || todayKey();
 function rerender() {
     if (!view) return;
-    if (view.type === 'station') renderStation(); else if (view.type === 'route') renderRoute(); else if (view.type === 'near') renderNearRoutes();
+    if (view.type === 'station') renderStation(); else if (view.type === 'route') renderRoute(); else if (view.type === 'multi') renderMulti(); else if (view.type === 'near') renderNearRoutes();
     else if (view.type === 'stlist') { const k = panel.scrollTop; listStations(view.list, view.head, view.place, false); panel.scrollTop = k; }
     else renderMrt();
 }
 
 // ---------- 搜尋 ----------
+let lastQ = null;
 function renderSearch() {
     const q = $('q').value.trim();
     if (mode === 'station') {
@@ -921,10 +1091,18 @@ function renderSearch() {
     } else {
         const subs = SUBS.filter(s => !q || s.includes(q)).sort((a, b) => a.localeCompare(b, 'zh-Hant', { numeric: true }));
         const showMrt = !q || '捷運綠線'.includes(q) || /綠|捷運|mrt/i.test(q);
-        panel.innerHTML = (showMrt ? `<div class="list-item" data-mrt="1"><span class="badge" style="background:${NET.mrt.color || '#8cc540'}">綠線</span><div><div>臺中捷運綠線</div><div class="sub">北屯總站 ↔ 高鐵臺中站 · 18 站</div></div></div>` : '') +
-            subs.slice(0, 200).map(s => { const ds = routeDirs(s); return `<div class="list-item" data-sub="${esc(s)}">${badge(s)}<div style="min-width:0"><div class="sub">${ds.map(r => '往 ' + esc(destOf(r))).join(' ／ ')}</div></div></div>`; }).join('') +
+        const bar = multi.length ? `<div class="row multi-bar">已選 ${multi.length} 條：${multi.map(m => badge(m.sub)).join('')}<button class="btn" id="b-multi">在地圖顯示</button><button class="btn" id="b-mclr">清除</button></div>`
+            : '<div class="hint">勾選右側方框可多選路線，同時顯示在地圖上。</div>';
+        const keep = panel.scrollTop;
+        panel.innerHTML = bar + (showMrt ? `<div class="list-item" data-mrt="1"><span class="badge" style="background:${NET.mrt.color || '#8cc540'}">綠線</span><div><div>臺中捷運綠線</div><div class="sub">北屯總站 ↔ 高鐵臺中站 · 18 站</div></div></div>` : '') +
+            subs.slice(0, 200).map(s => { const ds = routeDirs(s); return `<div class="list-item" data-sub="${esc(s)}">${badge(s)}<div style="min-width:0;flex:1"><div class="sub">${ds.map(r => '往 ' + esc(destOf(r))).join(' ／ ')}</div></div><label class="msel" title="多選"><input type="checkbox" data-msub="${esc(s)}"${inMulti(s) ? ' checked' : ''}></label></div>`; }).join('') +
             (subs.length > 200 ? `<div class="hint">還有 ${subs.length - 200} 條，請輸入更多字</div>` : '');
-        panel.querySelectorAll('[data-sub]').forEach(e => e.onclick = () => openRoute(e.dataset.sub, routeDirs(e.dataset.sub)[0].dir));
+        if (q === lastQ) panel.scrollTop = keep;
+        lastQ = q;
+        panel.querySelectorAll('[data-sub]').forEach(e => e.onclick = ev => { if (ev.target.closest('.msel')) return; openRoute(e.dataset.sub, routeDirs(e.dataset.sub)[0].dir); });
+        panel.querySelectorAll('[data-msub]').forEach(e => e.onchange = () => { toggleMulti(e.dataset.msub); renderSearch(); });
+        if ($('b-multi')) $('b-multi').onclick = openMulti;
+        if ($('b-mclr')) $('b-mclr').onclick = () => { multi = []; saveMulti(); renderSearch(); };
         const m = panel.querySelector('[data-mrt]'); if (m) m.onclick = openMrt;
     }
 }
@@ -1016,36 +1194,36 @@ function renderStation() {
                 const t = timesAt(r, pos, ds);
                 const nm = isToday ? nowMin() : -1;
                 let tt;
-                if (t.pending) tt = loading.has((t.pending[0] === 'today' ? 't:' : 'w:') + r.route) ? '<span class="muted">時刻表載入中…</span>' : '<span class="muted">點選載入時刻表</span>';
+                if (t.pending) tt = schedLoading(r.route) ? '<span class="muted">時刻表載入中…</span>' : '<span class="muted">點選載入時刻表</span>';
                 else if (!t.times.length) tt = `<span class="muted">${esc(t.note)}</span>`;
-                else tt = isToday ? nextLine(r, pos, t, nm, row) : t.times.slice(0, 3).map(fmt).join('、') + TAG[t.kind];
+                else tt = isToday ? upcomingLine(r, pos, t, nm, row) : (TAG[t.kind] || '') + ' ' + t.times.slice(0, 3).map(fmt).join('、');
                 const key = `${si}|${r.i}`;
                 const full = open.has(key) && t.times && t.times.length ? dayTable(t.times, isToday, nm, t.note, '1/-1') : '';
                 return `<div class="rt" data-key="${key}" data-ri="${r.i}" data-pos="${pos}">${badge(r.sub)}<span class="to">${last ? '<span class="muted">終點站 (下車)</span>' : '往 ' + esc(destOf(r))}</span>
                         <span class="eta">${isToday ? etaHtml(row) + cmpHtml(compareEta(r, STOPS[si].name, row)) : ''}</span><span class="tt">${tt}</span>${full}</div>`;
             }).join('') + '</div>';
     }).join('');
-    const need = [...routeSet].filter(rt => isToday ? !todaySched(rt) : !weekSched(rt) || !todaySched(rt));
+    const need = [...routeSet].filter(rt => !dayLoaded(rt) && !schedLoading(rt));
     // 準點比對需要線上車輛班次 (每條路線 1 次 API)：只列已有今日時刻表、尚未載入車輛的路線
     const needA2 = isToday ? [...routeSet].filter(rt => todaySched(rt) && !todaySched(rt).none && !a2Cache.has(rt) && !loading.has('a2:' + rt)) : [];
     const nLoading = [...loading.keys()].filter(k => k.startsWith('t:') || k.startsWith('w:') || k.startsWith('a2:')).length;
     panel.innerHTML = `<h2>${esc(st.name)}</h2>
         <div class="muted">同名站 · ${boards.length} 支站牌 (${st.sids.length} 個站位) · ${routeSet.size} 條路線 · ${eta ? `即時 ${new Date(eta.at).toLocaleTimeString('zh-TW', { hour12: false })}` : loading.has('e:st:' + view.id) ? '即時資料載入中…' : '尚無即時資料'}</div>
         <div class="row"><button class="btn" id="b-eta">更新即時 (1 次 API)</button>
-        ${need.length ? `<button class="btn" id="b-all">載入全部時刻表 (${need.length} 條路線，約 ${need.length}~${need.length * 2} 次 API)</button>` : ''}
+        ${need.length ? `<button class="btn" id="b-all">載入全部時刻表 (${need.length} 條路線，約 ${need.length * 2} 次 API${isToday ? `＋準點比對 ${need.length} 次` : ""})</button>` : ''}
         ${needA2.length ? `<button class="btn" id="b-a2">比對準點／遲發 (${needA2.length} 條路線，${needA2.length} 次 API)</button>` : ''}
         ${nLoading ? `<span class="muted">排隊載入 ${nLoading} 筆…</span>` : ''}</div>
         <div class="hint">點路線列：載入/展開該站${isToday ? '今日' : ' ' + ds + ' '}全日時刻表${isToday ? '並比對準點' : ''}；點路線號碼：看整條路線。</div>` + cards + (isToday ? bikeHtml(st) : '');
     panel.scrollTop = keep;
     $('b-eta').onclick = () => loadEta('st:' + view.id, 'EstimatedTimeOfArrival/City/Taichung', { '$filter': st.stops.map(si => `StopUID eq '${STOPS[si].uid}'`).join(' or ') }, `${st.name} 即時`, true).catch(() => {});
-    if ($('b-all')) $('b-all').onclick = () => { need.forEach(rt => { if (!isToday) loadWeek(rt).catch(() => {}); loadToday(rt).catch(() => {}); if (isToday) loadA2(rt).catch(() => {}); }); renderStation(); };
+    if ($('b-all')) $('b-all').onclick = () => { need.forEach(rt => { loadDay(rt).catch(() => {}); if (isToday) loadA2(rt).catch(() => {}); }); renderStation(); };
     if ($('b-a2')) $('b-a2').onclick = () => { needA2.forEach(rt => loadA2(rt).catch(() => {})); renderStation(); };
     bindBike(st);
     panel.querySelectorAll('.rt').forEach(e => e.onclick = ev => {
         const r = ROUTES[+e.dataset.ri];
         if (ev.target.closest('.badge')) { openRoute(r.sub, r.dir, STOPS[r.seq[+e.dataset.pos]].name); return; }
         const t = timesAt(r, +e.dataset.pos, selDate());
-        if (t.pending) { if (t.pending[0] === 'week') loadWeek(r.route, true).catch(() => {}); loadToday(r.route, true).catch(() => {}); }
+        if (t.pending) loadDay(r.route, true).catch(() => {});
         if (selDate() === todayKey()) loadA2(r.route, false, true).catch(() => {});
         open.has(e.dataset.key) ? open.delete(e.dataset.key) : open.add(e.dataset.key);
         renderStation();
@@ -1138,12 +1316,12 @@ function loadNearEta(force = false) {
     return loadEta(v.key, 'EstimatedTimeOfArrival/City/Taichung', { '$filter': v.uids.map(u => `StopUID eq '${u}'`).join(' or ') }, '附近路線即時', force).catch(() => {});
 }
 const nearLines = new Map();
-function drawNearMap() {
+function drawNearMap(fit = true) {
     const v = view;
     layerSel.clearLayers(); nearLines.clear();
     const pts = [[v.lat, v.lng]];
     v.items.forEach(({ r }) => {
-        const shape = store.get('txg_shape_v1:' + r.route), sh = shape && shape.dirs && (shape.dirs[r.dir] || shape.dirs.any);
+        const sh = shapeOf(r);
         const ll = r.seq.map(si => [STOPS[si].lat, STOPS[si].lng]);
         const lines = sh ? sh.map(line => L.polyline(line, { color: colorOf(r.sub), weight: 3, opacity: .6 })) : [L.polyline(ll, { color: colorOf(r.sub), weight: 3, opacity: .6 })];
         lines.forEach(l => l.bindTooltip(`${r.sub} 往 ${destOf(r)}`, { sticky: true }).on('click', () => openRoute(r.sub, r.dir, STOPS[v.items.find(x => x.r === r).si].name)).addTo(layerSel));
@@ -1153,7 +1331,7 @@ function drawNearMap() {
         L.circleMarker([s.lat, s.lng], { radius: 5, color: '#111', weight: 2, fillColor: '#fff', fillOpacity: 1 }).bindTooltip(s.name).on('click', () => openStation(SAME_OF[si])).addTo(layerSel); });
     if (!Loc.marker) L.circleMarker([v.lat, v.lng], { radius: 8, color: '#1a73e8', fillColor: '#1a73e8', fillOpacity: .6 }).addTo(layerSel);
     L.circle([v.lat, v.lng], { radius: NEAR_R, color: '#1a73e8', weight: 1, fill: false, dashArray: '4 4', interactive: false }).addTo(layerSel);
-    map.fitBounds(L.latLngBounds(pts).pad(0.25), { maxZoom: 17 });
+    if (fit) map.fitBounds(L.latLngBounds(pts).pad(0.25), { maxZoom: 17 });
 }
 function renderNearRoutes() {
     const v = view, eta = etaCache.get(v.key), keep = panel.scrollTop, nm = nowMin();
@@ -1170,19 +1348,19 @@ function renderNearRoutes() {
     const nLoading = [...loading.keys()].filter(k => /^(t|a2):/.test(k)).length;
     const rows = list.map(it => {
         const s = STOPS[it.si], t = timesAt(it.r, it.pos, todayKey());
-        const tt = t.pending ? '' : !t.times.length ? `<span class="muted">${esc(t.note)}</span>` : nextLine(it.r, it.pos, t, nm, it.row);
+        const tt = t.pending ? '' : !t.times.length ? `<span class="muted">${esc(t.note)}</span>` : upcomingLine(it.r, it.pos, t, nm, it.row);
         return `<div class="rt${it.done ? ' muted' : ''}" data-ri="${it.r.i}" data-pos="${it.pos}">${badge(it.r.sub)}<span class="to">往 ${esc(destOf(it.r))}<br><small class="muted">在 ${esc(s.name)} · ${Math.round(it.dist)} m</small></span>
             <span class="eta">${etaHtml(it.row) + cmpHtml(compareEta(it.r, s.name, it.row))}</span>${tt ? `<span class="tt">${tt}</span>` : ''}</div>`;
     }).join('');
     panel.innerHTML = `<h2>附近公車路線</h2>
         <div class="muted">${NEAR_R} 公尺內 ${v.uids.length} 支站牌 · ${v.items.length} 條路線方向 · ${eta ? `即時 ${new Date(eta.at).toLocaleTimeString('zh-TW', { hour12: false })}` : loading.has('e:' + v.key) ? '即時資料載入中…' : v.uids.length ? '尚無即時資料' : '附近沒有公車站牌'}</div>
         <div class="row"><button class="btn" id="b-eta">更新即時 (1 次 API)</button>
-        ${need.length ? `<button class="btn" id="b-all">載入時刻表比對準點 (${need.length} 條路線，約 ${need.length * 2}~${need.length * 3} 次 API)</button>` : ''}
+        ${need.length ? `<button class="btn" id="b-all">載入時刻表比對準點 (${need.length} 條路線，約 ${need.length * 3} 次 API)</button>` : ''}
         ${nLoading ? `<span class="muted">排隊載入 ${nLoading} 筆…</span>` : ''}</div>
         <div class="hint">依到站先後排列；點路線看整條路線，滑過可在地圖上標出。</div>${rows}`;
     panel.scrollTop = keep;
     $('b-eta').onclick = () => loadNearEta(true);
-    if ($('b-all')) $('b-all').onclick = () => { need.forEach(rt => { loadToday(rt).catch(() => {}); loadA2(rt).catch(() => {}); }); renderNearRoutes(); };
+    if ($('b-all')) $('b-all').onclick = () => { need.forEach(rt => { loadDay(rt).catch(() => {}); loadA2(rt).catch(() => {}); }); renderNearRoutes(); };
     panel.querySelectorAll('.rt').forEach(e => {
         const ri = +e.dataset.ri, r = ROUTES[ri];
         e.onclick = () => openRoute(r.sub, r.dir, STOPS[r.seq[+e.dataset.pos]].name);
@@ -1190,6 +1368,75 @@ function renderNearRoutes() {
         e.onmouseleave = () => (nearLines.get(ri) || []).forEach(l => l.setStyle({ weight: 3, opacity: .6 }));
     });
 }
+
+// ---------- 道路線形：靜態檔 taichung-shapes.js (TDX Shape 預先下載，不耗 API)，背景載入 ----------
+let SHAPES = null;
+const shapeMemo = new Map();
+(function () {
+    const el = document.createElement('script');
+    el.src = 'taichung-shapes.js';
+    el.onload = () => { SHAPES = window.TXG_SHAPES || {}; shapeMemo.clear(); redrawLines(); };
+    el.onerror = () => { SHAPES = {}; redrawLines(); };
+    document.head.appendChild(el);
+})();
+function decPoly(str) {
+    const out = []; let i = 0, la = 0, ln = 0;
+    const nx = () => { let b, sh = 0, r = 0; do { b = str.charCodeAt(i++) - 63; r |= (b & 0x1f) << sh; sh += 5; } while (b >= 0x20); return r & 1 ? ~(r >> 1) : r >> 1; };
+    while (i < str.length) { la += nx(); ln += nx(); out.push([la / 1e5, ln / 1e5]); }
+    return out;
+}
+function shapeOf(r) {
+    if (!SHAPES) return null;
+    const k = r.sub + '|' + r.dir;
+    if (!shapeMemo.has(k)) { const e = SHAPES[k] || SHAPES[r.sub + '|any']; shapeMemo.set(k, e ? e.map(decPoly) : null); }
+    return shapeMemo.get(k);
+}
+function redrawLines() {
+    if (!view) return;
+    if (view.type === 'route') { drawRouteMap(ROUTES.find(x => x.sub === view.sub && x.dir === view.dir), false); renderRoute(); }
+    else if (view.type === 'multi') drawMultiMap(false);
+    else if (view.type === 'near') drawNearMap(false);
+}
+// ---------- 行駛方向：沿線連續小三角形 (略小於線寬)，依目前縮放在畫面範圍內重畫 ----------
+const Arrows = { sets: [], poly: null };
+function setArrows(sets) {
+    if (Arrows.poly) layerSel.removeLayer(Arrows.poly);
+    Arrows.poly = null; Arrows.sets = sets;
+    drawArrows();
+}
+function drawArrows() {
+    if (Arrows.poly) {
+        const alive = layerSel.hasLayer(Arrows.poly);
+        layerSel.removeLayer(Arrows.poly); Arrows.poly = null;
+        if (!alive) { Arrows.sets = []; return; }   // 圖層已被別的畫面清掉
+    }
+    if (!Arrows.sets.length) return;
+    const org = map.getPixelOrigin(), pb = map.getPixelBounds();
+    const x0 = pb.min.x - org.x - 30, y0 = pb.min.y - org.y - 30, x1 = pb.max.x - org.x + 30, y1 = pb.max.y - org.y + 30;
+    const tris = [];
+    for (const { lines, w } of Arrows.sets) {
+        const len = w * 0.42, hw = w * 0.36, gap = Math.max(16, w * 3.5);
+        for (const line of lines) {
+            const P = line.map(ll => map.latLngToLayerPoint(ll));
+            let next = gap / 2, acc = 0;
+            for (let i = 1; i < P.length && tris.length < 5000; i++) {
+                const a = P[i - 1], b = P[i], dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
+                if (!d) continue;
+                const ux = dx / d, uy = dy / d;
+                while (next <= acc + d) {
+                    const t = next - acc, x = a.x + ux * t, y = a.y + uy * t;
+                    next += gap;
+                    if (x < x0 || y < y0 || x > x1 || y > y1) continue;
+                    tris.push([[x + ux * len, y + uy * len], [x - ux * len - uy * hw, y - uy * len + ux * hw], [x - ux * len + uy * hw, y - uy * len - ux * hw]]);
+                }
+                acc += d;
+            }
+        }
+    }
+    if (!tris.length) return;
+    Arrows.poly = L.polygon(tris.map(t => [t.map(q => map.layerPointToLatLng(q))]), { stroke: false, fillColor: '#fff', fillOpacity: .95, interactive: false }).addTo(layerSel);
+}
+map.on('zoomend moveend', drawArrows);
 
 // ---------- 2. 路線 ----------
 function openRoute(sub, dir, here) {
@@ -1199,32 +1446,94 @@ function openRoute(sub, dir, here) {
     open.clear();
     const r = ROUTES.find(x => x.sub === sub && x.dir === dir);
     loadEta('rt:' + r.route, `EstimatedTimeOfArrival/City/Taichung/${encodeURIComponent(r.route)}`, {}, `${r.route} 即時`).catch(() => {});
-    if (selDate() === todayKey()) loadToday(r.route, true).catch(() => {}); else { loadWeek(r.route, true).catch(() => {}); loadToday(r.route).catch(() => {}); }
+    loadDay(r.route, true).catch(() => {});
     drawRouteMap(r);
     loadVehicles(r.route).catch(() => {});
     if (selDate() === todayKey()) loadA2(r.route, false, true).catch(() => {});
     renderRoute();
 }
-function wktToLatLngs(g) { return g.replace(/^[A-Z]+\s*\(+|\)+$/g, '').split(/\)\s*,\s*\(/).map(part => part.split(',').map(p => { const [x, y] = p.trim().split(/\s+/).map(Number); return [y, x]; })); }
-function drawRouteMap(r) {
+function drawRouteMap(r, fit = true) {
     layerSel.clearLayers();
     const c = colorOf(r.sub), pts = r.seq.map(si => [STOPS[si].lat, STOPS[si].lng]);
-    const shape = store.get('txg_shape_v1:' + r.route);
-    const sh = shape && shape.dirs && (shape.dirs[r.dir] || shape.dirs.any);
-    if (sh) sh.forEach(line => L.polyline(line, { color: c, weight: 6, opacity: .85 }).addTo(layerSel));
-    else L.polyline(pts, { color: c, weight: 5, opacity: .8, dashArray: '8 6' }).addTo(layerSel);
+    const sh = shapeOf(r), lines = sh || [pts];
+    lines.forEach(line => L.polyline(line, sh ? { color: c, weight: 6, opacity: .85 } : { color: c, weight: 5, opacity: .8, dashArray: '8 6' }).addTo(layerSel));
     r.seq.forEach((si, k) => L.circleMarker([STOPS[si].lat, STOPS[si].lng], { radius: k === 0 || k === r.seq.length - 1 ? 7 : 5, color: c, weight: 3, fillColor: '#fff', fillOpacity: 1 })
         .bindTooltip(`${k + 1}. ${STOPS[si].name}`).on('click', () => openStation(SAME_OF[si])).addTo(layerSel));
-    map.fitBounds(L.latLngBounds(pts).pad(0.1));
+    setArrows([{ lines, w: sh ? 6 : 5 }]);
+    if (fit) map.fitBounds(L.latLngBounds(pts).pad(0.1));
 }
-function loadShape(r) {
-    return loadOnce('s:' + r.route, async () => {
-        const js = await Api.run('Shape/City/Taichung', { '$filter': `RouteName/Zh_tw eq '${r.route.replace(/'/g, "''")}'` }, { high: true, label: `${r.route} 路線線形` });
-        const dirs = {};
-        js.forEach(x => { if (!x.Geometry) return; const k = x.Direction ?? 'any'; dirs[k] = (dirs[k] || []).concat(wktToLatLngs(x.Geometry)); });
-        store.set('txg_shape_v1:' + r.route, { at: Date.now(), dirs });
-        if (view && view.type === 'route') drawRouteMap(ROUTES.find(x => x.sub === view.sub && x.dir === view.dir));
+// ---------- 多選路線：同時顯示在地圖上 (只畫所選方向與該方向的公車) ----------
+const MULTI_KEY = 'txg_multi_v1';
+let multi = (store.get(MULTI_KEY) || []).filter(m => m && ROUTES.some(x => x.sub === m.sub && x.dir === m.dir));
+const saveMulti = () => store.set(MULTI_KEY, multi);
+const inMulti = sub => multi.some(m => m.sub === sub);
+function toggleMulti(sub, dir) {
+    const i = multi.findIndex(m => m.sub === sub);
+    if (i >= 0) multi.splice(i, 1); else multi.push({ sub, dir: dir ?? routeDirs(sub)[0].dir });
+    saveMulti();
+}
+const multiRoutes = () => multi.map(m => ROUTES.find(x => x.sub === m.sub && x.dir === m.dir)).filter(Boolean);
+function openMulti() {
+    if (!multi.length) return;
+    clearBikes(); layerAll.clearLayers();
+    if (mode !== 'route') { mode = 'route'; $('tab-route').classList.add('on'); $('tab-station').classList.remove('on'); }
+    view = { type: 'multi' };
+    open.clear();
+    [...new Set(multiRoutes().map(r => r.route))].forEach(rt => loadVehicles(rt).catch(() => {}));
+    drawMultiMap();
+    renderMulti();
+}
+const multiLines = new Map();
+function drawMultiMap(fit = true) {
+    layerSel.clearLayers(); multiLines.clear();
+    const all = [], sets = [];
+    multiRoutes().forEach(r => {
+        const c = colorOf(r.sub), pts = r.seq.map(si => [STOPS[si].lat, STOPS[si].lng]);
+        const sh = shapeOf(r), lines = sh || [pts];
+        const ls = lines.map(l => L.polyline(l, { color: c, weight: 5, opacity: .85, ...(sh ? {} : { dashArray: '8 6' }) })
+            .bindTooltip(`${r.sub} 往 ${destOf(r)}`, { sticky: true }).on('click', () => openRoute(r.sub, r.dir)).addTo(layerSel));
+        multiLines.set(r.i, ls);
+        r.seq.forEach((si, k) => L.circleMarker([STOPS[si].lat, STOPS[si].lng], { radius: k === 0 || k === r.seq.length - 1 ? 6 : 3.5, color: c, weight: 2, fillColor: '#fff', fillOpacity: 1 })
+            .bindTooltip(`${r.sub} ${k + 1}. ${STOPS[si].name}`).on('click', () => openStation(SAME_OF[si])).addTo(layerSel));
+        sets.push({ lines, w: 5 }); all.push(...pts);
     });
+    setArrows(sets);
+    if (fit && all.length) map.fitBounds(L.latLngBounds(all).pad(0.08));
+}
+function renderMulti() {
+    const rs = multiRoutes();
+    if (!rs.length) { view = null; layerSel.clearLayers(); drawVehicles(); renderSearch(); return; }
+    const routes = [...new Set(rs.map(r => r.route))];
+    const rows = rs.map(r => {
+        const vc = vehCache.get(r.route), other = ROUTES.find(x => x.sub === r.sub && x.dir !== r.dir);
+        const n = vc ? vc.rows.filter(v => v.sub === r.sub && v.dir === r.dir).length : null;
+        return `<div class="list-item" data-open="${r.i}">${badge(r.sub)}<div style="min-width:0;flex:1"><div>往 ${esc(destOf(r))}</div>
+            <div class="sub">${r.seq.length} 站 · ${n !== null ? `${n} 輛公車` : loading.has('v:' + r.route) ? '公車位置載入中…' : '尚無公車位置'}</div></div>
+            ${other ? `<button class="btn" data-rev="${r.i}" title="改看往 ${esc(destOf(other))}">⇄</button>` : ''}<button class="btn" data-del="${r.i}" title="移出多選">✕</button></div>`;
+    }).join('');
+    const vt = Math.max(0, ...routes.map(rt => (vehCache.get(rt) || {}).at || 0));
+    panel.innerHTML = `<h2>多選路線 · ${rs.length} 條</h2>
+        <div class="row"><button class="btn" id="b-add">＋ 加入路線</button><button class="btn" id="b-clr">清除多選</button></div>
+        <div class="row"><button class="btn" id="b-veh">🚌 更新公車位置 (${routes.length} 次 API)</button>
+            <label class="muted"><input type="checkbox" id="b-veh-auto" ${vehAuto ? 'checked' : ''}> 每分鐘自動更新</label>
+            ${vt ? `<span class="muted">${Math.round((Date.now() - vt) / 1000)} 秒前查詢</span>` : ''}</div>
+        <div class="hint">地圖只顯示所選路線方向的公車；點路線看完整站序與時刻，⇄ 切換方向。</div>${rows}`;
+    $('b-add').onclick = () => { view = null; layerSel.clearLayers(); setArrows([]); drawVehicles(); $('q').value = ''; renderSearch(); };
+    $('b-clr').onclick = () => { multi = []; saveMulti(); renderMulti(); };
+    $('b-veh').onclick = () => routes.forEach(rt => loadVehicles(rt, true).catch(e => alert('位置載入失敗：' + e.message)));
+    $('b-veh-auto').onchange = e => setVehAuto(e.target.checked);
+    panel.querySelectorAll('[data-open]').forEach(e => {
+        const r = ROUTES[+e.dataset.open];
+        e.onclick = ev => { if (ev.target.closest('button')) return; openRoute(r.sub, r.dir); };
+        e.onmouseenter = () => (multiLines.get(r.i) || []).forEach(l => l.setStyle({ weight: 9, opacity: 1 }).bringToFront());
+        e.onmouseleave = () => (multiLines.get(r.i) || []).forEach(l => l.setStyle({ weight: 5, opacity: .85 }));
+    });
+    panel.querySelectorAll('[data-rev]').forEach(e => e.onclick = () => {
+        const r = ROUTES[+e.dataset.rev], o = ROUTES.find(x => x.sub === r.sub && x.dir !== r.dir), m = multi.find(x => x.sub === r.sub);
+        if (o && m) { m.dir = o.dir; saveMulti(); drawMultiMap(false); renderMulti(); }
+    });
+    panel.querySelectorAll('[data-del]').forEach(e => e.onclick = () => { toggleMulti(ROUTES[+e.dataset.del].sub); drawMultiMap(false); renderMulti(); });
+    drawVehicles();
 }
 // ---------- 公車即時位置 (RealTimeByFrequency：GPS 定位、方位角、車牌) ----------
 const layerVeh = L.layerGroup().addTo(map);
@@ -1283,28 +1592,30 @@ function vehPopup(v, r) {
         <a href="https://www.google.com/search?tbm=isch&q=${q}" target="_blank" rel="noopener">🔍 Google 圖片：${esc(v.plate)} ${esc(op)}</a></div>`;
 }
 let vehDrawn = '';
+const selRoutes = () => !view ? [] : view.type === 'route' ? [ROUTES.find(x => x.sub === view.sub && x.dir === view.dir)] : view.type === 'multi' ? multiRoutes() : [];
 function drawVehicles() {
-    const r = view && view.type === 'route' ? ROUTES.find(x => x.sub === view.sub && x.dir === view.dir) : null;
-    const c = r && vehCache.get(r.route);
+    const rs = selRoutes().filter(Boolean);
     // 資料沒變就不重畫 (避免關掉已打開的車牌視窗)
-    const key = c ? `${r.sub}|${r.dir}|${c.at}` : '';
+    const key = rs.map(r => `${r.sub}|${r.dir}|${(vehCache.get(r.route) || {}).at || 0}`).join(',');
     if (key === vehDrawn) return;
     vehDrawn = key;
     layerVeh.clearLayers();
-    if (!c) return;
-    c.rows.forEach(v => {
-        const same = v.sub === r.sub && v.dir === r.dir;
-        const m = L.marker([v.lat, v.lng], { icon: busIcon(colorOf(v.sub), v.az, !same), zIndexOffset: same ? 1000 : 500 });
-        m.bindPopup(() => vehPopup(v, r));
-        m.on('popupopen', () => { if (!opsMap()) loadOperators().then(() => { if (m.isPopupOpen()) m.setPopupContent(vehPopup(v, r)); }).catch(() => {}); });
-        m.addTo(layerVeh);
+    rs.forEach(r => {
+        const c = vehCache.get(r.route);
+        if (!c) return;
+        c.rows.filter(v => v.sub === r.sub && v.dir === r.dir).forEach(v => {
+            const m = L.marker([v.lat, v.lng], { icon: busIcon(colorOf(v.sub), v.az, false), zIndexOffset: 1000 });
+            m.bindPopup(() => vehPopup(v, r));
+            m.on('popupopen', () => { if (!opsMap()) loadOperators().then(() => { if (m.isPopupOpen()) m.setPopupContent(vehPopup(v, r)); }).catch(() => {}); });
+            m.addTo(layerVeh);
+        });
     });
 }
 setInterval(() => document.querySelectorAll('[data-ago]').forEach(e => { e.textContent = agoText(+e.dataset.ago); }), 1000);
 function setVehAuto(on) {
     vehAuto = on;
     clearInterval(vehTimer);
-    if (on) vehTimer = setInterval(() => { if (view && view.type === 'route' && document.visibilityState === 'visible') { const r = ROUTES.find(x => x.sub === view.sub && x.dir === view.dir); loadVehicles(r.route, true).then(drawVehicles).catch(() => {}); } }, 60000);
+    if (on) vehTimer = setInterval(() => { if (document.visibilityState !== 'visible') return; [...new Set(selRoutes().filter(Boolean).map(r => r.route))].forEach(rt => loadVehicles(rt, true).then(drawVehicles).catch(() => {})); }, 60000);
 }
 
 function renderRoute() {
@@ -1313,7 +1624,7 @@ function renderRoute() {
     const eta = etaCache.get('rt:' + r.route);
     const other = ROUTES.find(x => x.sub === r.sub && x.dir !== r.dir);
     const keep = panel.scrollTop;
-    const hasShape = !!store.get('txg_shape_v1:' + r.route);
+    const hasShape = !!shapeOf(r);
     const vc = vehCache.get(r.route);
     const t0 = timesAt(r, 0, ds);
     const rows = r.seq.map((si, pos) => {
@@ -1323,7 +1634,7 @@ function renderRoute() {
         let tt = '';
         if (t.pending) tt = '<span class="muted">時刻表載入中…</span>';
         else if (!t.times.length) tt = `<span class="muted">${esc(t.note)}</span>`;
-        else tt = isToday ? nextLine(r, pos, t, nm, row) : t.times.slice(0, 2).map(fmt).join('、') + TAG[t.kind];
+        else tt = isToday ? upcomingLine(r, pos, t, nm, row) : (TAG[t.kind] || '') + ' ' + t.times.slice(0, 3).map(fmt).join('、');
         const key = 'r' + pos;
         const full = open.has(key) ? (t.times && t.times.length
             ? dayTable(t.times, isToday, nm, t.note, '2/-1')
@@ -1335,16 +1646,22 @@ function renderRoute() {
         <div class="muted">${r.seq.length} 站 · ${isToday ? (eta ? `即時 ${new Date(eta.at).toLocaleTimeString('zh-TW', { hour12: false })}` : '即時資料載入中…') : `${ds} 時刻表`}${t0.note ? ' · ' + esc(t0.note) : ''}</div>
         <div class="row">${other ? `<button class="btn" id="b-rev">⇄ 往 ${esc(destOf(other))}</button>` : ''}
         ${isToday ? '<button class="btn" id="b-eta">更新即時＋班次配對 (2 次 API)</button>' : ''}
-        ${hasShape ? '' : '<button class="btn" id="b-shape">顯示道路線形 (1 次 API)</button>'}</div>
+        <button class="btn" id="b-madd">${multi.some(m => m.sub === r.sub && m.dir === r.dir) ? '✓ 已在多選' : '＋ 加入多選'}</button>
+        ${multi.length ? `<button class="btn" id="b-mopen">多選 (${multi.length})</button>` : ''}</div>
         <div class="row">${isToday ? `<button class="btn" id="b-veh">🚌 更新公車位置 (1 次 API)</button>
             <label class="muted"><input type="checkbox" id="b-veh-auto" ${vehAuto ? 'checked' : ''}> 每分鐘自動更新</label>
-            <span class="muted">${vc ? `地圖上 ${vc.rows.filter(v => v.sub === r.sub && v.dir === r.dir).length} 輛 (另 ${vc.rows.filter(v => !(v.sub === r.sub && v.dir === r.dir)).length} 輛反向/支線半透明) · ${Math.round((Date.now() - vc.at) / 1000)} 秒前查詢` : loading.has('v:' + r.route) ? '公車位置載入中…' : ''}</span>` : ''}</div>
-        <div class="hint">點站名展開該站全日時刻表；地圖上點站牌可查該站位。${hasShape ? '' : '地圖虛線為站牌連線，非實際道路。'}</div>
-        <div class="seq"><div class="seq-line" style="background:${c}"></div>${rows}</div>`;
+            <span class="muted">${vc ? `地圖上本路線 ${vc.rows.filter(v => v.sub === r.sub && v.dir === r.dir).length} 輛 · ${Math.round((Date.now() - vc.at) / 1000)} 秒前查詢` : loading.has('v:' + r.route) ? '公車位置載入中…' : ''}</span>` : ''}</div>
+        <div class="hint">點站名展開該站全日時刻表；地圖上點站牌可查該站位。${hasShape ? '地圖小箭頭為行駛方向。' : SHAPES ? '此路線無道路線形資料，地圖虛線為站牌連線。' : '道路線形載入中…'}</div>
+        <div class="seq" style="--rc:${c}">${rows}</div>`;
     if (!view.scrolled && view.here) { const h = panel.querySelector('.seq-row.here'); if (h) { panel.scrollTop = h.offsetTop - panel.clientHeight / 3; view.scrolled = true; } } else panel.scrollTop = keep;
     if ($('b-rev')) $('b-rev').onclick = () => openRoute(r.sub, other.dir, view.here);
     if ($('b-eta')) $('b-eta').onclick = () => { loadEta('rt:' + r.route, `EstimatedTimeOfArrival/City/Taichung/${encodeURIComponent(r.route)}`, {}, `${r.route} 即時`, true).catch(() => {}); loadA2(r.route, true, true).catch(() => {}); };
-    if ($('b-shape')) $('b-shape').onclick = () => loadShape(r).catch(e => alert('線形載入失敗：' + e.message));
+    $('b-madd').onclick = () => {
+        const i = multi.findIndex(m => m.sub === r.sub);
+        if (i >= 0 && multi[i].dir === r.dir) multi.splice(i, 1); else if (i >= 0) multi[i].dir = r.dir; else multi.push({ sub: r.sub, dir: r.dir });
+        saveMulti(); renderRoute();
+    };
+    if ($('b-mopen')) $('b-mopen').onclick = openMulti;
     if ($('b-veh')) $('b-veh').onclick = () => loadVehicles(r.route, true).catch(e => alert('位置載入失敗：' + e.message));
     if ($('b-veh-auto')) $('b-veh-auto').onchange = e => setVehAuto(e.target.checked);
     drawVehicles();
@@ -1411,7 +1728,7 @@ function renderMrt() {
     const p = new URLSearchParams(location.search);
     if (p.get('route')) { setMode('route'); const ds = routeDirs(p.get('route')); if (ds.length) openRoute(ds[0].sub, ds[0].dir); return; }
     if (p.get('station')) { const st = [...STATIONS.values()].find(s => s.name === p.get('station')); setMode('station'); if (st) openStation(st.id); return; }
-    renderSearch();
+    setMode('route');
     updateApi();
 })();
 </script>
