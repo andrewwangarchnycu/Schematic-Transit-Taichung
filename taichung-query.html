@@ -40,8 +40,15 @@
     .rt-head button { background: none; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); font: inherit; cursor: pointer; padding: 3px 8px; white-space: nowrap; }
     .rt-head button:hover { color: var(--text); background: #26292d; }
     .rt-head .rev { font-size: 12px; max-width: 42%; overflow: hidden; text-overflow: ellipsis; }
-    .rt-head .ref { font-size: 16px; line-height: 1; padding: 3px 6px; }
-    .rt-head .ref.spin span { display: inline-block; animation: spin 1s linear infinite; }
+    /* 🔄 自動更新開關：開＝立即更新並每分鐘更新即時到站、班次配對、公車位置 */
+    button.auto { display: inline-flex; align-items: center; gap: 6px; background: none; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; padding: 3px 8px; white-space: nowrap; }
+    button.auto .ic { font-size: 15px; line-height: 1; display: inline-block; }
+    button.auto.spin .ic { animation: spin 1s linear infinite; }
+    button.auto .sw { position: relative; width: 28px; height: 16px; border-radius: 8px; background: #555; transition: background .2s; }
+    button.auto .sw::after { content: ''; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff; transition: left .2s; }
+    button.auto.on { color: var(--text); border-color: var(--accent); }
+    button.auto.on .sw { background: var(--accent); }
+    button.auto.on .sw::after { left: 14px; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 6px 0; }
     .msel { margin-left: auto; padding: 4px 6px; display: flex; align-items: center; cursor: pointer; }
@@ -1595,14 +1602,12 @@ function renderMulti() {
     const vt = Math.max(0, ...routes.map(rt => (vehCache.get(rt) || {}).at || 0));
     panel.innerHTML = `<h2>多選路線 · ${rs.length} 條</h2>
         <div class="row"><button class="btn" id="b-add">＋ 加入路線</button><button class="btn" id="b-clr">清除多選</button></div>
-        <div class="row"><button class="btn" id="b-veh">🚌 更新公車位置 (${routes.length} 次 API)</button>
-            <label class="muted"><input type="checkbox" id="b-veh-auto" ${vehAuto ? 'checked' : ''}> 每分鐘自動更新</label>
+        <div class="row">${autoBtn(autoBusy(routes), `公車位置，每次 ${routes.length} 次 API`)}<span class="muted">${vehAuto ? '每分鐘自動更新' : '自動更新已關'}</span>
             ${vt ? `<span class="muted">${Math.round((Date.now() - vt) / 1000)} 秒前查詢</span>` : ''}</div>
         <div class="hint">地圖只顯示所選路線方向的公車；點路線看完整站序與時刻，⇄ 切換方向。</div>${rows}`;
     $('b-add').onclick = () => { view = null; layerSel.clearLayers(); setArrows([]); drawVehicles(); $('q').value = ''; renderSearch(); };
     $('b-clr').onclick = () => { multi = []; saveMulti(); renderMulti(); };
-    $('b-veh').onclick = () => routes.forEach(rt => loadVehicles(rt, true).catch(e => alert('位置載入失敗：' + e.message)));
-    $('b-veh-auto').onchange = e => setVehAuto(e.target.checked);
+    $('b-auto').onclick = () => setVehAuto(!vehAuto);
     panel.querySelectorAll('[data-open]').forEach(e => {
         const r = ROUTES[+e.dataset.open];
         e.onclick = ev => { if (ev.target.closest('button')) return; openRoute(r.sub, r.dir); };
@@ -1619,7 +1624,7 @@ function renderMulti() {
 // ---------- 公車即時位置 (RealTimeByFrequency：GPS 定位、方位角、車牌) ----------
 const layerVeh = L.layerGroup().addTo(map);
 const vehCache = new Map();   // route → { at, rows }
-let vehAuto = false, vehTimer = null;
+let vehAuto = !!store.get('txg_auto_v1'), vehTimer = null;
 const OPS_KEY = 'txg_ops_v1';
 const opsMap = () => { const v = store.get(OPS_KEY); return v && Date.now() - v.at < 30 * 86400000 ? v.map : null; };
 function loadOperators() {
@@ -1770,11 +1775,28 @@ function drawVehicles() {
     });
 }
 setInterval(() => document.querySelectorAll('[data-ago]').forEach(e => { e.textContent = agoText(+e.dataset.ago); }), 1000);
+// 自動更新：路線頁＝即時到站＋班次配對＋公車位置 (3 次 API)；多選＝各路線公車位置
+function refreshLive() {
+    if (!view || selDate() !== todayKey()) return;
+    if (view.type === 'route') {
+        const r = ROUTES.find(x => x.sub === view.sub && x.dir === view.dir);
+        loadEta('rt:' + r.route, `EstimatedTimeOfArrival/City/Taichung/${encodeURIComponent(r.route)}`, {}, `${r.route} 即時`, true).catch(() => {});
+        loadA2(r.route, true, true).catch(() => {});
+    }
+    [...new Set(selRoutes().filter(Boolean).map(r => r.route))].forEach(rt => loadVehicles(rt, true).then(drawVehicles).catch(() => {}));
+    rerender();
+}
 function setVehAuto(on) {
     vehAuto = on;
+    store.set('txg_auto_v1', on);
     clearInterval(vehTimer);
-    if (on) vehTimer = setInterval(() => { if (document.visibilityState !== 'visible') return; [...new Set(selRoutes().filter(Boolean).map(r => r.route))].forEach(rt => loadVehicles(rt, true).then(drawVehicles).catch(() => {})); }, 60000);
+    if (on) { refreshLive(); vehTimer = setInterval(() => { if (document.visibilityState === 'visible') refreshLive(); }, 60000); }
+    else rerender();
 }
+const autoBusy = routes => routes.some(rt => loading.has('e:rt:' + rt) || loading.has('a2:' + rt) || loading.has('v:' + rt));
+const autoBtn = (busy, api) => `<button class="auto${vehAuto ? ' on' : ''}${busy ? ' spin' : ''}" id="b-auto" title="自動更新${vehAuto ? '：開' : '：關'} — 開啟時立即更新，之後每分鐘更新 (${api})"><span class="ic">🔄</span><span class="sw"></span></button>`;
+// 上次開著就恢復計時器 (開路線時本來就會載入一次)
+if (vehAuto) vehTimer = setInterval(() => { if (document.visibilityState === 'visible') refreshLive(); }, 60000);
 
 function renderRoute() {
     const r = ROUTES.find(x => x.sub === view.sub && x.dir === view.dir);
@@ -1802,29 +1824,24 @@ function renderRoute() {
         return `<div class="seq-row${view.here === s.name ? ' here' : ''}${tk ? ' track' : ''}" data-key="${key}" data-sid="${esc(s.sid)}"><div class="seq-dot" style="border-color:${c}"></div>
             <div class="seq-name">${esc(s.name)}${tk ? ` <small class="trk-d">📍 距你 ${Math.round(trk.d)} m</small>` : ''}<br><small>${tt}</small></div><div class="seq-eta">${isToday ? etaHtml(row) + cmpHtml(compareEta(r, s.name, row)) : ''}</div>${full}</div>`;
     }).join('');
-    const busy = loading.has('e:rt:' + r.route) || loading.has('a2:' + r.route);
+    const busy = autoBusy([r.route]), nVeh = vc ? vc.rows.filter(v => v.sub === r.sub && v.dir === r.dir).length : null;
     panel.innerHTML = `<div class="rt-head"><h2>${badge(r.sub)} 往 ${esc(destOf(r))}</h2>
         ${other ? `<button class="rev" id="b-rev" title="切換方向">⇄ 往 ${esc(destOf(other))}</button>` : ''}
-        ${isToday ? `<button class="ref${busy ? ' spin' : ''}" id="b-eta" title="更新即時＋班次配對 (2 次 API)"><span>🔄</span></button>` : ''}</div>
-        <div class="muted">${r.seq.length} 站 · ${isToday ? (eta ? `即時 ${new Date(eta.at).toLocaleTimeString('zh-TW', { hour12: false })}` : '即時資料載入中…') : `${ds} 時刻表`}${t0.note ? ' · ' + esc(t0.note) : ''}</div>
+        ${isToday ? autoBtn(busy, '即時到站＋班次配對＋公車位置，每次 3 次 API') : ''}</div>
+        <div class="muted">${r.seq.length} 站 · ${isToday ? (eta ? `即時 ${new Date(eta.at).toLocaleTimeString('zh-TW', { hour12: false })}` : '即時資料載入中…') + (nVeh !== null ? ` · 本路線公車 ${nVeh} 輛` : '') + (vehAuto ? ' · 每分鐘自動更新' : '') : `${ds} 時刻表`}${t0.note ? ' · ' + esc(t0.note) : ''}</div>
         <div class="row">        <button class="btn" id="b-madd">${multi.some(m => m.sub === r.sub && m.dir === r.dir) ? '✓ 已在多選' : '＋ 加入多選'}</button>
         ${multi.length ? `<button class="btn" id="b-mopen">多選 (${multi.length})</button>` : ''}</div>
-        <div class="row">${isToday ? `<button class="btn" id="b-veh">🚌 更新公車位置 (1 次 API)</button>
-            <label class="muted"><input type="checkbox" id="b-veh-auto" ${vehAuto ? 'checked' : ''}> 每分鐘自動更新</label>
-            <span class="muted">${vc ? `地圖上本路線 ${vc.rows.filter(v => v.sub === r.sub && v.dir === r.dir).length} 輛 · ${Math.round((Date.now() - vc.at) / 1000)} 秒前查詢` : loading.has('v:' + r.route) ? '公車位置載入中…' : ''}</span>` : ''}</div>
         <div class="hint">點站名展開該站全日時刻表；地圖上點站牌可查該站位。${hasShape ? '地圖小箭頭為行駛方向。' : SHAPES ? '此路線無道路線形資料，地圖虛線為站牌連線。' : '道路線形載入中…'}</div>
         <div class="seq" style="--rc:${c}">${rows}</div>`;
     if (!view.scrolled && view.here) { const h = panel.querySelector('.seq-row.here'); if (h) { panel.scrollTop = h.offsetTop - panel.clientHeight / 3; view.scrolled = true; } } else panel.scrollTop = keep;
     if ($('b-rev')) $('b-rev').onclick = () => openRoute(r.sub, other.dir, view.here);
-    if ($('b-eta')) $('b-eta').onclick = () => { loadEta('rt:' + r.route, `EstimatedTimeOfArrival/City/Taichung/${encodeURIComponent(r.route)}`, {}, `${r.route} 即時`, true).catch(() => {}); loadA2(r.route, true, true).catch(() => {}); renderRoute(); };
+    if ($('b-auto')) $('b-auto').onclick = () => setVehAuto(!vehAuto);
     $('b-madd').onclick = () => {
         const i = multi.findIndex(m => m.sub === r.sub);
         if (i >= 0 && multi[i].dir === r.dir) multi.splice(i, 1); else if (i >= 0) multi[i].dir = r.dir; else multi.push({ sub: r.sub, dir: r.dir });
         saveMulti(); renderRoute();
     };
     if ($('b-mopen')) $('b-mopen').onclick = openMulti;
-    if ($('b-veh')) $('b-veh').onclick = () => loadVehicles(r.route, true).catch(e => alert('位置載入失敗：' + e.message));
-    if ($('b-veh-auto')) $('b-veh-auto').onchange = e => setVehAuto(e.target.checked);
     drawVehicles();
     panel.querySelectorAll('.seq-row').forEach(e => e.onclick = () => { open.has(e.dataset.key) ? open.delete(e.dataset.key) : open.add(e.dataset.key); renderRoute(); });
     seqBuses();
