@@ -8,3 +8,5 @@ for upload/
 map-editor.html
 map-editor-geo.js
 open-map-editor.bat
+
+tools/shape_all.json
