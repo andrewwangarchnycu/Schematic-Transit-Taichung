@@ -108,9 +108,13 @@
     .seq-row .times { grid-column: 2 / -1; }
     .seq-row.here { background: rgba(255,235,59,.08); }
     /* 附近追蹤：最接近我的站 — 框線＋藍色呼吸燈站點 */
-    .seq-row.track { outline: 2px solid #1a73e8; outline-offset: -2px; border-radius: 6px; background: rgba(26,115,232,.12); }
+    .seq-row.track, .seq-row.track:hover { background: #eceff1; color: #111; border-radius: 6px; }
+    .seq-row.track .seq-name small, .seq-row.track .muted { color: #555 !important; }
+    .seq-row.track .seq-eta { color: #00695c; }
+    .seq-row.track .times { color: #222; }
     .seq-row.track .seq-dot { background: #1a73e8; border-color: #8ab4f8 !important; animation: breathe 1.6s ease-in-out infinite; }
     .trk-d { color: #8ab4f8 !important; font-weight: bold; }
+    .seq-row.track .seq-name small.trk-d { color: #1a73e8 !important; }
     @keyframes breathe { 0%, 100% { box-shadow: 0 0 0 0 rgba(26,115,232,.7); } 50% { box-shadow: 0 0 0 7px rgba(26,115,232,0); } }
     .trk-ico div { width: 22px; height: 22px; border-radius: 50%; border: 3px solid #1a73e8; background: rgba(26,115,232,.25); animation: breathe 1.6s ease-in-out infinite; }
     .map-btn.near-btn.tracking { background: #0b3d91 !important; box-shadow: 0 0 0 3px rgba(138,180,248,.6); }
