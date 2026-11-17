@@ -10,3 +10,6 @@ map-editor-geo.js
 open-map-editor.bat
 
 tools/shape_all.json
+# QGIS 分析：TDX 下載快取與輸出 (可重新產生)
+analysis/cache/
+analysis/output/

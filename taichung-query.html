@@ -19,6 +19,12 @@
     .tabs button.on { background: #2f6b3a; color: #fff; }
     input[type=search], select { background: #2a2d31; color: var(--text); border: 1px solid #44484e; border-radius: 8px; padding: 6px 10px; font: inherit; }
     input[type=search] { flex: 1; min-width: 140px; }
+    /* 搜尋框＋框內右側鍵盤切換鈕 (路線模式：數字 ↔ 一般鍵盤) */
+    .qwrap { position: relative; flex: 1; min-width: 140px; display: flex; }
+    .qwrap #q { flex: 1; min-width: 0; width: 100%; }
+    .qwrap.kb #q { padding-right: 52px; }
+    #q-kb { display: none; position: absolute; right: 4px; top: 50%; transform: translateY(-50%); background: #3b4148; color: #ddd; border: 0; border-radius: 6px; font: inherit; font-size: 12px; padding: 3px 7px; cursor: pointer; }
+    .qwrap.kb #q-kb { display: block; }
     button.btn { background: #2f3338; color: #fff; border: 1px solid #474c53; border-radius: 8px; padding: 5px 10px; font: inherit; font-size: 13px; cursor: pointer; }
     button.btn:hover { background: #3a3f45; }
     button.btn:disabled { opacity: .45; cursor: default; }
@@ -199,7 +205,7 @@
     .mapboxgl-ctrl-bottom-left, .mapboxgl-ctrl-bottom-right { bottom: 44%; }
     @media (max-width: 760px) {
         #app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 36vh 1fr; }
-        input[type=search] { min-width: 0; flex-basis: 100%; order: 5; }
+        .qwrap { min-width: 0; flex-basis: 100%; order: 5; }
         #panel { min-width: 0; }
         #map { grid-row: 2; }
         #panel { grid-row: 3; border-right: 0; border-top: 1px solid var(--line); padding-bottom: max(60px, env(safe-area-inset-bottom)); }
@@ -220,7 +226,7 @@
     <header>
         <h1>臺中公車查詢</h1>
         <div class="tabs"><button id="tab-station">站位</button><button id="tab-route" class="on">路線</button></div>
-        <input type="search" id="q" placeholder="輸入路線，例：300、綠線" autocomplete="off" inputmode="numeric">
+        <span class="qwrap kb"><input type="search" id="q" placeholder="輸入路線，例：300、綠線" autocomplete="off" inputmode="numeric"><button id="q-kb" type="button" title="切換鍵盤">ABC 中</button></span>
         <select id="date" title="時刻表日期"></select>
         <span id="api" title="點擊查看 API 用量">--</span>
         <a href="taichung.html">← 路線圖</a>
@@ -1157,9 +1163,21 @@ function setMode(m) {
     $('tab-route').classList.toggle('on', m === 'route');
     $('q').placeholder = m === 'station' ? '輸入站名，例：臺中車站' : '輸入路線，例：300、綠線';
     $('q').inputMode = m === 'route' ? 'numeric' : 'text';   // 路線搜尋先帶出數字鍵盤
+    document.querySelector('.qwrap').classList.toggle('kb', m === 'route');
+    kbLabel();
     $('q').value = ''; view = null; layerSel.clearLayers(); layerVeh.clearLayers(); vehDrawn = ''; clearBikes(); drawNearbyStations();
     renderSearch();
 }
+// 路線模式：框內右側按鈕切換數字 ↔ 一般鍵盤 (先失焦再聚焦，手機才會換鍵盤)
+const kbLabel = () => { $('q-kb').textContent = $('q').inputMode === 'numeric' ? 'ABC 中' : '123'; };
+$('q-kb').addEventListener('pointerdown', e => e.preventDefault());   // 點按鈕不讓輸入框先失焦
+$('q-kb').onclick = () => {
+    const q = $('q');
+    q.blur();
+    q.inputMode = q.inputMode === 'numeric' ? 'text' : 'numeric';
+    kbLabel();
+    q.focus();
+};
 $('tab-station').onclick = () => setMode('station');
 $('tab-route').onclick = () => setMode('route');
 $('q').oninput = () => { view = null; renderSearch(); };
