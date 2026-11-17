@@ -88,6 +88,7 @@
     .tag { font-size: 10px; padding: 0 5px; border-radius: 3px; background: #3b4148; color: #ccc; margin-left: 4px; white-space: nowrap; }
     .tag.api { background: #1b5e20; color: #b9f6ca; } .tag.freq { background: #4a148c; color: #e1bee7; }
     .last { color: #ff5252; font-weight: bold; margin-left: 2px; font-size: 11px; } .tag.sched { background: #283593; color: #c5cae9; } .tag.est { background: #5d4037; color: #ffccbc; }
+    .tag.nb { background: #1565c0; color: #fff; margin-left: 0; font-size: 11px; }
     .dly { font-size: 11px; padding: 0 4px; border-radius: 3px; white-space: nowrap; font-family: inherit; }
     .dly.late { background: #5a2323; color: #ff9e9e; } .dly.early { background: #1f3f5a; color: #9fd3ff; } .dly.ontime { background: #24452a; color: #a5e0ad; }
     .cmp { font-size: 11px; color: #aaa; white-space: nowrap; font-family: inherit; }
@@ -100,7 +101,8 @@
     .go-btn { flex: none; margin-left: auto; display: inline-flex; flex-direction: column; align-items: center; gap: 1px; padding: 4px 6px; border-radius: 8px; background: #1a73e8; color: #fff; text-decoration: none; font-size: 10px; line-height: 1; }
     .go-btn:hover { background: #1765cc; }
     .map-btn { display: block; min-width: 34px; height: 34px; line-height: 32px; padding: 0 8px; text-align: center; font-size: 16px; background: #2a2d31 !important; color: #eee !important; text-decoration: none; cursor: pointer; white-space: nowrap; }
-    .map-btn.near-btn { font-size: 14px; font-weight: bold; background: #1a73e8 !important; color: #fff !important; height: 40px; line-height: 38px; padding: 0 14px; border-radius: 20px !important; }
+    .map-btn.srch-btn { display: none; margin-bottom: 4px; }
+    .map-btn.near-btn, .map-btn.srch-btn { font-size: 14px; font-weight: bold; background: #1a73e8 !important; color: #fff !important; height: 40px; line-height: 38px; padding: 0 14px; border-radius: 20px !important; }
     .bs-opt { display: block; padding: 3px 0; cursor: pointer; }
     .ico { flex: none; width: 28px; height: 28px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; }
     .ico.bus { background: #ffd600; } .ico.bike { background: #2e7d32; }
@@ -202,6 +204,14 @@
         #map { grid-row: 2; }
         #panel { grid-row: 3; border-right: 0; border-top: 1px solid var(--line); padding-bottom: max(60px, env(safe-area-inset-bottom)); }
         header h1 { font-size: 15px; }
+        /* 首頁＝全地圖；按「搜尋」或點輸入框才出現清單 */
+        #app.full { grid-template-rows: auto 1fr; }
+        #app.full #panel { display: none; }
+        /* 搜尋模式：清單在上、地圖在下 (避免被手機鍵盤擋住) */
+        #app.srch { grid-template-rows: auto 1fr 28vh; }
+        #app.srch #panel { grid-row: 2; border-top: 0; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
+        #app.srch #map { grid-row: 3; }
+        .map-btn.srch-btn { display: block; }
     }
 </style>
 </head>
@@ -210,7 +220,7 @@
     <header>
         <h1>臺中公車查詢</h1>
         <div class="tabs"><button id="tab-station">站位</button><button id="tab-route" class="on">路線</button></div>
-        <input type="search" id="q" placeholder="輸入路線，例：300、綠線" autocomplete="off">
+        <input type="search" id="q" placeholder="輸入路線，例：300、綠線" autocomplete="off" inputmode="numeric">
         <select id="date" title="時刻表日期"></select>
         <span id="api" title="點擊查看 API 用量">--</span>
         <a href="taichung.html">← 路線圖</a>
@@ -597,7 +607,7 @@ function loadToday(route, high = false) {
 const dayLoaded = route => !!(schedGet(route) || estGet(route) || todayOld(route));
 
 // 組出某日 (dateStr) 的逐班逐站時刻 → { date, ver, subs: { sub: { dir: { kind, stops, trips, ids, hw } } }, none? }
-//   kind：table＝班表預排發車 (表定)、daily＝今日每日營運時刻表 (班表只給班距時)、est＝只有歷史推估班表；班距不推估班次
+//   優先順序：est＝站站班表 (V3 近 3 個月逐站歷史到站推估) → table＝路線班表預排發車＋站間推估 → daily＝今日每日營運時刻表；班距不推估班次
 const dayMemo = new Map();
 function daySched(route, ds) {
     const S = schedGet(route), E = estGet(route);
@@ -627,7 +637,19 @@ function daySched(route, ds) {
         const eIdx = et ? stops.map(n => et.stops.indexOf(n)) : null;
         const eOrig = et ? et.trips.map(row => { const i = eIdx.find(i => i >= 0 && row[i] !== null); return i === undefined ? null : row[i]; }) : null;
         let rows, ids, kind;
-        if (deps.length) {
+        // 優先：站站班表 (V3 依近 3 個月逐站歷史到站時間推估)
+        if (et) {
+            kind = 'est';
+            rows = et.trips.map(er => stops.map((_, i) => eIdx[i] >= 0 ? er[eIdx[i]] : null)).filter(row => row.some(x => x !== null));
+            ids = rows.map((_, k) => 'E' + (k + 1));
+            // 發車站一律用路線班表：發車時刻改成最接近 (15 分內) 的預排發車，其他站維持站站班表
+            if (deps.length) {
+                const sd = deps.map(d => d.t).sort((a, b) => a - b);
+                rows.forEach(row => { if (row[0] === null) return; let b = null; sd.forEach(t => { if (Math.abs(t - row[0]) <= 15 && (b === null || Math.abs(t - row[0]) < Math.abs(b - row[0]))) b = t; }); if (b !== null) row[0] = b; });
+            }
+        }
+        if (rows && rows.length) { /* 已用站站班表 */ }
+        else if (deps.length) {
             deps.sort((a, b) => a.t - b.t);
             kind = 'table';
             rows = deps.map(d => {
@@ -652,14 +674,11 @@ function daySched(route, ds) {
             kind = 'daily';
             rows = o.stops === stops ? o.trips : o.trips.map(row => stops.map(n => { const i = o.stops.indexOf(n); return i >= 0 ? row[i] : null; }));
             ids = o.ids || rows.map((_, k) => String(k + 1));
-        } else if (et) {
-            kind = 'est';
-            rows = et.trips.map(er => stops.map((_, i) => eIdx[i] >= 0 ? er[eIdx[i]] : null)).filter(row => row.some(x => x !== null));
-            ids = rows.map((_, k) => 'E' + (k + 1));
         } else return;
-        if (!rows.length) return;
+        if (!rows || !rows.length) return;
         const hw = s ? s.freq.filter(f => f.days[wd]).map(f => [f.s, f.e, f.min, f.max]) : [];
-        (v.subs[sub] = v.subs[sub] || {})[dir] = { kind, stops, trips: rows, ids, hw };
+        const origin = deps.length ? deps.map(d => d.t).sort((a, b) => a - b) : null;   // 發車站：路線班表預排發車
+        (v.subs[sub] = v.subs[sub] || {})[dir] = { kind, stops, trips: rows, ids, hw, origin };
     });
     if (!Object.keys(v.subs).length) v.none = true;
     dayMemo.set(mk, v);
@@ -678,6 +697,8 @@ function timesAt(r, pos, dateStr) {
     if (!e) return { times: [], kind: 'none', note: `${dayTxt}無此方向班次` };
     const i = e.stops[pos] === name ? pos : e.stops.indexOf(name);
     if (i < 0) return { times: [], kind: 'none', note: '班表無此站' };
+    // 發車站一律用路線班表的預排發車時刻
+    if (i === 0 && e.origin && e.origin.length && v !== todayOld(r.route)) return { times: e.origin, kind: 'sched', note: `路線班表發車 (${dayTxt})` };
     const times = e.trips.map(x => x[i]).filter(x => x !== null && x !== undefined).sort((a, b) => a - b);
     if (!times.length) return { times: [], kind: 'none', note: estErr.has(r.route) ? '只有起站發車時刻 (站站推估班表無法取得)' : '此站無推估時刻' };
     const old = v === todayOld(r.route);
@@ -734,7 +755,7 @@ const STATUS = { 1: '尚未發車', 2: '交管不停靠', 3: '末班已過', 4: 
 function etaHtml(row) {
     if (!row) return '<span class="muted">--</span>';
     if (row.dl !== null) return `<span data-dl="${row.dl}">${remain(row.dl)}</span>`;
-    if (row.status === 1 && row.next) { const d = new Date(row.next); return `<span class="muted">${pad(d.getHours())}:${pad(d.getMinutes())}</span>`; }
+    if (row.status === 1 && row.next) { const d = new Date(row.next); return `<span class="tag nb">表定</span> <span class="muted">${pad(d.getHours())}:${pad(d.getMinutes())}</span>`; }
     return `<span class="muted">${STATUS[row.status] || '--'}</span>`;
 }
 
@@ -1135,6 +1156,7 @@ function setMode(m) {
     $('tab-station').classList.toggle('on', m === 'station');
     $('tab-route').classList.toggle('on', m === 'route');
     $('q').placeholder = m === 'station' ? '輸入站名，例：臺中車站' : '輸入路線，例：300、綠線';
+    $('q').inputMode = m === 'route' ? 'numeric' : 'text';   // 路線搜尋先帶出數字鍵盤
     $('q').value = ''; view = null; layerSel.clearLayers(); layerVeh.clearLayers(); vehDrawn = ''; clearBikes(); drawNearbyStations();
     renderSearch();
 }
@@ -1287,7 +1309,33 @@ function nearClick() {
         loadBikes(place).catch(() => {});
     });
 }
+const isMobile = () => matchMedia('(max-width: 760px)').matches;
+let listOpen = false;
+// 「搜尋」＝點輸入框：進入搜尋模式並叫出鍵盤 (路線＝數字鍵盤)；清單已開時再按＝回到全地圖
+function srchClick() {
+    if (!view && listOpen) { listOpen = false; $('q').blur(); updLayout(); return; }
+    listOpen = true;
+    if (view) { view = null; layerSel.clearLayers(); layerVeh.clearLayers(); vehDrawn = ''; clearBikes(); renderSearch(); }
+    updLayout();
+    $('q').focus();   // 需在點擊事件內同步呼叫，手機才會跳出鍵盤
+}
+// 手機版：沒有開啟任何頁面且沒按搜尋＝全地圖
+function updLayout() {
+    const full = isMobile() && !view && !listOpen, srch = isMobile() && !view && listOpen, app = $('app');
+    const b = document.querySelector('.srch-btn');
+    if (b) b.innerHTML = !view && listOpen ? '🗺 地圖' : '🔍 搜尋';
+    if (app.classList.contains('full') === full && app.classList.contains('srch') === srch) return;
+    app.classList.toggle('full', full);
+    app.classList.toggle('srch', srch);
+    setTimeout(() => map.invalidateSize(), 0);
+}
+setInterval(updLayout, 300);
+window.addEventListener('resize', updLayout);
+$('q').addEventListener('focus', () => { listOpen = true; updLayout(); });
+['tab-station', 'tab-route'].forEach(id => $(id).addEventListener('click', () => { listOpen = true; updLayout(); }));
 map.addControl(new MapBtn({ position: 'bottomright', cls: 'near-btn', html: '📍 附近', title: '站位：附近公車站位與 YouBike；路線清單：附近所有公車路線；路線頁：追蹤最接近我的站 (再按停止)', click: nearClick }));
+// 右下「搜尋」(手機版才顯示，位於「附近」上方)
+map.addControl(new MapBtn({ position: 'bottomright', cls: 'srch-btn', html: '🔍 搜尋', title: '路線／站位搜尋清單', click: srchClick }));
 
 // ---------- 1. 站位 → 站牌 ----------
 function openStation(id) {
@@ -1577,11 +1625,14 @@ function openRoute(sub, dir, here) {
     view = { type: 'route', sub, dir, here, scrolled: false };
     open.clear();
     const r = ROUTES.find(x => x.sub === sub && x.dir === dir);
-    loadEta('rt:' + r.route, `EstimatedTimeOfArrival/City/Taichung/${encodeURIComponent(r.route)}`, {}, `${r.route} 即時`).catch(() => {});
-    loadDay(r.route, true).catch(() => {});
+    // 第一步先打即時到站 (優先顯示)，完成後才載入時刻表、公車位置、線上班次
+    const rest = () => {
+        loadDay(r.route).catch(() => {});
+        loadVehicles(r.route).catch(() => {});
+        if (selDate() === todayKey()) loadA2(r.route).catch(() => {});
+    };
+    loadEta('rt:' + r.route, `EstimatedTimeOfArrival/City/Taichung/${encodeURIComponent(r.route)}`, {}, `${r.route} 即時`).then(rest, rest);
     drawRouteMap(r);
-    loadVehicles(r.route).catch(() => {});
-    if (selDate() === todayKey()) loadA2(r.route, false, true).catch(() => {});
     renderRoute();
     if (Track.on && Track.ll) { Track.key = ''; onTrack(...Track.ll); }
 }
