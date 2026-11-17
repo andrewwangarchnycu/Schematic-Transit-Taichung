@@ -151,6 +151,50 @@
     #key-dlg input { width: 100%; margin: 4px 0; padding: 8px; background: #2a2d31; color: var(--text); border: 1px solid #44484e; border-radius: 6px; font: inherit; }
     #base-set { position: absolute; z-index: 2000; right: 12px; top: 56px; width: min(360px, calc(100vw - 24px)); background: #26292d; border: 1px solid #44484e; border-radius: 10px; padding: 10px 12px; display: none; }
     .stn-icon { background: #fff; border: 2px solid #333; border-radius: 50%; color: #111; font-weight: bold; font-size: 11px; display: flex; align-items: center; justify-content: center; }
+
+    /* ===== 跟隨班次導航 (Mapbox GL 3D) ===== */
+    #nav { position: fixed; inset: 0; z-index: 3000; background: #000; display: none; color: #fff; }
+    #nav.on { display: block; }
+    #nav-map { position: absolute; inset: 0; }
+    .nav-top { position: absolute; z-index: 2; top: max(10px, env(safe-area-inset-top)); left: 10px; right: 10px; max-width: 560px; margin: 0 auto; display: flex; gap: 12px; align-items: center;
+        background: rgba(28,28,30,.92); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-radius: 16px; padding: 12px 14px; box-shadow: 0 6px 24px rgba(0,0,0,.5); }
+    .nav-top.alert { background: rgba(198,40,40,.95); }
+    .nav-top .ic { font-size: 30px; line-height: 1; }
+    .nav-top .big { font-size: 19px; font-weight: 700; line-height: 1.3; }
+    .nav-top .small { color: #d1d1d6; font-size: 14px; margin-top: 2px; }
+    .nav-top .badge, .nav-sheet .badge, .nav-callout .badge { font-size: 13px; padding: 1px 7px; }
+    .nav-sheet { position: absolute; z-index: 2; left: 0; right: 0; bottom: 0; max-width: 560px; margin: 0 auto; max-height: 44%; overflow-y: auto;
+        background: rgba(28,28,30,.95); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-radius: 18px 18px 0 0; padding: 8px 14px max(14px, env(safe-area-inset-bottom)); box-shadow: 0 -6px 24px rgba(0,0,0,.4); }
+    .nav-sheet .grab { width: 38px; height: 5px; border-radius: 3px; background: #5a5a5e; margin: 0 auto 8px; }
+    .nav-btns { display: flex; gap: 8px; margin: 2px 0 8px; }
+    .nav-btns button { flex: 1; border: 0; border-radius: 12px; padding: 10px 8px; font: inherit; font-weight: 600; color: #fff; background: #3a3a3c; cursor: pointer; }
+    .nav-btns button:disabled { opacity: .35; }
+    .nav-btns .go { background: #0a84ff; flex: 2; }
+    .nav-btns .end { background: #c62828; }
+    .nav-tok { font-size: 13px; color: #d1d1d6; margin-bottom: 8px; }
+    .tls { position: relative; }
+    .tl { display: grid; grid-template-columns: 34px 1fr; gap: 0 10px; padding: 7px 6px; border-radius: 10px; cursor: pointer; }
+    .tl.cur { background: rgba(10,132,255,.22); }
+    .tl.done { opacity: .45; }
+    .tl-ic { display: flex; justify-content: center; align-items: flex-start; font-size: 18px; }
+    .tl-s { color: #c7c7cc; font-size: 13px; }
+    .tl-dot { width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 4px solid; margin-top: 2px; }
+    .tl.ride .tl-ic { align-items: stretch; }
+    .tl-bar { width: 8px; border-radius: 4px; background: var(--c); min-height: 38px; }
+    .tl.walk .tl-s { color: #8ab4f8; }
+    .nav-callout { background: rgba(28,28,30,.92); border-radius: 12px; padding: 6px 10px; font-size: 13px; color: #fff; white-space: nowrap; box-shadow: 0 4px 14px rgba(0,0,0,.5); position: relative; margin-bottom: 10px; }
+    .nav-callout::after { content: ''; position: absolute; left: 50%; bottom: -7px; margin-left: -7px; border: 7px solid transparent; border-bottom: 0; border-top-color: rgba(28,28,30,.92); }
+    .nav-callout.next { border: 2px solid #0a84ff; }
+    .nav-callout .nc-s { color: #c7c7cc; font-size: 12px; }
+    .nav-callout .nc-t { font-size: 18px; font-weight: 700; font-family: ui-monospace, monospace; }
+    .nav-pin { background: var(--c, #333); color: #fff; border: 2px solid #fff; border-radius: 10px; padding: 3px 8px; font-size: 12px; font-weight: 700; white-space: nowrap; margin-bottom: 6px; text-align: center; box-shadow: 0 3px 10px rgba(0,0,0,.5); }
+    .nav-pin small { display: block; font-weight: normal; }
+    .nav-pin.dest { background: #c62828; font-size: 14px; }
+    .nav-bus { width: 34px; height: 34px; }
+    .nav-me { position: relative; width: 22px; height: 22px; }
+    .nav-me .dot { position: absolute; inset: 2px; border-radius: 50%; background: #0a84ff; border: 3px solid #fff; box-shadow: 0 0 0 6px rgba(10,132,255,.25); }
+    .nav-me .cone { position: absolute; left: 50%; bottom: 50%; width: 60px; height: 60px; margin-left: -30px; background: radial-gradient(circle at 50% 100%, rgba(10,132,255,.55), rgba(10,132,255,0) 70%); clip-path: polygon(50% 100%, 15% 0, 85% 0); }
+    .mapboxgl-ctrl-bottom-left, .mapboxgl-ctrl-bottom-right { bottom: 44%; }
     @media (max-width: 760px) {
         #app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 36vh 1fr; }
         input[type=search] { min-width: 0; flex-basis: 100%; order: 5; }
@@ -177,6 +221,7 @@
 <div id="api-detail"></div>
 <div id="base-set"></div>
 <div id="key-dlg"></div>
+<div id="nav"><div id="nav-map"></div><div id="nav-top" class="nav-top"></div><div id="nav-sheet" class="nav-sheet"></div></div>
 <script src="taichung-network.js"></script>
 <!-- 本機開發用金鑰 (gitignore)；公開網站沒有此檔，訪客自行輸入金鑰 -->
 <script src="tdx-key.local.js"></script>
@@ -432,7 +477,7 @@ const estGet = route => cacheGet(EST_PREFIX + route, v => Date.now() - v.at < 30
 const todayOld = route => cacheGet(TODAY_PREFIX + route, v => v.date === todayKey() && v.ver >= 2);
 function loadOnce(key, fn) {
     if (loading.has(key)) return loading.get(key);
-    const p = fn().finally(() => { loading.delete(key); dayMemo.clear(); rerender(); });
+    const p = fn().finally(() => { loading.delete(key); dayMemo.clear(); rerender(); if (Nav.on) { navRender(); navMarks(); } });
     loading.set(key, p);
     return p;
 }
@@ -1902,9 +1947,498 @@ function renderMrt() {
         const s = M.stations[+g.dataset.idx]; map.setView([s.lat, s.lng], 16); });
 }
 
+// ==================== 3. 跟隨班次導航 (Mapbox GL 3D，參考 Apple 地圖大眾運輸導航) ====================
+//   由路線圖 (taichung.html) 行程規劃「🧭 開始導航」帶入 ?nav={from,to,legs,ws,we}
+//   步驟：步行到上車站 → 候車 → 搭乘 → (步行) 轉乘 → … → 步行到目的地 → 抵達
+//   候車前：視點＝裝置羅盤，3D 地圖標出上車站、路線方向、到站倒數與早/遲；上車後：視點跟隨當班公車
+//   步行路徑：Mapbox Directions (walking)，偏離 40 m 自動重算；步驟可自動判斷前進，也可手動 ◀ ▶
+const NAV_GL = 'https://api.mapbox.com/mapbox-gl-js/v3.9.4/';
+const Nav = { on: false, started: false, plan: null, legs: [], steps: [], cur: 0, map: null, pos: null, watch: null, free: false,
+              plate: null, rideAt: 0, warned: -1, tick: null, cam: null, poll: null, brg: null, busS: null, marks: {}, walkSrc: '', pt: { eta: 0, veh: 0, a2: 0 } };
+const gDist = (a, b) => Math.hypot((a.lng - b.lng) * 101700, (a.lat - b.lat) * 110900);
+const angLerp = (a, b, k) => { const d = ((b - a + 540) % 360) - 180; return (a + d * k + 360) % 360; };
+// ---- 折線工具 (點為 [lat, lng]) ----
+function navLine(pts) {
+    const cum = [0];
+    for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + gDist({ lat: pts[i - 1][0], lng: pts[i - 1][1] }, { lat: pts[i][0], lng: pts[i][1] }));
+    return { pts, cum, len: cum[cum.length - 1] };
+}
+function lineProject(L, p, minS = -1) {
+    let best = null;
+    for (let i = 1; i < L.pts.length; i++) {
+        const a = L.pts[i - 1], b = L.pts[i], ax = a[1] * 101700, ay = a[0] * 110900, bx = b[1] * 101700 - ax, by = b[0] * 110900 - ay, L2 = bx * bx + by * by;
+        const t = L2 ? Math.max(0, Math.min(1, ((p.lng * 101700 - ax) * bx + (p.lat * 110900 - ay) * by) / L2)) : 0;
+        const s = L.cum[i - 1] + t * (L.cum[i] - L.cum[i - 1]);
+        if (s < minS) continue;
+        const d = Math.hypot(p.lng * 101700 - ax - t * bx, p.lat * 110900 - ay - t * by);
+        if (!best || d < best.d) best = { s, d };
+    }
+    return best || { s: 0, d: Infinity };
+}
+function lineAt(L, s) {
+    s = Math.max(0, Math.min(L.len, s));
+    let i = 1;
+    while (i < L.cum.length - 1 && L.cum[i] < s) i++;
+    const a = L.pts[i - 1], b = L.pts[i], seg = L.cum[i] - L.cum[i - 1] || 1, t = (s - L.cum[i - 1]) / seg;
+    const lat = a[0] + (b[0] - a[0]) * t, lng = a[1] + (b[1] - a[1]) * t;
+    return { lat, lng, brg: (Math.atan2((b[1] - a[1]) * 101700, (b[0] - a[0]) * 110900) * 180 / Math.PI + 360) % 360 };
+}
+function lineSlice(L, s0, s1) {
+    const out = [lineAt(L, s0)].map(p => [p.lat, p.lng]);
+    for (let i = 0; i < L.pts.length; i++) if (L.cum[i] > s0 && L.cum[i] < s1) out.push(L.pts[i]);
+    const e = lineAt(L, s1); out.push([e.lat, e.lng]);
+    return out;
+}
+// ---- 行程解析 ----
+function navResolve(p) {
+    const legs = p.legs.map(l => {
+        if (l.k === 'mrt') {
+            const st = M.stations, ib = st.findIndex(s => s.name === l.b), ia = st.findIndex(s => s.name === l.a);
+            if (ib < 0 || ia < 0) return null;
+            const line = navLine(M.shape), sB = lineProject(line, st[ib]).s, sA = lineProject(line, st[ia]).s;
+            const fw = sA >= sB, path = fw ? lineSlice(line, sB, sA) : lineSlice(line, sA, sB).reverse();
+            return { k: 'mrt', dirKey: l.dirKey, ib, ia, b: st[ib], a: st[ia], line: navLine(path), color: M.color || '#8cc540', label: '綠線', dest: l.dirKey === 'south' ? '高鐵臺中站' : '北屯總站',
+                     path, nStops: Math.abs(ia - ib) };
+        }
+        const r = ROUTES.find(x => x.sub === l.sub && x.dir === l.dir);
+        if (!r) return null;
+        const bp = r.seq.findIndex(si => STOPS[si].name === l.b);
+        let ap = -1;
+        for (let k = bp + 1; bp >= 0 && k < r.seq.length; k++) if (STOPS[r.seq[k]].name === l.a) { ap = k; break; }
+        if (bp < 0 || ap < 0) return null;
+        const sh = shapeOf(r), raw = sh ? sh.reduce((a, b) => b.length > a.length ? b : a, sh[0]) : r.seq.map(si => [STOPS[si].lat, STOPS[si].lng]);
+        const line = navLine(raw), B = STOPS[r.seq[bp]], A = STOPS[r.seq[ap]];
+        const sB = lineProject(line, B).s, sA = lineProject(line, A, sB).s;
+        return { k: 'bus', r, bp, ap, b: B, a: A, line, sB, sA, color: colorOf(r.sub), label: r.sub, dest: destOf(r), path: lineSlice(line, sB, Math.max(sA, sB + 1)), nStops: ap - bp };
+    });
+    if (legs.some(x => !x)) return null;
+    const steps = [];
+    legs.forEach((g, i) => {
+        if (i === 0) steps.push({ t: 'walk', to: g.b, name: g.b.name, from: p.from });
+        else if (gDist(legs[i - 1].a, g.b) > 30) steps.push({ t: 'walk', to: g.b, name: g.b.name, from: legs[i - 1].a, xfer: true });
+        steps.push({ t: 'wait', g, i, xfer: i > 0 });
+        steps.push({ t: 'ride', g, i });
+    });
+    const last = legs[legs.length - 1], dest = p.to && isFinite(p.to.lat) ? p.to : { name: last.a.name, lat: last.a.lat, lng: last.a.lng };
+    if (gDist(last.a, dest) > 40) steps.push({ t: 'walk', to: dest, name: dest.name, from: last.a, end: true });
+    steps.push({ t: 'arrive', to: dest, name: dest.name });
+    return { legs, steps, dest };
+}
+// ---- 開啟 / 關閉 ----
+function navLoadGL() {
+    if (window.mapboxgl) return Promise.resolve();
+    return new Promise((ok, no) => {
+        const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = NAV_GL + 'mapbox-gl.css'; document.head.appendChild(l);
+        const s = document.createElement('script'); s.src = NAV_GL + 'mapbox-gl.js'; s.onload = ok; s.onerror = () => no(new Error('Mapbox GL 載入失敗')); document.head.appendChild(s);
+    });
+}
+function navOpen(p) {
+    const R = navResolve(p);
+    if (!R) { alert('無法在站牌資料中找到這個行程的上下車站，請改用路線查詢。'); return; }
+    Object.assign(Nav, { on: true, started: false, plan: p, legs: R.legs, steps: R.steps, dest: R.dest, cur: 0, plate: null, warned: -1, free: false, busS: null, brg: null });
+    $('nav').classList.add('on');
+    document.body.style.overflow = 'hidden';
+    // 預先載入：各段路線即時、時刻表 (早/遲比對)、線上班次、公車位置
+    navRoutes().forEach(rt => { navEta(rt); loadDay(rt, true).catch(() => {}); loadA2(rt, false, true).catch(() => {}); loadVehicles(rt, true).catch(() => {}); });
+    navRender();
+    if (!baseCfg.token) return;
+    navLoadGL().then(navMap).catch(e => { $('nav-top').innerHTML = `<div class="small">${esc(e.message)}</div>`; });
+}
+function navClose() {
+    clearInterval(Nav.tick); clearInterval(Nav.cam); clearInterval(Nav.poll);
+    if (Nav.watch !== null && Nav.watch !== undefined) navigator.geolocation.clearWatch(Nav.watch);
+    if (Nav.map) Nav.map.remove();
+    Object.assign(Nav, { on: false, started: false, map: null, watch: null, marks: {}, walkSrc: '' });
+    Nav.steps.forEach(s => { s.route = null; });
+    $('nav').classList.remove('on');
+    document.body.style.overflow = '';
+    const u = new URL(location.href); u.searchParams.delete('nav'); history.replaceState(null, '', u);
+    setTimeout(() => map.invalidateSize(), 50);
+}
+const navRoutes = () => [...new Set(Nav.legs.filter(g => g.k === 'bus').map(g => g.r.route))];
+const navEta = (rt, force = true) => loadEta('rt:' + rt, `EstimatedTimeOfArrival/City/Taichung/${encodeURIComponent(rt)}`, {}, `${rt} 即時 (導航)`, force).catch(() => {});
+function navStart() {
+    Nav.started = true;
+    startCompass();   // iOS 需在使用者點擊時要求方位權限
+    if (navigator.geolocation && (Nav.watch === null || Nav.watch === undefined))
+        Nav.watch = navigator.geolocation.watchPosition(p => {
+            const c = p.coords;
+            Nav.pos = { lat: c.latitude, lng: c.longitude, acc: c.accuracy, sp: c.speed, hd: c.speed > 0.5 && isFinite(c.heading) ? c.heading : null, at: Date.now() };
+            navMe();
+        }, () => {}, { enableHighAccuracy: true, maximumAge: 3000, timeout: 20000 });
+    clearInterval(Nav.tick); clearInterval(Nav.cam); clearInterval(Nav.poll);
+    Nav.tick = setInterval(navTick, 1000);
+    Nav.cam = setInterval(navCam, 250);
+    // 即時資料依階段調整頻率 (每 5 秒檢查是否到期)，見 navPollPlan
+    const t0 = Date.now();
+    Nav.pt = { eta: t0, veh: t0, a2: t0 };
+    Nav.poll = setInterval(navPoll, 5000);
+    Nav.free = false; Nav.zoomSet = false;
+    navWalkAll();
+    navRender();
+}
+// 目前或接下來要搭的那一段
+function navLeg() { for (let k = Nav.cur; k < Nav.steps.length; k++) if (Nav.steps[k].g) return Nav.steps[k].g; return null; }
+// 依階段決定各項即時資料的更新間隔 (ms，null＝不更新)，節省 TDX API：
+//   步行中   到站/位置 60 秒、線上班次 (早/遲) 2 分鐘
+//   候車中   到站/位置：> 10 分 60 秒、5–10 分 30 秒、< 5 分 20 秒；線上班次 2 分鐘
+//   搭乘中   只更新公車位置 30 秒；剩 2 站內才更新到站 (抵達倒數) 30 秒；不抓線上班次
+function navPollPlan(st, g) {
+    if (!st || st.t === 'arrive') return { eta: null, veh: null, a2: null };
+    if (st.t === 'ride') { const L = navStopsLeft(g); return { eta: L && L.n <= 2 ? 30000 : null, veh: 30000, a2: null }; }
+    if (st.t === 'wait') {
+        const w = navWaitInfo(g), left = w.dl ? w.dl - Date.now() : Infinity, iv = left < 300000 ? 20000 : left < 600000 ? 30000 : 60000;
+        return { eta: iv, veh: iv, a2: 120000 };
+    }
+    return { eta: 60000, veh: 60000, a2: 120000 };
+}
+function navPoll() {
+    if (!Nav.on || !Nav.started || document.visibilityState !== 'visible') return;
+    const st = Nav.steps[Nav.cur], g = navLeg();
+    if (!g || g.k !== 'bus') return;
+    const iv = navPollPlan(st, g), now = Date.now(), due = k => iv[k] && now - Nav.pt[k] >= iv[k];
+    if (due('eta')) { Nav.pt.eta = now; navEta(g.r.route); }
+    if (due('veh')) { Nav.pt.veh = now; loadVehicles(g.r.route, true).catch(() => {}); }
+    if (due('a2')) { Nav.pt.a2 = now; loadA2(g.r.route, true, true).catch(() => {}); }
+}
+function navGo(k) {
+    k = Math.max(0, Math.min(Nav.steps.length - 1, k));
+    if (k === Nav.cur) return;
+    const st = Nav.steps[k];
+    Nav.cur = k; Nav.free = false; Nav.busS = null;
+    if (st.t === 'wait') Nav.plate = null;
+    if (st.t === 'ride') { Nav.rideAt = Date.now(); if (!Nav.plate) Nav.plate = navPickBus(st.g); }
+    if (st.t === 'walk') navWalk(st, true);
+    // 換步驟立即更新一次 (搭乘中只更新公車位置)
+    const g = navLeg();
+    if (g && g.k === 'bus') {
+        const now = Date.now();
+        if (st.t !== 'ride') { navEta(g.r.route); Nav.pt.eta = now; }
+        loadVehicles(g.r.route, true).catch(() => {}); Nav.pt.veh = now;
+    }
+    if (navigator.vibrate) navigator.vibrate(60);
+    navRender(); navDraw();
+}
+// ---- 即時資訊 ----
+function navEtaRow(g, name) {
+    const c = etaCache.get('rt:' + g.r.route);
+    return c && c.rows.filter(x => x.name === name && x.sub === g.r.sub && x.dir === g.r.dir).sort((a, b) => (a.dl ?? Infinity) - (b.dl ?? Infinity))[0];
+}
+function navVeh(g, plate = Nav.plate) {
+    if (g.k !== 'bus' || !plate) return null;
+    const c = vehCache.get(g.r.route);
+    return c && c.rows.find(v => v.plate === plate && v.sub === g.r.sub && v.dir === g.r.dir) || null;
+}
+// 上車時選車：起站 ETA 指定的車牌 → 離上車站最近、還沒過站的車 → 離我最近的車
+function navPickBus(g) {
+    if (g.k !== 'bus') return null;
+    const row = navEtaRow(g, g.b.name);
+    if (row && row.plate && row.plate !== '-1') return row.plate;
+    const c = vehCache.get(g.r.route);
+    if (!c) return null;
+    const Mb = alongOf(g.r)[g.bp], ref = Nav.pos || g.b;
+    const vs = c.rows.filter(v => v.sub === g.r.sub && v.dir === g.r.dir).map(v => ({ v, st: vehState(g.r, v) })).filter(x => x.st);
+    vs.sort((x, y) => gDist(x.v, ref) - gDist(y.v, ref));
+    return vs.length ? vs[0].v.plate : null;
+}
+// 候車資訊：到站倒數＋早/遲
+function navWaitInfo(g) {
+    if (g.k === 'mrt') {
+        const ts = mrtTimes(g.ib, g.dirKey, todayKey()), nm = nowMin(), nx = ts.find(x => x >= nm - 0.2);
+        if (nx === undefined) return { txt: '今日已收班' };
+        const d = new Date(); d.setHours(0, 0, 0, 0);
+        return { dl: d.getTime() + nx * 60000, src: '班距推算' };
+    }
+    const row = navEtaRow(g, g.b.name);
+    if (!row) return { txt: etaCache.has('rt:' + g.r.route) ? '暫無到站資訊' : '即時資料載入中…' };
+    if (row.plate && row.plate !== '-1' && !Nav.plate) Nav.plate = row.plate;
+    if (row.dl === null) return { txt: row.status === 1 && row.next ? `表定 ${new Date(row.next).toTimeString().slice(0, 5)} 發車` : (STATUS[row.status] || '--'), row };
+    return { dl: row.dl, cmp: compareEta(g.r, g.b.name, row), row, plate: row.plate };
+}
+// 公車在路線上的平順位置 (依車速外推，顯示值往目標緩動)
+function navBusPos(g) {
+    const v = navVeh(g);
+    if (!v) return null;
+    const pr = lineProject(g.line, v, Nav.busS !== null ? Nav.busS - 300 : -1);
+    const st = vehState(g.r, v), jam = !!(st && st.jam);
+    const ms = jam ? 0 : isFinite(v.speed) && v.speed !== null ? v.speed / 3.6 : 0;
+    const dt = Math.max(0, Math.min(90, (Date.now() - v.gps) / 1000));
+    const target = Math.min(g.line.len, pr.s + Math.min(500, ms * dt * 0.85));
+    Nav.busS = Nav.busS === null || Math.abs(target - Nav.busS) > 600 ? target : Nav.busS + (target - Nav.busS) * 0.25;
+    const p = lineAt(g.line, Nav.busS);
+    return { ...p, v, jam, s: Nav.busS };
+}
+// 搭乘中：剩幾站
+function navStopsLeft(g) {
+    if (g.k === 'mrt') {
+        if (!Nav.pos) return null;
+        const s = lineProject(g.line, Nav.pos).s, n = g.nStops;
+        return Math.max(1, Math.round(n - s / Math.max(1, g.line.len) * n));
+    }
+    const v = navVeh(g), Mv = alongOf(g.r);
+    let m = null;
+    if (v) { const st = vehState(g.r, v); if (st) m = st.mNow; }
+    if (m === null && Nav.pos) { const st = vehState(g.r, { ...Nav.pos, plate: '__me', speed: null, gps: Date.now() }); if (st) m = st.m; }
+    if (m === null) return null;
+    let n = 0;
+    for (let k = g.bp + 1; k <= g.ap; k++) if (Mv[k] > m + 15) n++;
+    return { n, m, Ma: Mv[g.ap], Mb: Mv[g.bp] };
+}
+// ---- 自動前進 ----
+function navAuto() {
+    const st = Nav.steps[Nav.cur], P = Nav.pos;
+    if (st.t === 'walk') { if (P && gDist(P, st.to) < 35) navGo(Nav.cur + 1); return; }
+    if (st.t === 'wait') {
+        const g = st.g;
+        if (g.k === 'mrt') { if (P && P.sp > 6 && gDist(P, g.b) > 200) navGo(Nav.cur + 1); return; }
+        const v = navVeh(g);
+        if (v) {
+            const s = vehState(g.r, v), Mb = alongOf(g.r)[g.bp];
+            if (s && s.m > Mb + 30) {
+                if (P && gDist(P, v) < 80) { navGo(Nav.cur + 1); return; }   // 我和車一起離站＝已上車
+                if (P && gDist(P, g.b) < 80) Nav.plate = null;                // 車走了我還在站上＝沒搭到，等下一班
+            }
+        }
+        // 我已沿路線離開上車站且有速度
+        if (P && P.sp > 4 && gDist(P, g.b) > 150) { const pr = lineProject(g.line, P); if (pr.d < 40 && pr.s > g.sB) navGo(Nav.cur + 1); }
+        return;
+    }
+    if (st.t === 'ride') {
+        const g = st.g;
+        if (g.k === 'mrt') { if (P && gDist(P, g.a) < 120 && Date.now() - Nav.rideAt > 60000) navGo(Nav.cur + 1); return; }
+        const L = navStopsLeft(g);
+        if (L && L.m >= L.Ma - 25) { navGo(Nav.cur + 1); return; }
+        if (P && gDist(P, g.a) < 40 && Date.now() - Nav.rideAt > 60000) navGo(Nav.cur + 1);
+    }
+}
+// ---- 步行路徑 (Mapbox Directions walking) ----
+async function navDirections(a, b) {
+    const base = `https://api.mapbox.com/directions/v5/mapbox/walking/${a.lng.toFixed(6)},${a.lat.toFixed(6)};${b.lng.toFixed(6)},${b.lat.toFixed(6)}?geometries=geojson&overview=full&steps=true&access_token=${encodeURIComponent(baseCfg.token)}`;
+    let js = null;
+    try { js = await (await fetch(base + '&language=zh-Hant')).json(); } catch (e) { js = null; }
+    if (!js || js.code !== 'Ok') js = await (await fetch(base)).json();
+    const rt = js && js.routes && js.routes[0];
+    if (!rt) throw new Error((js && js.message) || '找不到步行路徑');
+    const pts = rt.geometry.coordinates.map(([x, y]) => [y, x]);
+    let acc = 0;
+    const steps = rt.legs[0].steps.map(s => { const o = { at: acc, d: s.distance, ins: s.maneuver && s.maneuver.instruction || '' }; acc += s.distance; return o; });
+    return { line: navLine(pts.length > 1 ? pts : [[a.lat, a.lng], [b.lat, b.lng]]), dist: rt.distance, dur: rt.duration, steps, at: Date.now() };
+}
+function navWalkAll() {
+    if (!baseCfg.token) return;
+    Nav.steps.forEach((st, k) => {
+        if (st.t !== 'walk' || st.route || st.busy) return;
+        const from = k === Nav.cur && Nav.pos ? Nav.pos : st.from;
+        if (!from || !isFinite(from.lat)) return;
+        st.busy = true;
+        navDirections(from, st.to).then(w => { st.route = w; navDraw(); navRender(); }).catch(() => {}).finally(() => { st.busy = false; });
+    });
+}
+function navWalk(st, force = false) {
+    if (!baseCfg.token || !Nav.pos || st.busy) return;
+    const off = st.route ? lineProject(st.route.line, Nav.pos).d > 40 : true;
+    if (!force && !off) return;
+    if (st.route && Date.now() - st.route.at < 20000 && !force) return;
+    st.busy = true;
+    navDirections(Nav.pos, st.to).then(w => { st.route = w; navDraw(); }).catch(() => {}).finally(() => { st.busy = false; });
+}
+// ---- 地圖 ----
+function navMap() {
+    if (!Nav.on || Nav.map) return;
+    mapboxgl.accessToken = baseCfg.token;
+    const all = Nav.legs.flatMap(g => g.path).concat([[Nav.dest.lat, Nav.dest.lng]]);
+    const b = all.reduce((bb, p) => bb.extend([p[1], p[0]]), new mapboxgl.LngLatBounds([all[0][1], all[0][0]], [all[0][1], all[0][0]]));
+    const m = Nav.map = new mapboxgl.Map({ container: 'nav-map', style: 'mapbox://styles/mapbox/standard', bounds: b, fitBoundsOptions: { padding: { top: 120, bottom: 260, left: 40, right: 40 } }, pitch: 45, antialias: true });
+    m.on('style.load', () => {
+        const h = new Date().getHours();
+        try { m.setConfigProperty('basemap', 'lightPreset', h >= 6 && h < 17 ? 'day' : h >= 17 && h < 19 ? 'dusk' : 'night'); } catch (e) {}
+        navLayers(); navDraw();
+    });
+    ['dragstart', 'rotatestart', 'pitchstart', 'zoomstart'].forEach(ev => m.on(ev, e => { if (e.originalEvent && Nav.started) { Nav.free = true; navRender(); } }));
+    m.on('error', e => { if (e && e.error && /401|403|token/i.test(String(e.error.message || e.error.status))) $('nav-top').innerHTML = '<div class="small">Mapbox token 無效或網址受限</div>'; });
+}
+function navArrowImg() {
+    const c = document.createElement('canvas'); c.width = c.height = 32;
+    const x = c.getContext('2d'); x.fillStyle = '#fff'; x.beginPath(); x.moveTo(26, 16); x.lineTo(8, 6); x.lineTo(12, 16); x.lineTo(8, 26); x.closePath(); x.fill();
+    return x.getImageData(0, 0, 32, 32);
+}
+function navLayers() {
+    const m = Nav.map, E = { type: 'FeatureCollection', features: [] };
+    ['nav-legs', 'nav-walk', 'nav-stops'].forEach(id => m.addSource(id, { type: 'geojson', data: E }));
+    if (!m.hasImage('nav-arrow')) m.addImage('nav-arrow', navArrowImg(), { pixelRatio: 2 });
+    m.addLayer({ id: 'nav-walk', type: 'line', source: 'nav-walk', slot: 'middle', layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': ['case', ['get', 'cur'], '#0a84ff', '#7fb6ff'], 'line-width': ['case', ['get', 'cur'], 7, 5], 'line-dasharray': [0, 1.8], 'line-emissive-strength': 1 } });
+    m.addLayer({ id: 'nav-legs-case', type: 'line', source: 'nav-legs', slot: 'middle', layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#fff', 'line-width': ['case', ['get', 'cur'], 13, 10], 'line-opacity': 0.9, 'line-emissive-strength': 1 } });
+    m.addLayer({ id: 'nav-legs', type: 'line', source: 'nav-legs', slot: 'middle', layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': ['get', 'c'], 'line-width': ['case', ['get', 'cur'], 9, 6], 'line-opacity': ['case', ['get', 'done'], 0.4, 1], 'line-emissive-strength': 1 } });
+    m.addLayer({ id: 'nav-arrows', type: 'symbol', source: 'nav-legs', slot: 'top',
+        layout: { 'symbol-placement': 'line', 'symbol-spacing': 40, 'icon-image': 'nav-arrow', 'icon-size': 0.55, 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-rotation-alignment': 'map', 'icon-pitch-alignment': 'map' },
+        paint: { 'icon-emissive-strength': 1 } });
+    m.addLayer({ id: 'nav-stops', type: 'circle', source: 'nav-stops', slot: 'top',
+        paint: { 'circle-radius': ['case', ['get', 'end'], 7, 4], 'circle-color': '#fff', 'circle-stroke-color': ['get', 'c'], 'circle-stroke-width': ['case', ['get', 'end'], 4, 2.5], 'circle-pitch-alignment': 'map', 'circle-emissive-strength': 1 } });
+}
+const toLL = p => [p[1], p[0]];
+function navDraw() {
+    const m = Nav.map;
+    if (!m || !m.getSource('nav-legs')) return;
+    const curLeg = (Nav.steps[Nav.cur] || {}).g, curI = curLeg ? Nav.legs.indexOf(curLeg) : -1;
+    const doneLeg = i => Nav.steps.slice(0, Nav.cur).some(s => s.t === 'ride' && s.i === i);
+    m.getSource('nav-legs').setData({ type: 'FeatureCollection', features: Nav.legs.map((g, i) => ({ type: 'Feature',
+        properties: { c: g.color, cur: i === curI, done: doneLeg(i) }, geometry: { type: 'LineString', coordinates: g.path.map(toLL) } })) });
+    const pts = [];
+    Nav.legs.forEach(g => {
+        if (g.k === 'bus') g.r.seq.slice(g.bp, g.ap + 1).forEach((si, k, a) => pts.push({ p: STOPS[si], c: g.color, end: k === 0 || k === a.length - 1 }));
+        else [g.b, g.a].forEach(s => pts.push({ p: s, c: g.color, end: true }));
+    });
+    m.getSource('nav-stops').setData({ type: 'FeatureCollection', features: pts.map(x => ({ type: 'Feature', properties: { c: x.c, end: x.end }, geometry: { type: 'Point', coordinates: [x.p.lng, x.p.lat] } })) });
+    m.getSource('nav-walk').setData({ type: 'FeatureCollection', features: Nav.steps.map((s, k) => s.t === 'walk' ? { type: 'Feature', properties: { cur: k === Nav.cur },
+        geometry: { type: 'LineString', coordinates: s.route ? s.route.line.pts.map(toLL) : [[s.from ? s.from.lng : s.to.lng, s.from ? s.from.lat : s.to.lat], [s.to.lng, s.to.lat]] } } : null).filter(Boolean) });
+    navMarks();
+}
+// 3D 地圖上的 HTML 標記：上車站看板 (路線、方向、倒數、早/遲)、下車/轉乘站、目的地、我的位置、當班公車
+function navMark(key, ll, html, opt = {}) {
+    let mk = Nav.marks[key];
+    if (!mk) {
+        const el = document.createElement('div');
+        el.className = opt.cls || '';
+        mk = Nav.marks[key] = new mapboxgl.Marker({ element: el, anchor: opt.anchor || 'center', rotationAlignment: opt.rot ? 'map' : 'viewport', pitchAlignment: opt.rot ? 'map' : 'viewport' }).setLngLat([ll.lng, ll.lat]).addTo(Nav.map);
+    }
+    mk.setLngLat([ll.lng, ll.lat]);
+    if (html !== undefined && mk._html !== html) { mk.getElement().innerHTML = html; mk._html = html; }
+    if (opt.rotation !== undefined) mk.setRotation(opt.rotation);
+    return mk;
+}
+function navDropMark(key) { if (Nav.marks[key]) { Nav.marks[key].remove(); delete Nav.marks[key]; } }
+function navMarks() {
+    if (!Nav.map) return;
+    const st = Nav.steps[Nav.cur];
+    Nav.legs.forEach((g, i) => {
+        const isNext = navLeg() === g && st.t !== 'ride';
+        let body = `<div class="nc-h"><span class="badge" style="background:${g.color}">${esc(g.label)}</span> 往 ${esc(g.dest)}</div><div class="nc-s">${esc(g.b.name)} · ${i ? '轉乘上車' : '上車'}</div>`;
+        if (isNext) {
+            const w = navWaitInfo(g);
+            body += w.dl ? `<div class="nc-t"><span data-dl="${w.dl}">${remain(w.dl)}</span>${w.cmp ? ` <span class="dly ${lateCls(w.cmp.diff)}">${lateWord(w.cmp.diff)}</span>` : ''}</div>` : `<div class="nc-s">${esc(w.txt || '')}</div>`;
+        }
+        navMark('b' + i, g.b, `<div class="nav-callout${isNext ? ' next' : ''}">${body}</div>`, { anchor: 'bottom', cls: 'nav-ca' });
+        navMark('a' + i, g.a, `<div class="nav-pin" style="--c:${g.color}">${i === Nav.legs.length - 1 ? '下車' : '下車・轉乘'}<small>${esc(g.a.name)}</small></div>`, { anchor: 'bottom', cls: 'nav-ca' });
+    });
+    navMark('dest', Nav.dest, `<div class="nav-pin dest">🏁 ${esc(Nav.dest.name)}</div>`, { anchor: 'bottom', cls: 'nav-ca' });
+    // 當班公車 (候車時＝即將到站的那台；搭乘中＝我搭的那台)
+    const g = navLeg();
+    const b = g && g.k === 'bus' && (st.t === 'wait' || st.t === 'ride') ? navBusPos(g) : null;
+    if (b) navMark('bus', b, busDot(g.color, 0, b.jam), { cls: 'nav-bus', rot: true, rotation: isFinite(b.v.az) && b.v.az !== null ? b.v.az : b.brg });
+    else { navDropMark('bus'); Nav.busS = null; }
+}
+function navMe() {
+    if (!Nav.map || !Nav.pos) return;
+    const h = Loc.compass !== null && Loc.compass !== undefined ? Loc.compass : Nav.pos.hd;
+    navMark('me', Nav.pos, `<div class="nav-me">${h !== null && h !== undefined ? '<div class="cone"></div>' : ''}<div class="dot"></div></div>`, { cls: 'nav-mew', rot: true, rotation: h || 0 });
+}
+// 視點：候車前＝我的位置＋羅盤方向；搭乘中＝跟隨當班公車
+function navCam() {
+    if (!Nav.map || !Nav.started) return;
+    navMe();
+    const st = Nav.steps[Nav.cur];
+    if (st.t === 'ride' || st.t === 'wait') navMarks();
+    if (Nav.free) return;
+    let c = null, brg = null, pitch = 62, zoom = 17.3;
+    if (st.t === 'ride') {
+        const b = st.g.k === 'bus' ? navBusPos(st.g) : null;
+        if (b) { c = b; brg = b.brg; pitch = 66; zoom = 17; }
+        else if (Nav.pos) { c = Nav.pos; brg = Nav.pos.hd; }
+        else c = st.g.b;
+    } else {
+        c = Nav.pos || st.to || (st.g && st.g.b);
+        brg = Loc.compass !== null && Loc.compass !== undefined ? Loc.compass : Nav.pos && Nav.pos.hd;
+    }
+    if (!c) return;
+    const cur = Nav.map.getBearing();
+    Nav.brg = brg === null || brg === undefined ? cur : angLerp(Nav.brg === null ? cur : Nav.brg, brg, 0.25);
+    Nav.map.easeTo({ center: [c.lng, c.lat], bearing: Nav.brg, pitch, zoom: Nav.zoomSet ? Nav.map.getZoom() : zoom, duration: 250, easing: t => t });
+    Nav.zoomSet = true;
+}
+// ---- 畫面：上方指示卡＋下方步驟時間軸 ----
+function navTop() {
+    const st = Nav.steps[Nav.cur];
+    if (!st) return { ic: '🏁', big: '', small: '' };
+    if (st.t === 'walk') {
+        const w = st.route, P = Nav.pos;
+        let left = P ? gDist(P, st.to) : null, ins = '';
+        if (w && P) {
+            const pr = lineProject(w.line, P);
+            left = Math.max(0, w.line.len - pr.s);
+            const nx = w.steps.find(s => s.at > pr.s + 5);
+            if (nx && nx.ins) ins = `${Math.round(nx.at - pr.s)} m 後 ${nx.ins}`;
+        }
+        return { ic: '🚶', big: `步行至 ${st.end ? '' : '上車站 '}${st.name}`, small: [left !== null ? `剩 ${Math.round(left)} m · 約 ${Math.max(1, Math.round(left / 72))} 分` : '定位中…', ins].filter(Boolean).join('<br>') };
+    }
+    if (st.t === 'wait') {
+        const g = st.g, w = navWaitInfo(g);
+        return { ic: '🚏', big: `在 ${esc(g.b.name)} 搭 <span class="badge" style="background:${g.color}">${esc(g.label)}</span>`, small: `往 ${esc(g.dest)} · ${w.dl ? `<span data-dl="${w.dl}">${remain(w.dl)}</span> 到站${w.cmp ? ` <span class="dly ${lateCls(w.cmp.diff)}">${lateWord(w.cmp.diff)}</span>` : ''}${w.plate ? ` · ${esc(w.plate)}` : ''}` : esc(w.txt || '')}` };
+    }
+    if (st.t === 'ride') {
+        const g = st.g, L = navStopsLeft(g), n = g.k === 'mrt' ? L : L && L.n;
+        const ar = g.k === 'bus' ? navEtaRow(g, g.a.name) : null, arT = ar && ar.dl !== null && (!Nav.plate || ar.plate === Nav.plate) ? ar.dl : null;
+        const alert = n === 1 || n === 0;
+        if (alert && Nav.warned !== Nav.cur) { Nav.warned = Nav.cur; if (navigator.vibrate) navigator.vibrate([200, 100, 200]); }
+        const v = navVeh(g), jam = v && (vehState(g.r, v) || {}).jam;
+        return { alert, ic: alert ? '🔔' : g.k === 'mrt' ? '🚇' : '🚌', big: alert ? `下一站 ${esc(g.a.name)} 下車` : `搭乘中 · 還有 ${n === null || n === undefined ? '?' : n} 站`,
+                 small: `<span class="badge" style="background:${g.color}">${esc(g.label)}</span> 往 ${esc(g.dest)} · 在 ${esc(g.a.name)} 下車${arT ? ` · <span data-dl="${arT}">${remain(arT)}</span> 後抵達` : ''}${jam ? ' · <span class="dly late">塞車中</span>' : ''}${Nav.plate ? ` · ${esc(Nav.plate)}` : ''}` };
+    }
+    return { ic: '🏁', big: `已抵達 ${esc(st.name)}`, small: '導航結束' };
+}
+function navRender() {
+    if (!Nav.on) return;
+    const t = Nav.started ? navTop() : { ic: '🧭', big: `${esc(Nav.plan.from ? Nav.plan.from.name : '')} → ${esc(Nav.dest.name)}`, small: `${Nav.legs.map(g => `<span class="badge" style="background:${g.color}">${esc(g.label)}</span>`).join(' ')} · 轉乘 ${Nav.legs.length - 1} 次` };
+    const top = $('nav-top');
+    top.classList.toggle('alert', !!t.alert);
+    top.innerHTML = `<div class="ic">${t.ic}</div><div style="min-width:0"><div class="big">${t.big}</div><div class="small">${t.small}</div></div>`;
+    const st = Nav.steps[Nav.cur];
+    const nextLbl = !Nav.started ? '' : st.t === 'wait' ? '已上車 ▶' : st.t === 'ride' ? '已下車 ▶' : st.t === 'walk' ? '已到達 ▶' : '';
+    const tl = Nav.steps.map((s, k) => {
+        const cls = k < Nav.cur ? 'done' : k === Nav.cur && Nav.started ? 'cur' : '';
+        if (s.t === 'walk') {
+            const d = s.route ? s.route.dist : gDist(s.from || s.to, s.to);
+            return `<div class="tl ${cls} walk" data-k="${k}"><div class="tl-ic">🚶</div><div><b>步行 約 ${Math.max(1, Math.round((s.route ? s.route.dur : d / 1.2) / 60))} 分</b><div class="tl-s">${Math.round(d)} m → ${esc(s.name)}${s.xfer ? '（轉乘）' : ''}</div></div></div>`;
+        }
+        if (s.t === 'wait') {
+            const g = s.g, w = navWaitInfo(g);
+            return `<div class="tl ${cls}" data-k="${k}"><div class="tl-ic"><span class="tl-dot" style="border-color:${g.color}"></span></div><div><b>${esc(g.b.name)}</b> ${s.xfer ? '<small class="muted">轉乘</small>' : ''}
+                <div class="tl-s"><span class="badge" style="background:${g.color}">${esc(g.label)}</span> 往 ${esc(g.dest)} · ${w.dl ? `<span data-dl="${w.dl}">${remain(w.dl)}</span>${w.cmp ? ` <span class="dly ${lateCls(w.cmp.diff)}">${lateWord(w.cmp.diff)}</span>` : ''}` : esc(w.txt || '')}</div></div></div>`;
+        }
+        if (s.t === 'ride') {
+            const g = s.g;
+            return `<div class="tl ${cls} ride" data-k="${k}" style="--c:${g.color}"><div class="tl-ic"><span class="tl-bar"></span></div><div><div class="tl-s">搭 ${g.nStops} 站${g.k === 'bus' ? ` · ${(alongOf(g.r)[g.ap] - alongOf(g.r)[g.bp]) / 1000 < 1 ? Math.round(alongOf(g.r)[g.ap] - alongOf(g.r)[g.bp]) + ' m' : ((alongOf(g.r)[g.ap] - alongOf(g.r)[g.bp]) / 1000).toFixed(1) + ' km'}` : ''}</div>
+                <b>${esc(g.a.name)}</b> <small class="muted">下車</small></div></div>`;
+        }
+        return `<div class="tl ${cls}" data-k="${k}"><div class="tl-ic">🏁</div><div><b>${esc(s.name)}</b><div class="tl-s">目的地</div></div></div>`;
+    }).join('');
+    $('nav-sheet').innerHTML = `<div class="grab"></div>
+        ${!baseCfg.token ? `<div class="nav-tok">3D 導航需要 Mapbox token（只存在這台裝置）：<div class="row"><input id="nav-tok" type="search" placeholder="pk.…" style="flex:1"><button class="btn" id="nav-tok-ok">套用</button></div></div>` : ''}
+        <div class="nav-btns">${Nav.started
+            ? `<button id="nav-prev" ${Nav.cur ? '' : 'disabled'}>◀</button>${nextLbl ? `<button id="nav-next" class="go">${nextLbl}</button>` : ''}${Nav.free ? '<button id="nav-re">◎ 置中</button>' : ''}<button id="nav-end" class="end">結束</button>`
+            : `<button id="nav-go" class="go">🧭 開始導航</button><button id="nav-end" class="end">關閉</button>`}</div>
+        <div class="tls">${tl}</div>`;
+    const on = (id, f) => { const e = $(id); if (e) e.onclick = f; };
+    on('nav-go', navStart); on('nav-end', navClose); on('nav-prev', () => navGo(Nav.cur - 1)); on('nav-next', () => navGo(Nav.cur + 1));
+    on('nav-re', () => { Nav.free = false; Nav.zoomSet = false; navRender(); });
+    on('nav-tok-ok', () => { const v = $('nav-tok').value.trim(); if (!v) return; baseCfg.token = v; saveBase(); navRender(); navLoadGL().then(navMap).catch(e => alert(e.message)); });
+    $('nav-sheet').querySelectorAll('.tl[data-k]').forEach(e => e.onclick = () => { if (Nav.started) navGo(+e.dataset.k); });
+}
+function navTick() {
+    if (!Nav.on || !Nav.started) return;
+    navAuto();
+    const st = Nav.steps[Nav.cur];
+    if (st && st.t === 'walk') navWalk(st);
+    navRender();
+    navMarks();
+}
+
 // ---------- 啟動 ----------
 (function init() {
     const p = new URLSearchParams(location.search);
+    if (p.get('nav')) { setMode('route'); updateApi(); try { navOpen(JSON.parse(p.get('nav'))); } catch (e) { alert('導航參數錯誤'); } return; }
     if (p.get('route')) { setMode('route'); const ds = routeDirs(p.get('route')); if (ds.length) openRoute(ds[0].sub, ds[0].dir); return; }
     if (p.get('station')) { const st = [...STATIONS.values()].find(s => s.name === p.get('station')); setMode('station'); if (st) openStation(st.id); return; }
     setMode('route');

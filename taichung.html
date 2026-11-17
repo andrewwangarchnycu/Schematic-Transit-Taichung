@@ -209,6 +209,7 @@
         .plan-card.sel { border-color: rgba(255,255,255,0.55); background: rgba(255,255,255,0.1); }
         .plan-sum { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 14px; font-weight: bold; margin-bottom: 6px; }
         .plan-sum small { font-weight: normal; color: #aaa; font-size: 12px; }
+        .panel-btn.nav-go { background: #0a84ff; color: #fff; border-color: #0a84ff; font-weight: bold; margin-top: 6px; }
         .plan-leg { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-items: center; font-size: 12px; margin: 3px 0; }
         .plan-leg .route-badge { cursor: pointer; }
         .plan-leg .lg-main { color: #ddd; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2652,7 +2653,8 @@
                         ${alts ? `<span class="lg-sub">也可搭 ${alts}</span>` : ''}</div>` + end;
                 }).join('');
                 return `<div class="plan-card${k === UI.planSel ? ' sel' : ''}" data-k="${k}">
-                    <div class="plan-sum"><span>約 ${clock(p.arrive)} 抵達 <small>（${mins} 分）</small></span><small>${p.transfers ? `轉乘 ${p.transfers} 次` : '直達'}</small></div>${legs}</div>`;
+                    <div class="plan-sum"><span>約 ${clock(p.arrive)} 抵達 <small>（${mins} 分）</small></span><small>${p.transfers ? `轉乘 ${p.transfers} 次` : '直達'}</small></div>${legs}
+                    ${k === UI.planSel ? `<div class="panel-actions"><button class="panel-btn nav-go" onclick="event.stopPropagation(); startNav(${k})">🧭 開始導航</button></div>` : ''}</div>`;
             }).join('');
 
             // 精準度：缺時刻表的路線 / 非路廊站牌上車 (沒有即時) 可另外載入
@@ -2682,6 +2684,16 @@
             } else if (fresh) renderMap();
         }
 
+        // 跟隨班次導航：把選取的方案交給查詢頁 (taichung-query.html?nav=…) 的 3D 導航模式
+        function startNav(k) {
+            const p = UI.planResult && UI.planResult[k];
+            if (!p || !UI.plan) return;
+            const R = PLAN_NET.routes;
+            const pt = s => { const o = s.lid === 'mrt' ? MRT.stations[s.idx] : DATA[s.lid].stops[s.idx]; return { name: stationLabel(s.lid, s.idx), lat: o.lat, lng: o.lng }; };
+            const legs = p.legs.map(l => { const r = R[l.ri];
+                return r.kind === 'mrt' ? { k: 'mrt', dirKey: r.dirKey, b: r.stops[l.i], a: r.stops[l.j] } : { k: 'bus', sub: r.sub, dir: r.dir, b: r.stops[l.i], a: r.stops[l.j] }; });
+            location.href = 'taichung-query.html?nav=' + encodeURIComponent(JSON.stringify({ from: pt(UI.plan.from), to: pt(UI.plan.to), legs, ws: p.walkStart, we: p.walkEnd }));
+        }
         function renderMrtStationPanel(idx) {
             const st = MRT.stations[idx];
             const now = Date.now();
