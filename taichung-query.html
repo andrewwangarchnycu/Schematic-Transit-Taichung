@@ -687,20 +687,29 @@ function daySched(route, ds) {
         }).filter(Boolean).sort((a, b) => a.base - b.base) : [];
         let rows, ids, kind, cancel = [], added = null;
         // 今日：與每日營運時刻表比對發車 (±1 分視為同一班)，路線班表有、每日沒有＝取消；每日有、路線班表沒有＝增調
+        //   (每日營運時刻表或其起訖站時刻內插版本皆可；取消班次不列入班次，所以早/遲配對、遲發判斷都不會把取消班次算成「尚未發車」)
         const TO = ds === todayKey() ? todayOld(route) : null, o = TO && TO.subs[sub] && TO.subs[sub][dir];
-        if (deps.length && o && o.kind === 'table') {
-            const oi = o.stops === stops ? null : alignStops(stops, o.stops);
-            const dRows = oi ? o.trips.map(row => oi.map(j => j >= 0 ? row[j] : null)) : o.trips;
-            const dDep = dRows.map(row => row[0] !== null && row[0] !== undefined ? row[0] : null), used = new Set();
+        const oOK = o && (o.kind === 'table' || o.kind === 'interp');
+        const oi = oOK && o.stops !== stops ? alignStops(stops, o.stops) : null;
+        const dRows = oOK ? (oi ? o.trips.map(row => oi.map(j => j >= 0 ? row[j] : null)) : o.trips) : [];
+        const dDep = dRows.map(row => row[0] !== null && row[0] !== undefined ? row[0] : null);
+        let dailyBackbone = false;
+        if (deps.length && oOK) {
+            const used = new Set();
             deps.forEach(d => {
                 const j = dDep.findIndex((x, k) => !used.has(k) && x !== null && Math.abs(x - d.t) <= 1);
                 if (j >= 0) used.add(j); else d.cancel = true;
             });
             dDep.forEach((x, k) => { if (x !== null && !used.has(k)) deps.push({ t: x, id: (o.ids && o.ids[k]) || 'D' + (k + 1), st: [[stops[0], x]], add: true }); });
             deps.sort((a, b) => a.t - b.t);
+        } else if (!deps.length && oOK && prof.length) {
+            // 路線班表今日沒有預排班次 (只有班距)：班次＝每日營運時刻表，各站時間同樣用站站班表的歷史行駛時間
+            dDep.forEach((x, k) => { if (x !== null) deps.push({ t: x, id: (o.ids && o.ids[k]) || 'D' + (k + 1), st: [[stops[0], x]] }); });
+            deps.sort((a, b) => a.t - b.t);
+            dailyBackbone = true;
         }
         if (deps.length) {
-            kind = 'table';
+            kind = dailyBackbone ? 'daily' : 'table';
             const pair = prof.length ? pairTrips(deps.map(d => d.t), prof.map(p => p.base)) : deps.map(() => -1);
             rows = deps.map((d, k) => {
                 const row = new Array(stops.length).fill(null);
@@ -771,7 +780,7 @@ function timesAt(r, pos, dateStr) {
     const kind = old ? (e.kind === 'table' ? 'sched' : 'est') : e.kind === 'table' || e.kind === 'daily' ? 'sched' : 'est';
     const hwTxt = (e.hw || []).map(([s, en, a, b]) => `${fmt(s)}–${fmt(en)} 每 ${a === b || !b ? a : a + '–' + b} 分`).join('；');
     const note = old ? '每日營運時刻表 (站站推估班表無法取得)'
-        : e.kind === 'daily' ? `每日營運時刻表 (路線班表為班距發車${hwTxt ? ' ' + hwTxt : ''})`
+        : e.kind === 'daily' ? `每日營運時刻表發車 (路線班表為班距發車${hwTxt ? ' ' + hwTxt : ''})${i ? '，各站時間＝發車＋近 3 個月歷史行駛時間' : ''}`
         : kind === 'sched' ? `路線班表發車 (${dayTxt})${i ? '，各站時間＝發車＋近 3 個月歷史行駛時間' : ''}`
         : `站站推估班表 (${dayTxt}，近 3 個月歷史)`;
     const hwMin = (e.hw || []).length ? Math.min(...e.hw.map(h => h[2] || 99)) : null, hwMax = (e.hw || []).length ? Math.max(...e.hw.map(h => h[3] || h[2] || 0)) : null;
