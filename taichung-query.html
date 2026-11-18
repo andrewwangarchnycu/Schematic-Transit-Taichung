@@ -95,6 +95,11 @@
     .tag.api { background: #1b5e20; color: #b9f6ca; } .tag.freq { background: #4a148c; color: #e1bee7; }
     .last { color: #ff5252; font-weight: bold; margin-left: 2px; font-size: 11px; } .tag.sched { background: #283593; color: #c5cae9; } .tag.est { background: #5d4037; color: #ffccbc; }
     .tag.nb { background: #1565c0; color: #fff; margin-left: 0; font-size: 11px; }
+    /* 今日每日營運時刻表比對：取消＝紅字劃掉、增調＝橘字 */
+    .cx { color: #ff5252 !important; text-decoration: line-through; opacity: 1 !important; }
+    .ad { color: #ffa726 !important; font-weight: bold; }
+    .mk-legend { font-size: 11px; color: #bbb; margin-top: 3px; }
+    .daytab .mins s.cx { margin-right: 4px; }
     .dly { font-size: 11px; padding: 0 4px; border-radius: 3px; white-space: nowrap; font-family: inherit; }
     .dly.late { background: #5a2323; color: #ff9e9e; } .dly.early { background: #1f3f5a; color: #9fd3ff; } .dly.ontime { background: #24452a; color: #a5e0ad; }
     .cmp { font-size: 11px; color: #aaa; white-space: nowrap; font-family: inherit; }
@@ -498,10 +503,13 @@ function loadOnce(key, fn) {
     return p;
 }
 const schedLoading = route => loading.has('sc:' + route) || loading.has('es:' + route) || loading.has('t:' + route);
+// 路線查詢一律用 $filter RouteName eq (路徑式查詢會連 151、251… 一起回傳)
+const routeEq = rt => ({ '$filter': `RouteName/Zh_tw eq '${rt.replace(/'/g, "''")}'` });
+const etaRoute = (rt, label, force = false) => loadEta('rt:' + rt, 'EstimatedTimeOfArrival/City/Taichung', routeEq(rt), label, force);
 function loadSchedule(route, high = false) {
     if (schedGet(route)) return Promise.resolve(schedGet(route));
     return loadOnce('sc:' + route, async () => {
-        const js = await Api.run(`Schedule/City/Taichung/${encodeURIComponent(route)}`, {}, { high, label: `${route} 路線班表` });
+        const js = await Api.run('Schedule/City/Taichung', { ...routeEq(route), '$select': 'RouteName,SubRouteName,Direction,Timetables,Frequencys' }, { high, label: `${route} 路線班表` });
         const v = { at: Date.now(), subs: {} };
         const days = sd => WD_KEY.map(k => sd ? (sd[k] ? 1 : 0) : 1);
         js.filter(r => !r.RouteName || r.RouteName.Zh_tw === route).forEach(r => {
@@ -560,7 +568,8 @@ function loadEst(route, high = false) {
 const needDaily = S => { const wd = new Date().getDay(); return Object.values(S.subs).some(ds => Object.values(ds).some(x => !x.trips.some(t => t.days[wd]))); };
 function loadDay(route, high = false) {
     return Promise.all([
-        loadSchedule(route, high).then(S => S && needDaily(S) ? loadToday(route, high).catch(() => null) : null).catch(() => null),
+        // 今日：每日營運時刻表比對路線班表 → 取消班次 (紅字劃掉)、增調班次 (橘字)
+        loadSchedule(route, high).then(S => S ? loadToday(route, high).catch(() => null) : null).catch(() => null),
         loadEst(route, high).catch(() => loadToday(route, high).catch(() => null))
     ]);
 }
@@ -568,10 +577,10 @@ function loadDay(route, high = false) {
 function loadToday(route, high = false) {
     if (todayOld(route)) return Promise.resolve(todayOld(route));
     return loadOnce('t:' + route, async () => {
-        const f = { '$filter': `RouteName/Zh_tw eq '${route.replace(/'/g, "''")}'` };
+        const f = routeEq(route);
         const v = { date: todayKey(), ver: 2, subs: {} };
         const put = (sub, dir, kind, stops, trips, known, ids) => { (v.subs[sub] = v.subs[sub] || {})[dir] = known ? { kind, stops, trips, known, ids } : { kind, stops, trips, ids }; };
-        const tt = await Api.run('DailyTimeTable/City/Taichung', f, { high, label: `${route} 今日時刻表` });
+        const tt = await Api.run('DailyTimeTable/City/Taichung', { ...f, '$select': 'RouteName,SubRouteName,Direction,Timetables' }, { high, label: `${route} 今日時刻表` });
         tt.forEach(r => {
             const sub = (r.SubRouteName && r.SubRouteName.Zh_tw) || r.RouteName.Zh_tw, dir = r.Direction;
             const trips0 = (r.Timetables || []).filter(t => (t.StopTimes || []).length >= 2);
@@ -584,7 +593,7 @@ function loadToday(route, high = false) {
                 null, trips0.map((t, k) => String(t.TripID != null ? t.TripID : k + 1)));
         });
         if (!Object.keys(v.subs).length) {
-            const st = await Api.run('DailyStopTimeTable/City/Taichung', f, { high, label: `${route} 今日起訖站時刻` });
+            const st = await Api.run('DailyStopTimeTable/City/Taichung', { ...f, '$select': 'RouteName,SubRouteName,Direction,Stops' }, { high, label: `${route} 今日起訖站時刻` });
             st.forEach(r => {
                 const sub = (r.SubRouteName && r.SubRouteName.Zh_tw) || r.RouteName.Zh_tw;
                 const known = (r.Stops || []).filter(s => (s.TimeTables || []).length);
@@ -613,17 +622,52 @@ function loadToday(route, high = false) {
 const dayLoaded = route => !!(schedGet(route) || estGet(route) || todayOld(route));
 
 // 組出某日 (dateStr) 的逐班逐站時刻 → { date, ver, subs: { sub: { dir: { kind, stops, trips, ids, hw } } }, none? }
-//   優先順序：est＝站站班表 (V3 近 3 個月逐站歷史到站推估) → table＝路線班表預排發車＋站間推估 → daily＝今日每日營運時刻表；班距不推估班次
+//   table (優先)：班次＝路線班表當日預排班次 (依路線班表的服務日，含週六/週日/特定日)，
+//                 各站時間＝預排發車＋站站班表 (V3 近 3 個月歷史) 的行駛時間：
+//                 預排班次與站站班表班次依發車先後一對一配對 (保序)，配到的用該班行駛時間，
+//                 配不到的用前後最近兩班的行駛時間依時間內插 → 各站班次數＝發車班次數，第 N 班在各站為同一班
+//   daily：路線班表當日沒有預排班次 (只有班距) 的今日 → 每日營運時刻表
+//   est  ：沒有路線班表預排班次 (或未來日) → 站站班表本身；班距不推估班次
+//   站序對應：依站序保序對應 (同名站、環狀路線取順序上的下一個)，不直接用站名 indexOf
 const dayMemo = new Map();
+// 依站序保序對應：a、b 為站名序列 → a 的每一站在 b 的位置 (-1＝沒有)
+function alignStops(a, b) {
+    const out = new Array(a.length).fill(-1);
+    let j = 0;
+    a.forEach((n, i) => {
+        for (let k = j; k < b.length; k++) if (b[k] === n) { out[i] = k; j = k + 1; return; }
+    });
+    return out;
+}
+// 預排發車 deps 與站站班表起站時刻 bases 的保序一對一配對 (時間差 ≤ 20 分)；回傳 deps 各班對應的 bases 索引 (-1＝沒配到)
+const PAIR_WIN = 20, PAIR_SKIP = 12;
+function pairTrips(deps, bases) {
+    const n = deps.length, m = bases.length, INF = 1e9;
+    const dp = Array.from({ length: n + 1 }, () => new Float64Array(m + 1).fill(INF)), how = Array.from({ length: n + 1 }, () => new Int8Array(m + 1));
+    dp[0][0] = 0;
+    for (let i = 0; i <= n; i++) for (let j = 0; j <= m; j++) {
+        const c = dp[i][j];
+        if (c >= INF) continue;
+        if (i < n && j < m) { const d = Math.abs(deps[i] - bases[j]); if (d <= PAIR_WIN && c + d < dp[i + 1][j + 1]) { dp[i + 1][j + 1] = c + d; how[i + 1][j + 1] = 1; } }
+        if (i < n && c + PAIR_SKIP < dp[i + 1][j]) { dp[i + 1][j] = c + PAIR_SKIP; how[i + 1][j] = 2; }
+        if (j < m && c + PAIR_SKIP < dp[i][j + 1]) { dp[i][j + 1] = c + PAIR_SKIP; how[i][j + 1] = 3; }
+    }
+    const res = new Array(n).fill(-1);
+    for (let i = n, j = m; i > 0 || j > 0;) {
+        const h = how[i][j];
+        if (h === 1) { res[i - 1] = j - 1; i--; j--; } else if (h === 2) i--; else j--;
+    }
+    return res;
+}
 function daySched(route, ds) {
     const S = schedGet(route), E = estGet(route);
     if (!E && estErr.has(route) && ds === todayKey() && todayOld(route)) return todayOld(route);
     if (!S && !E) return null;
-    if (!E && !estErr.has(route)) return null;   // 推估班表還在載入
+    if (!E && !estErr.has(route)) return null;   // 站站班表還在載入
     const mk = `${route}|${ds}|${S ? S.at : 0}|${E ? E.at : 0}|${ds === todayKey() && todayOld(route) ? 1 : 0}`;
     if (dayMemo.has(mk)) return dayMemo.get(mk);
     const wd = new Date(ds + 'T00:00:00').getDay(), tag = wd === 0 || wd === 6 ? 'we' : 'wd';
-    const v = { date: ds, ver: 2, subs: {} };
+    const v = { date: ds, ver: 3, subs: {} };
     const keys = new Set();
     [S, E].forEach(X => X && Object.entries(X.subs).forEach(([sub, ds2]) => Object.keys(ds2).forEach(dir => keys.add(sub + '\u0000' + dir))));
     keys.forEach(key => {
@@ -633,58 +677,74 @@ function daySched(route, ds) {
         const ee = E && E.subs[sub] && E.subs[sub][dir], et = ee && (ee[tag] || ee.wd || ee.we);
         const stops = R ? R.seq.map(si => STOPS[si].name) : et ? et.stops : s && s.trips[0] ? s.trips[0].st.map(x => x[0]) : [];
         if (!stops.length) return;
-        // 發車時刻
-        const deps = [];
-        if (s) {
-            s.trips.filter(t => t.days[wd]).forEach(t => deps.push({ t: t.st[0][1], id: t.id, st: t.st, kind: 'table' }));
-            // 班距 (Frequencys) 不推估班次，只採用預排班表
-        }
-        // 推估班表各站位置 (依站名對應)
-        const eIdx = et ? stops.map(n => et.stops.indexOf(n)) : null;
-        const eOrig = et ? et.trips.map(row => { const i = eIdx.find(i => i >= 0 && row[i] !== null); return i === undefined ? null : row[i]; }) : null;
-        let rows, ids, kind;
-        // 優先：站站班表 (V3 依近 3 個月逐站歷史到站時間推估)
-        if (et) {
-            kind = 'est';
-            rows = et.trips.map(er => stops.map((_, i) => eIdx[i] >= 0 ? er[eIdx[i]] : null)).filter(row => row.some(x => x !== null));
-            ids = rows.map((_, k) => 'E' + (k + 1));
-            // 發車站一律用路線班表：發車時刻改成最接近 (15 分內) 的預排發車，其他站維持站站班表
-            if (deps.length) {
-                const sd = deps.map(d => d.t).sort((a, b) => a - b);
-                rows.forEach(row => { if (row[0] === null) return; let b = null; sd.forEach(t => { if (Math.abs(t - row[0]) <= 15 && (b === null || Math.abs(t - row[0]) < Math.abs(b - row[0]))) b = t; }); if (b !== null) row[0] = b; });
-            }
-        }
-        if (rows && rows.length) { /* 已用站站班表 */ }
-        else if (deps.length) {
+        // 預排發車 (依路線班表服務日)
+        const deps = s ? s.trips.filter(t => t.days[wd] && t.st && t.st.length).map(t => ({ t: t.st[0][1], id: t.id, st: t.st })).sort((a, b) => a.t - b.t) : [];
+        const eIdx = et ? alignStops(stops, et.stops) : null;
+        // 站站班表各班：以起站為基準的行駛時間 (起站沒有時間的班次不當行駛時間來源)
+        const prof = et ? et.trips.map(er => {
+            const row = stops.map((_, i) => eIdx[i] >= 0 && er[eIdx[i]] !== null && er[eIdx[i]] !== undefined ? er[eIdx[i]] : null);
+            return row[0] === null ? null : { base: row[0], off: row.map(x => x === null ? null : x - row[0]) };
+        }).filter(Boolean).sort((a, b) => a.base - b.base) : [];
+        let rows, ids, kind, cancel = [], added = null;
+        // 今日：與每日營運時刻表比對發車 (±1 分視為同一班)，路線班表有、每日沒有＝取消；每日有、路線班表沒有＝增調
+        const TO = ds === todayKey() ? todayOld(route) : null, o = TO && TO.subs[sub] && TO.subs[sub][dir];
+        if (deps.length && o && o.kind === 'table') {
+            const oi = o.stops === stops ? null : alignStops(stops, o.stops);
+            const dRows = oi ? o.trips.map(row => oi.map(j => j >= 0 ? row[j] : null)) : o.trips;
+            const dDep = dRows.map(row => row[0] !== null && row[0] !== undefined ? row[0] : null), used = new Set();
+            deps.forEach(d => {
+                const j = dDep.findIndex((x, k) => !used.has(k) && x !== null && Math.abs(x - d.t) <= 1);
+                if (j >= 0) used.add(j); else d.cancel = true;
+            });
+            dDep.forEach((x, k) => { if (x !== null && !used.has(k)) deps.push({ t: x, id: (o.ids && o.ids[k]) || 'D' + (k + 1), st: [[stops[0], x]], add: true }); });
             deps.sort((a, b) => a.t - b.t);
+        }
+        if (deps.length) {
             kind = 'table';
-            rows = deps.map(d => {
+            const pair = prof.length ? pairTrips(deps.map(d => d.t), prof.map(p => p.base)) : deps.map(() => -1);
+            rows = deps.map((d, k) => {
                 const row = new Array(stops.length).fill(null);
                 row[0] = d.t;
-                if (d.st && d.st.length > 1) d.st.forEach(([n, m]) => { const i = stops.indexOf(n); if (i >= 0) row[i] = m; });
-                if (et) {
-                    // 發車時刻最接近的推估班次 → 各站相對起站的時間差
-                    let j = -1, best = Infinity;
-                    eOrig.forEach((o, k) => { if (o !== null && Math.abs(o - d.t) < best) { best = Math.abs(o - d.t); j = k; } });
-                    if (j >= 0) {
-                        const er = et.trips[j], base = eOrig[j];
-                        stops.forEach((_, i) => { if (row[i] === null && eIdx[i] >= 0 && er[eIdx[i]] !== null) row[i] = d.t + (er[eIdx[i]] - base); });
-                    }
+                let off = null;
+                if (pair[k] >= 0) off = prof[pair[k]].off;
+                else if (prof.length) {
+                    // 沒配到：前後最近兩班的行駛時間依發車時刻內插
+                    let a = null, b = null;
+                    prof.forEach(p => { if (p.base <= d.t && (!a || p.base > a.base)) a = p; if (p.base >= d.t && (!b || p.base < b.base)) b = p; });
+                    const w = a && b && b.base > a.base ? (d.t - a.base) / (b.base - a.base) : 0;
+                    off = stops.map((_, i) => {
+                        const x = a ? a.off[i] : null, y = b ? b.off[i] : null;
+                        return x !== null && y !== null ? x + (y - x) * w : x !== null ? x : y;
+                    });
                 }
+                if (off) off.forEach((o, i) => { if (i && o !== null) row[i] = d.t + o; });
+                // 路線班表本身有各站時刻者優先
+                if (d.st.length > 1) { const si = alignStops(stops, d.st.map(x => x[0])); si.forEach((j, i) => { if (j >= 0) row[i] = d.st[j][1]; }); }
                 return row;
             });
             ids = deps.map(d => d.id);
+            // 取消班次另存 (只顯示、不參與配對)；增調班次標記
+            if (deps.some(d => d.cancel || d.add)) {
+                cancel = rows.filter((_, k) => deps[k].cancel);
+                const keep = deps.map((d, k) => !d.cancel ? k : -1).filter(k => k >= 0);
+                added = new Set(keep.map((k, n) => deps[k].add ? n : -1).filter(n => n >= 0));
+                rows = keep.map(k => rows[k]); ids = keep.map(k => ids[k]);
+            }
         } else if (ds === todayKey() && todayOld(route) && todayOld(route).subs[sub] && todayOld(route).subs[sub][dir]) {
-            // 班表今日沒有預排班次 → 每日營運時刻表 (預排逐班逐站)
+            // 路線班表今日沒有預排班次 (只有班距) → 每日營運時刻表 (預排逐班逐站)
             const o = todayOld(route).subs[sub][dir];
             kind = 'daily';
-            rows = o.stops === stops ? o.trips : o.trips.map(row => stops.map(n => { const i = o.stops.indexOf(n); return i >= 0 ? row[i] : null; }));
+            const oi = o.stops === stops ? null : alignStops(stops, o.stops);
+            rows = oi ? o.trips.map(row => oi.map(j => j >= 0 ? row[j] : null)) : o.trips;
             ids = o.ids || rows.map((_, k) => String(k + 1));
+        } else if (et) {
+            kind = 'est';
+            rows = et.trips.map(er => stops.map((_, i) => eIdx[i] >= 0 ? er[eIdx[i]] : null)).filter(row => row.some(x => x !== null && x !== undefined));
+            ids = rows.map((_, k) => 'E' + (k + 1));
         } else return;
         if (!rows || !rows.length) return;
         const hw = s ? s.freq.filter(f => f.days[wd]).map(f => [f.s, f.e, f.min, f.max]) : [];
-        const origin = deps.length ? deps.map(d => d.t).sort((a, b) => a - b) : null;   // 發車站：路線班表預排發車
-        (v.subs[sub] = v.subs[sub] || {})[dir] = { kind, stops, trips: rows, ids, hw, origin };
+        (v.subs[sub] = v.subs[sub] || {})[dir] = { kind, stops, trips: rows, ids, hw, cancel, added };
     });
     if (!Object.keys(v.subs).length) v.none = true;
     dayMemo.set(mk, v);
@@ -703,39 +763,44 @@ function timesAt(r, pos, dateStr) {
     if (!e) return { times: [], kind: 'none', note: `${dayTxt}無此方向班次` };
     const i = e.stops[pos] === name ? pos : e.stops.indexOf(name);
     if (i < 0) return { times: [], kind: 'none', note: '班表無此站' };
-    // 發車站一律用路線班表的預排發車時刻
-    if (i === 0 && e.origin && e.origin.length && v !== todayOld(r.route)) return { times: e.origin, kind: 'sched', note: `路線班表發車 (${dayTxt})` };
     const times = e.trips.map(x => x[i]).filter(x => x !== null && x !== undefined).sort((a, b) => a - b);
+    const cancel = (e.cancel || []).map(x => x[i]).filter(x => x !== null && x !== undefined).sort((a, b) => a - b);
+    const addSet = new Set(e.added ? [...e.added].map(k => e.trips[k][i]).filter(x => x !== null && x !== undefined).map(x => Math.round(x)) : []);
     if (!times.length) return { times: [], kind: 'none', note: estErr.has(r.route) ? '只有起站發車時刻 (站站推估班表無法取得)' : '此站無推估時刻' };
     const old = v === todayOld(r.route);
     const kind = old ? (e.kind === 'table' ? 'sched' : 'est') : e.kind === 'table' || e.kind === 'daily' ? 'sched' : 'est';
     const hwTxt = (e.hw || []).map(([s, en, a, b]) => `${fmt(s)}–${fmt(en)} 每 ${a === b || !b ? a : a + '–' + b} 分`).join('；');
     const note = old ? '每日營運時刻表 (站站推估班表無法取得)'
         : e.kind === 'daily' ? `每日營運時刻表 (路線班表為班距發車${hwTxt ? ' ' + hwTxt : ''})`
-        : kind === 'sched' ? `路線班表發車 (${dayTxt})${i ? '，各站時間依近 3 個月歷史推估' : ''}`
+        : kind === 'sched' ? `路線班表發車 (${dayTxt})${i ? '，各站時間＝發車＋近 3 個月歷史行駛時間' : ''}`
         : `站站推估班表 (${dayTxt}，近 3 個月歷史)`;
     const hwMin = (e.hw || []).length ? Math.min(...e.hw.map(h => h[2] || 99)) : null, hwMax = (e.hw || []).length ? Math.max(...e.hw.map(h => h[3] || h[2] || 0)) : null;
-    return { times, kind, note, hw: hwMin !== null ? [hwMin, hwMax] : null };
+    return { times, kind, note, hw: hwMin !== null ? [hwMin, hwMax] : null, cancel, added: addSet };
 }
 const TAG = { sched: '<span class="tag sched">表定</span>', est: '<span class="tag est">推估</span>', origin: '<span class="tag">起站</span>', none: '' };
 // 全日時刻表：00 到 24 時由上而下，每列一小時列出分鐘 (24 時＝跨午夜班次)
-function dayTable(times, isToday, nm, note, col) {
-    const byH = new Map();
-    times.forEach(x => { const r = Math.round(x), h = Math.min(24, Math.floor(r / 60)); if (!byH.has(h)) byH.set(h, []); byH.get(h).push(r); });
+function dayTable(times, isToday, nm, note, col, mk = null) {
+    const byH = new Map(), add = mk && mk.added || new Set(), cx = mk && mk.cancel || [];
+    const put = (x, c) => { const r = Math.round(x), h = Math.min(24, Math.floor(r / 60)); if (!byH.has(h)) byH.set(h, []); byH.get(h).push({ r, c }); };
+    times.forEach(x => put(x, false)); cx.forEach(x => put(x, true));
+    byH.forEach(l => l.sort((a, b) => a.r - b.r));
     const curH = isToday ? Math.floor(nm / 60) : -1;
     let nextMarked = false;
     const rows = [];
     for (let h = 0; h <= 24; h++) {
         const list = byH.get(h) || [];
-        const mins = list.map(r => {
-            let cls = '';
-            if (isToday && r < nm - 0.5) cls = 'past';
-            else if (isToday && !nextMarked) { cls = 'next'; nextMarked = true; }
-            return `<span class="${cls}">${pad(h === 24 ? r - 1440 : r % 60)}</span>`;
+        const mins = list.map(({ r, c }) => {
+            const mm = pad(h === 24 ? r - 1440 : r % 60);
+            if (c) return `<s class="cx" title="取消班次">${mm}</s>`;
+            let cls = add.has(r) ? 'ad' : '';
+            if (isToday && r < nm - 0.5) cls += ' past';
+            else if (isToday && !nextMarked) { cls += ' next'; nextMarked = true; }
+            return `<span class="${cls.trim()}"${add.has(r) ? ' title="增調班次"' : ''}>${mm}</span>`;
         }).join('');
         rows.push(`<div class="hr${h === curH ? ' cur' : ''}${list.length ? '' : ' empty'}"><b>${pad(h)}</b><span class="mins">${mins || '—'}</span></div>`);
     }
-    return `<div class="daytab" style="grid-column:${col}">${rows.join('')}${note ? `<div class="muted" style="font-size:11px;margin-top:2px">${esc(note)} · 共 ${times.length} 班</div>` : ''}</div>`;
+    const legend = cx.length || add.size ? `<div class="mk-legend"><s class="cx">00</s> 紅字劃掉＝取消班次${cx.length ? ` ${cx.length} 班` : ''}　<span class="ad">00</span> 橘字＝增調班次${add.size ? ` ${add.size} 班` : ''}<span class="muted">（今日每日營運時刻表比對路線班表）</span></div>` : '';
+    return `<div class="daytab" style="grid-column:${col}">${rows.join('')}${note ? `<div class="muted" style="font-size:11px;margin-top:2px">${esc(note)} · 共 ${times.length} 班</div>` : ''}${legend}</div>`;
 }
 
 // ---------- 即時 ----------
@@ -775,7 +840,7 @@ function loadA2(route, force = false, high = false) {
     const c = a2Cache.get(route);
     if (!force && c && Date.now() - c.at < 60000) return Promise.resolve(c);
     return loadOnce('a2:' + route, async () => {
-        const js = await Api.run(`RealTimeNearStop/City/Taichung/${encodeURIComponent(route)}`, {}, { high, label: `${route} 車輛班次` });
+        const js = await Api.run('RealTimeNearStop/City/Taichung', { ...routeEq(route), '$select': 'PlateNumb,RouteName,SubRouteName,Direction,StopName,TripStartTime,GPSTime' }, { high, label: `${route} 車輛班次` });
         const byPlate = new Map();
         js.forEach(it => {
             if (!it.PlateNumb || it.PlateNumb === '-1') return;
@@ -921,8 +986,12 @@ function upcomingLine(r, pos, t, nm, row) {
     const last = times[times.length - 1];
     const after = times.filter(x => x > cur + 0.01).slice(0, 2);
     const lab = TAG[t.kind] || '';
-    const tm = x => `${fmt(x)}${Math.abs(x - last) < 0.01 ? '<span class="last">末班</span>' : ''}`;
-    const list = after.length ? after.map(tm).join('、') : (Math.abs(cur - last) < 0.01 ? '<span class="last">末班</span>' : '');
+    const ad = t.added || new Set();
+    const tm = x => `${ad.has(Math.round(x)) ? `<span class="ad" title="增調班次">${fmt(x)}</span>` : fmt(x)}${Math.abs(x - last) < 0.01 ? '<span class="last">末班</span>' : ''}`;
+    const upto = after.length ? after[after.length - 1] : cur;
+    const cxs = (t.cancel || []).filter(x => x > cur + 0.01 && x <= upto + 0.01).map(x => ({ x, c: true }));
+    const seq = after.map(x => ({ x, c: false })).concat(cxs).sort((a, b) => a.x - b.x);
+    const list = after.length ? seq.map(q => q.c ? `<s class="cx" title="取消班次">${fmt(q.x)}</s>` : tm(q.x)).join('、') : (Math.abs(cur - last) < 0.01 ? '<span class="last">末班</span>' : '');
     // 下一班尚未發車 (ETA 狀態 1)：看回起站的車趕不趕得上
     let pred = '';
     if (row ? row.dl === null && row.status === 1 : pos === 0) {
@@ -1396,7 +1465,7 @@ function renderStation() {
                 else if (!t.times.length) tt = `<span class="muted">${esc(t.note)}</span>`;
                 else tt = isToday ? upcomingLine(r, pos, t, nm, row) : (TAG[t.kind] || '') + ' ' + t.times.slice(0, 3).map(fmt).join('、');
                 const key = `${si}|${r.i}`;
-                const full = open.has(key) && t.times && t.times.length ? dayTable(t.times, isToday, nm, t.note, '1/-1') : '';
+                const full = open.has(key) && t.times && t.times.length ? dayTable(t.times, isToday, nm, t.note, '1/-1', t) : '';
                 return `<div class="rt" data-key="${key}" data-ri="${r.i}" data-pos="${pos}">${badge(r.sub)}<span class="to">${last ? '<span class="muted">終點站 (下車)</span>' : '往 ' + esc(destOf(r))}</span>
                         <span class="eta">${isToday ? etaHtml(row) + cmpHtml(compareEta(r, STOPS[si].name, row)) : ''}</span><span class="tt">${tt}</span>${full}</div>`;
             }).join('') + '</div>';
@@ -1441,7 +1510,7 @@ function loadBikes(st, force = false) {
     const go = async () => {
         let list = bikeList(st);
         if (!list) {
-            const js = await Api.run('Station/City/Taichung', { '$spatialFilter': `nearby(${st.lat.toFixed(6)},${st.lng.toFixed(6)},${bikeR(st)})` }, { label: `${st.name} 附近 YouBike 站點`, api: 'Bike' });
+            const js = await Api.run('Station/City/Taichung', { '$spatialFilter': `nearby(${st.lat.toFixed(6)},${st.lng.toFixed(6)},${bikeR(st)})`, '$select': 'StationUID,StationName,ServiceType,StationPosition,BikesCapacity,StationAddress' }, { label: `${st.name} 附近 YouBike 站點`, api: 'Bike' });
             list = js.map(b => ({ uid: b.StationUID, name: ((b.StationName && b.StationName.Zh_tw) || '').replace(/^YouBike\d(\.\d)?_/, ''),
                 type: b.ServiceType, lat: b.StationPosition.PositionLat, lng: b.StationPosition.PositionLon, cap: b.BikesCapacity,
                 addr: (b.StationAddress && b.StationAddress.Zh_tw) || '' }))
@@ -1449,7 +1518,7 @@ function loadBikes(st, force = false) {
             store.set(bikeKey(st), { at: Date.now(), list });
         }
         if (!list.length) { bikeAvail.set(st.id, { at: Date.now(), map: {} }); return; }
-        const js = await Api.run('Availability/City/Taichung', { '$filter': list.map(b => `StationUID eq '${b.uid}'`).join(' or ') }, { label: `${st.name} YouBike 車輛數`, api: 'Bike' });
+        const js = await Api.run('Availability/City/Taichung', { '$filter': list.map(b => `StationUID eq '${b.uid}'`).join(' or '), '$select': 'StationUID,ServiceStatus,AvailableRentBikes,AvailableReturnBikes,AvailableRentBikesDetail,SrcUpdateTime,UpdateTime' }, { label: `${st.name} YouBike 車輛數`, api: 'Bike' });
         const m = {};
         js.forEach(a => { m[a.StationUID] = { rent: a.AvailableRentBikes, ret: a.AvailableReturnBikes, ebike: a.AvailableRentBikesDetail ? a.AvailableRentBikesDetail.ElectricBikes : null,
             status: a.ServiceStatus, upd: Date.parse(a.SrcUpdateTime || a.UpdateTime) }; });
@@ -1649,7 +1718,7 @@ function openRoute(sub, dir, here) {
         loadVehicles(r.route).catch(() => {});
         if (selDate() === todayKey()) loadA2(r.route).catch(() => {});
     };
-    loadEta('rt:' + r.route, `EstimatedTimeOfArrival/City/Taichung/${encodeURIComponent(r.route)}`, {}, `${r.route} 即時`).then(rest, rest);
+    etaRoute(r.route, `${r.route} 即時`).then(rest, rest);
     drawRouteMap(r);
     renderRoute();
     if (Track.on && Track.ll) { Track.key = ''; onTrack(...Track.ll); }
@@ -1755,8 +1824,8 @@ function loadVehicles(route, force = false) {
     const c = vehCache.get(route);
     if (!force && c && Date.now() - c.at < FRESH_MS) return Promise.resolve(c);
     return loadOnce('v:' + route, async () => {
-        const js = await Api.run(`RealTimeByFrequency/City/Taichung/${encodeURIComponent(route)}`,
-            { '$select': 'PlateNumb,OperatorID,SubRouteName,RouteName,Direction,BusPosition,Speed,Azimuth,GPSTime,DutyStatus,BusStatus' },
+        const js = await Api.run('RealTimeByFrequency/City/Taichung',
+            { ...routeEq(route), '$select': 'PlateNumb,OperatorID,SubRouteName,RouteName,Direction,BusPosition,Speed,Azimuth,GPSTime,DutyStatus,BusStatus' },
             { high: true, label: `${route} 公車位置` });
         // 同一車牌只留最新一筆
         const byPlate = new Map();
@@ -1894,7 +1963,7 @@ function refreshLive() {
     if (!view || selDate() !== todayKey()) return;
     if (view.type === 'route') {
         const r = ROUTES.find(x => x.sub === view.sub && x.dir === view.dir);
-        loadEta('rt:' + r.route, `EstimatedTimeOfArrival/City/Taichung/${encodeURIComponent(r.route)}`, {}, `${r.route} 即時`, true).catch(() => {});
+        etaRoute(r.route, `${r.route} 即時`, true).catch(() => {});
         loadA2(r.route, true, true).catch(() => {});
     }
     [...new Set(selRoutes().filter(Boolean).map(r => r.route))].forEach(rt => loadVehicles(rt, true).then(drawVehicles).catch(() => {}));
@@ -1932,7 +2001,7 @@ function renderRoute() {
         else tt = isToday ? upcomingLine(r, pos, t, nm, row) : (TAG[t.kind] || '') + ' ' + t.times.slice(0, 3).map(fmt).join('、');
         const key = 'r' + pos;
         const full = open.has(key) ? (t.times && t.times.length
-            ? dayTable(t.times, isToday, nm, t.note, '2/-1')
+            ? dayTable(t.times, isToday, nm, t.note, '2/-1', t)
             : `<div class="times muted">${t.pending ? '載入中…' : esc(t.note || '無資料')}</div>`) : '';
         const tk = trk && trk.pos === pos;
         return `<div class="seq-row${view.here === s.name ? ' here' : ''}${tk ? ' track' : ''}" data-key="${key}" data-sid="${esc(s.sid)}"><div class="seq-dot" style="border-color:${c}"></div>
@@ -1945,6 +2014,8 @@ function renderRoute() {
         <div class="muted">${r.seq.length} 站 · ${isToday ? (eta ? `即時 ${new Date(eta.at).toLocaleTimeString('zh-TW', { hour12: false })}` : '即時資料載入中…') + (nVeh !== null ? ` · 本路線公車 ${nVeh} 輛` : '') + (vehAuto ? ' · 每分鐘自動更新' : '') : `${ds} 時刻表`}${t0.note ? ' · ' + esc(t0.note) : ''}</div>
         <div class="row">        <button class="btn" id="b-madd">${multi.some(m => m.sub === r.sub && m.dir === r.dir) ? '✓ 已在多選' : '＋ 加入多選'}</button>
         ${multi.length ? `<button class="btn" id="b-mopen">多選 (${multi.length})</button>` : ''}</div>
+        ${(() => { const e = daySched(r.route, ds); const x = e && e.subs[r.sub] && e.subs[r.sub][r.dir];
+            return x && ((x.cancel && x.cancel.length) || (x.added && x.added.size)) ? `<div class="mk-legend">今日比對每日營運時刻表：<s class="cx">HH:MM</s> 紅字劃掉＝取消班次${x.cancel.length ? ` ${x.cancel.length} 班` : ''}　<span class="ad">HH:MM</span> 橘字＝增調班次${x.added && x.added.size ? ` ${x.added.size} 班` : ''}</div>` : ''; })()}
         <div class="hint">點站名展開該站全日時刻表；地圖上點站牌可查該站位。${hasShape ? '地圖小箭頭為行駛方向。' : SHAPES ? '此路線無道路線形資料，地圖虛線為站牌連線。' : '道路線形載入中…'}</div>
         <div class="seq" style="--rc:${c}">${rows}</div>`;
     if (!view.scrolled && view.here) { const h = panel.querySelector('.seq-row.here'); if (h) { panel.scrollTop = h.offsetTop - panel.clientHeight / 3; view.scrolled = true; } } else panel.scrollTop = keep;
@@ -2125,7 +2196,7 @@ function navClose() {
     setTimeout(() => map.invalidateSize(), 50);
 }
 const navRoutes = () => [...new Set(Nav.legs.filter(g => g.k === 'bus').map(g => g.r.route))];
-const navEta = (rt, force = true) => loadEta('rt:' + rt, `EstimatedTimeOfArrival/City/Taichung/${encodeURIComponent(rt)}`, {}, `${rt} 即時 (導航)`, force).catch(() => {});
+const navEta = (rt, force = true) => etaRoute(rt, `${rt} 即時 (導航)`, force).catch(() => {});
 function navStart() {
     Nav.started = true;
     startCompass();   // iOS 需在使用者點擊時要求方位權限
