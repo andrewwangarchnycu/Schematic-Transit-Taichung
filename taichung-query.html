@@ -3373,9 +3373,10 @@ function planEndLabel(p) { return !p ? '' : p.type === 'station' ? STATIONS.get(
 function renderPlan() {
     if (mode !== 'plan') return;
     const f = PL.from, t = PL.to, keep = panel.scrollTop;
+    // 背景載入完成而重繪時，保留輸入框焦點與游標
+    const fe = document.activeElement, fid = fe && /^pl-(from|to)$/.test(fe.id) ? fe.id : null, fsel = fid ? [fe.selectionStart, fe.selectionEnd] : null;
     const ds = selDate(), isToday = ds === todayKey();
     const atTxt = PL.at !== null ? fmt(PL.at) : '';
-    const sugg = PL.q ? [...STATIONS.values()].filter(s => s.name.includes(PL.q)).sort((a, b) => (a.name === PL.q ? -1 : 0) - (b.name === PL.q ? -1 : 0) || b.routes.size - a.routes.size).slice(0, 12) : [];
     let res = '';
     if (PL.busy) res = '<div class="hint">規劃中…</div>';
     else if (PL.err) res = `<div class="hint">${esc(PL.err)}</div>`;
@@ -3398,32 +3399,48 @@ ${xf}
     }).join('') + `<div class="hint">${PL.liveNote ? esc(PL.liveNote) + '；' : ''}第一段上車依起點即時到站 (末班已過／未營運的路線不列入)，其後各段依路線班表與 TDX 站間旅行時間推算 (轉乘預留 1 分、步行 ${PL_WALK_R} m 內)；選取方案時另查轉乘路線即時，標示是否接得上。</div>`;
     panel.innerHTML = `<h2>路徑規劃</h2>
         <div class="pl-box">
-            <div class="pl-f${PL.active === 'from' ? ' on' : ''}" data-f="from"><span class="pl-dot o"></span><input id="pl-from" placeholder="起點：站名、地圖點選或定位" value="${esc(planEndLabel(f))}" autocomplete="off"><button class="pl-me" data-f="from" title="用我的位置">📍</button></div>
-            <div class="pl-f${PL.active === 'to' ? ' on' : ''}" data-f="to"><span class="pl-dot d"></span><input id="pl-to" placeholder="終點：站名或地圖點選" value="${esc(planEndLabel(t))}" autocomplete="off"><button class="pl-me" data-f="to" title="用我的位置">📍</button></div>
+            <div class="pl-f${PL.active === 'from' ? ' on' : ''}" data-f="from"><span class="pl-dot o"></span><input id="pl-from" placeholder="起點：站名、地圖點選或定位" value="${esc(PL.q && PL.active === 'from' ? PL.q : planEndLabel(f))}" autocomplete="off"><button class="pl-me" data-f="from" title="用我的位置">📍</button></div>
+            <div class="pl-f${PL.active === 'to' ? ' on' : ''}" data-f="to"><span class="pl-dot d"></span><input id="pl-to" placeholder="終點：站名或地圖點選" value="${esc(PL.q && PL.active === 'to' ? PL.q : planEndLabel(t))}" autocomplete="off"><button class="pl-me" data-f="to" title="用我的位置">📍</button></div>
             <button class="pl-swap" id="pl-swap" title="交換起訖">⇅</button>
         </div>
         <div class="row"><select id="pl-when"><option value="now"${PL.at === null ? ' selected' : ''}>${isToday ? '現在出發' : '當日首班起'}</option><option value="at"${PL.at !== null ? ' selected' : ''}>指定出發時間</option></select>
             <input type="time" id="pl-time" value="${atTxt}" style="display:${PL.at !== null ? 'inline-block' : 'none'}"><button class="btn" id="pl-go"${f && t ? '' : ' disabled'}>規劃</button></div>
-        ${sugg.length ? `<div class="pl-sugg">${sugg.map(s => `<div class="list-item" data-st="${esc(s.id)}">${ICO_BUS}<div style="min-width:0"><div>${esc(s.name)}</div><div class="sub">${[...s.routes].slice(0, 10).map(esc).join('、')}</div></div></div>`).join('')}</div>` : ''}
+        <div id="pl-sugg-box"></div>
         ${!f || !t ? '<div class="hint">點輸入框後搜尋站名，或直接在地圖上點選位置設定起點／終點。</div>' : ''}
         ${res}`;
     panel.scrollTop = keep;
     ['from', 'to'].forEach(k => {
         const inp = $('pl-' + k);
-        inp.onfocus = () => { PL.active = k; document.querySelectorAll('.pl-f').forEach(e => e.classList.toggle('on', e.dataset.f === k)); };
-        inp.oninput = () => { PL.active = k; PL.q = inp.value.trim(); const c = inp.selectionStart; renderPlan(); const n = $('pl-' + k); n.focus(); n.setSelectionRange(c, c); };
+        inp.onfocus = () => {
+            if (PL.active !== k) { PL.active = k; PL.q = ''; planSugg(); }
+            document.querySelectorAll('.pl-f').forEach(e => e.classList.toggle('on', e.dataset.f === k));
+            if (!PL.q) inp.select();   // 已設定的起訖：點進去直接打字取代
+        };
+        // 只更新建議清單，不重繪整個面板 (重繪會清掉輸入中的文字並打斷中文輸入法組字)
+        inp.oninput = () => { PL.active = k; PL.q = inp.value.trim(); planSugg(); };
     });
+    planSugg();
+    if (fid) { const n = $(fid); n.focus(); try { n.setSelectionRange(fsel[0], fsel[1]); } catch (e) {} }
     panel.querySelectorAll('.pl-me').forEach(b => b.onclick = () => planMe(b.dataset.f));
     $('pl-swap').onclick = () => { [PL.from, PL.to] = [PL.to, PL.from]; PL.res = null; drawPlan(false); if (PL.from && PL.to) runPlan(); else renderPlan(); };
     $('pl-when').onchange = e => { PL.at = e.target.value === 'at' ? (PL.at !== null ? PL.at : Math.round(nowMin())) : null; renderPlan(); };
     $('pl-time').onchange = e => { const [h, m] = e.target.value.split(':').map(Number); if (isFinite(h)) PL.at = h * 60 + m; };
     $('pl-go').onclick = runPlan;
-    panel.querySelectorAll('.pl-sugg [data-st]').forEach(e => e.onclick = () => planSet(PL.active, { type: 'station', id: e.dataset.st }));
     panel.querySelectorAll('.pl-card').forEach(c => c.onclick = ev => { if (ev.target.closest('button')) return; const k = +c.dataset.k; if (k !== PL.sel) { PL.sel = k; renderPlan(); drawPlan(true); planCheckXfers(); } });
     panel.querySelectorAll('.pl-nav').forEach(b => b.onclick = () => navOpen(planToNav(PL.res[+b.dataset.k])));
     panel.querySelectorAll('.pl-rt').forEach(b => b.onclick = () => { const l = PL.res[+b.dataset.k].rides[0]; openRoute(l.R.r.sub, l.R.r.dir, ptName(l.b)); });
 }
+// 起訖輸入框的站名建議
+function planSugg() {
+    const box = $('pl-sugg-box'); if (!box) return;
+    const q = PL.q;
+    const sugg = q ? [...STATIONS.values()].filter(s => s.name.includes(q)).sort((a, b) => (a.name === q ? -1 : 0) - (b.name === q ? -1 : 0) || b.routes.size - a.routes.size).slice(0, 12) : [];
+    box.innerHTML = sugg.length ? `<div class="pl-sugg">${sugg.map(s => `<div class="list-item" data-st="${esc(s.id)}">${ICO_BUS}<div style="min-width:0"><div>${esc(s.name)}</div><div class="sub">${[...s.routes].slice(0, 10).map(esc).join('、')}</div></div></div>`).join('')}</div>`
+        : q ? '<div class="hint">找不到符合的站名</div>' : '';
+    box.querySelectorAll('[data-st]').forEach(e => e.onclick = () => planSet(PL.active, { type: 'station', id: e.dataset.st }));
+}
 function planSet(which, p) {
+    if (document.activeElement && /^pl-(from|to)$/.test(document.activeElement.id)) document.activeElement.blur();
     PL[which] = p; PL.q = ''; PL.res = null; PL.err = '';
     PL.active = which === 'from' && !PL.to ? 'to' : which;
     drawPlan(false);
