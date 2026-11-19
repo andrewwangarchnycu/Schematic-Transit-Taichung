@@ -6,6 +6,15 @@
 <title>臺中公車查詢</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
+<script>
+    // 外觀：dark (深色 Liquid Glass，預設) / glass (淺色 Liquid Glass)，排版相同；與路線圖共用設定
+    (function () {
+        let t = null;
+        try { t = new URLSearchParams(location.search).get('theme') || localStorage.getItem('txg_theme'); } catch (e) {}
+        document.documentElement.dataset.theme = t === 'light' || t === 'glass' ? 'glass' : 'dark';
+    })();
+</script>
 <style>
     :root { --bg: #161719; --panel: #1f2124; --line: #34373c; --text: #ececec; --muted: #9aa0a6; --accent: #4caf50; --live: #00bcd4; }
     * { box-sizing: border-box; }
@@ -153,6 +162,9 @@
     .loc-btn { display: block; width: 34px; height: 34px; line-height: 32px; text-align: center; font-size: 20px; background: #2a2d31 !important; color: #ccc !important; text-decoration: none; cursor: pointer; }
     .loc-btn.on { color: #1a73e8 !important; }
     .loc-btn.follow { color: #fff !important; background: #1a73e8 !important; }
+    .loc-btn { display: flex !important; align-items: center; justify-content: center; }
+    .loc-btn.compass, html[data-theme] .loc-btn.compass { color: #fff !important; background: #0b57d0 !important; }
+    .loc-btn:not(.follow):not(.compass):not(.err) { color: #1a73e8 !important; }
     .loc-btn.err { color: #ff8a80 !important; }
     .me-ico { pointer-events: auto; }
     .me-pulse { animation: mepulse 2s ease-out infinite; transform-origin: center; transform-box: fill-box; }
@@ -208,6 +220,120 @@
     .nav-me .dot { position: absolute; inset: 2px; border-radius: 50%; background: #0a84ff; border: 3px solid #fff; box-shadow: 0 0 0 6px rgba(10,132,255,.25); }
     .nav-me .cone { position: absolute; left: 50%; bottom: 50%; width: 60px; height: 60px; margin-left: -30px; background: radial-gradient(circle at 50% 100%, rgba(10,132,255,.55), rgba(10,132,255,0) 70%); clip-path: polygon(50% 100%, 15% 0, 85% 0); }
     .mapboxgl-ctrl-bottom-left, .mapboxgl-ctrl-bottom-right { bottom: 44%; }
+
+    /* ================= 外觀：Liquid Glass 排版 (深色 / 淺色兩種配色，共用同一套浮動玻璃排版) ================= */
+    html[data-theme] {
+        --bg: #0e0f11; --panel: #1c1c1e; --line: rgba(255,255,255,.12); --text: #f2f2f7; --muted: #98989f; --accent: #30d158; --live: #64d2ff;
+        --card: rgba(44,44,48,.62); --card-hover: rgba(60,60,66,.75); --soft: rgba(118,118,128,.24); --soft-hover: rgba(118,118,128,.36); --seg-on: rgba(99,99,102,.85);
+        --hair: rgba(255,255,255,.1); --glass: rgba(28,28,30,.58); --glass-panel: rgba(22,22,24,.62); --glass-edge: rgba(255,255,255,.14); --glass-hi: rgba(255,255,255,.12);
+        --shadow: 0 14px 44px rgba(0,0,0,.45); --btn-text: #64d2ff; --pop: rgba(36,36,38,.86); --chip: rgba(118,118,128,.28); --chip-text: #e5e5ea;
+        --past: #5a5a5f; --next: #ffd60a; --cur-bg: rgba(255,214,10,.16); --cur-text: #ffd60a; --map-bg: #1d1f22;
+        --late-bg: rgba(255,69,58,.2); --late: #ff6961; --early-bg: rgba(10,132,255,.22); --early: #64d2ff; --ok-bg: rgba(48,209,88,.2); --ok: #30d158;
+        --bike-bg: rgba(48,209,88,.12); --grip: rgba(255,255,255,.35);
+    }
+    html[data-theme="glass"] {
+        --bg: #dfe5ee; --panel: #ffffff; --line: #e3e3e8; --text: #1c1c1e; --muted: #6e6e73; --accent: #34c759; --live: #007aff;
+        --card: rgba(255,255,255,.62); --card-hover: rgba(255,255,255,.85); --soft: rgba(255,255,255,.55); --soft-hover: rgba(255,255,255,.8); --seg-on: rgba(255,255,255,.95);
+        --hair: rgba(60,60,67,.12); --glass: rgba(255,255,255,.55); --glass-panel: rgba(246,247,250,.62); --glass-edge: rgba(255,255,255,.7); --glass-hi: rgba(255,255,255,.9);
+        --shadow: 0 14px 44px rgba(20,30,60,.2); --btn-text: #007aff; --pop: rgba(255,255,255,.78); --chip: #e8e8ed; --chip-text: #3a3a3c;
+        --past: #c7c7cc; --next: #ff9500; --cur-bg: #fff4d6; --cur-text: #b25000; --map-bg: #e5e5ea;
+        --late-bg: #ffe5e5; --late: #d70015; --early-bg: #e3f0ff; --early: #0058c4; --ok-bg: #e0f5e5; --ok: #1b7a33;
+        --bike-bg: rgba(232,248,236,.7); --grip: rgba(60,60,67,.35);
+    }
+    html[data-theme] body { background: var(--bg); font: 15px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang TC", "Microsoft JhengHei", sans-serif; -webkit-font-smoothing: antialiased; }
+    /* --- 桌面：地圖滿版，標題列與面板浮在左側 --- */
+    html[data-theme] #app { grid-template-columns: 456px minmax(0, 1fr); }
+    html[data-theme] #map { grid-column: 1 / -1; grid-row: 1 / -1; height: auto; align-self: stretch; min-height: 0; background: var(--map-bg); z-index: 0; isolation: isolate; }   /* 地圖與其控制項都在卡片後面 */   /* 跨列時 height:100% 會變 0，改用 stretch */
+    html[data-theme] header, html[data-theme] #panel { position: relative; z-index: 500; }
+    html[data-theme] header { grid-row: 1; grid-column: 1 / 2; margin: 12px 0 0 12px; border-radius: 24px; gap: 10px; padding: 10px 14px; }
+    html[data-theme] #panel { grid-row: 2; grid-column: 1 / 2; margin: 10px 0 12px 12px; border-radius: 26px; padding: 12px 14px 60px; }
+    html[data-theme] header, html[data-theme] #panel { border: 1px solid var(--glass-edge); box-shadow: inset 0 1px 0 var(--glass-hi), var(--shadow);
+        -webkit-backdrop-filter: blur(30px) saturate(190%); backdrop-filter: blur(30px) saturate(190%); }
+    html[data-theme] header { background: var(--glass); }
+    html[data-theme] #panel { background: var(--glass-panel); }
+    html[data-theme] .leaflet-top.leaflet-left, html[data-theme] .leaflet-bottom.leaflet-left { left: 468px; }
+    /* --- 標題列：大標＋分段控制＋膠囊搜尋框 --- */
+    html[data-theme] header h1 { font-size: 19px; font-weight: 700; letter-spacing: -.2px; }
+    html[data-theme] header a { color: var(--btn-text); font-weight: 500; }
+    html[data-theme] .tabs { border: 0; background: var(--soft); border-radius: 10px; padding: 2px; }
+    html[data-theme] .tabs button { border-radius: 8px; padding: 5px 16px; color: var(--text); font-weight: 500; }
+    html[data-theme] .tabs button.on { background: var(--seg-on); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.18); }
+    html[data-theme] input[type=search], html[data-theme] select { background: var(--soft); color: var(--text); border: 0; border-radius: 12px; padding: 8px 14px; }
+    html[data-theme] input[type=search]:focus { outline: 2px solid rgba(10,132,255,.5); outline-offset: 0; }
+    html[data-theme] #q-kb { background: var(--soft-hover); color: var(--text); border-radius: 8px; }
+    html[data-theme] button.btn { background: var(--soft); color: var(--btn-text); border: 0; border-radius: 999px; padding: 6px 14px; font-weight: 600; }
+    html[data-theme] button.btn:hover { background: var(--soft-hover); }
+    html[data-theme] #api { background: var(--soft); color: var(--muted); border: 0; }
+    html[data-theme] #api.warn { color: #ff9f0a; } html[data-theme] #api.err { color: var(--late); }
+    html[data-theme] #api-detail, html[data-theme] #base-set, html[data-theme] #key-dlg .key-box, html[data-theme] .leaflet-popup-content-wrapper {
+        background: var(--pop); color: var(--text); border: 1px solid var(--glass-edge); border-radius: 20px; box-shadow: var(--shadow);
+        -webkit-backdrop-filter: blur(30px) saturate(190%); backdrop-filter: blur(30px) saturate(190%); }
+    html[data-theme] .leaflet-popup-tip { background: var(--pop); }
+    /* --- 面板內容：卡片、細分隔線、大點擊區 --- */
+    html[data-theme] .hint, html[data-theme] .rt .tt, html[data-theme] .cmp, html[data-theme] .mk-legend, html[data-theme] .seq-row .seq-name small { color: var(--muted); }
+    html[data-theme] .list-item { background: var(--card); border-bottom: 0; padding: 11px 12px; box-shadow: inset 0 -.5px 0 var(--hair); }
+    html[data-theme] .list-item:first-of-type { border-radius: 14px 14px 0 0; }
+    html[data-theme] .list-item:last-of-type { border-radius: 0 0 14px 14px; box-shadow: none; }
+    html[data-theme] .list-item:hover, html[data-theme] .rt:hover, html[data-theme] .seq-row:hover { background: var(--card-hover); }
+    html[data-theme] .badge { border-radius: 7px; padding: 2px 8px; }
+    html[data-theme] h2 { font-size: 22px; font-weight: 700; letter-spacing: -.3px; }
+    html[data-theme] .rt-head { background: var(--glass-panel); -webkit-backdrop-filter: blur(16px) saturate(180%); backdrop-filter: blur(16px) saturate(180%);
+        border-bottom: 1px solid var(--hair); margin: -12px -14px 6px; padding: 10px 14px 8px; top: -12px; border-radius: 26px 26px 0 0; }
+    html[data-theme] .rt-head button, html[data-theme] button.auto { border: 0; background: var(--soft); color: var(--text); border-radius: 999px; padding: 4px 10px; }
+    html[data-theme] .rt-head button:hover { background: var(--soft-hover); }
+    html[data-theme] button.auto { color: var(--muted); } html[data-theme] button.auto.on { color: var(--text); }
+    html[data-theme] .stop-card { background: var(--card); border: 0; border-radius: 16px; box-shadow: 0 1px 2px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.06); }
+    html[data-theme] .stop-head { background: transparent; border-bottom: 1px solid var(--hair); padding: 10px 12px; }
+    html[data-theme] .rt { border-top: 1px solid var(--hair); padding: 9px 12px; }
+    html[data-theme] .times, html[data-theme] .daytab .mins { color: var(--text); }
+    html[data-theme] .times .past, html[data-theme] .daytab .mins .past { color: var(--past); }
+    html[data-theme] .times .next, html[data-theme] .daytab .mins .next, html[data-theme] .soon { color: var(--next); }
+    html[data-theme] .daytab { border: 0; border-radius: 12px; background: var(--card); box-shadow: 0 0 0 1px var(--hair); }
+    html[data-theme] .daytab .hr { border-top: 1px solid var(--hair); }
+    html[data-theme] .daytab .hr b { background: var(--soft); color: var(--muted); }
+    html[data-theme] .daytab .hr.cur b { background: var(--cur-bg); color: var(--cur-text); }
+    html[data-theme] .daytab .hr.empty { color: var(--past); }
+    html[data-theme] .tag { background: var(--chip); color: var(--chip-text); border-radius: 5px; }
+    html[data-theme] .tag.nb { background: #0a84ff; color: #fff; }
+    html[data-theme] .dly.late { background: var(--late-bg); color: var(--late); } html[data-theme] .dly.early { background: var(--early-bg); color: var(--early); } html[data-theme] .dly.ontime { background: var(--ok-bg); color: var(--ok); }
+    html[data-theme] .bike-box { background: var(--bike-bg); border: 0; border-radius: 16px; }
+    html[data-theme] .bike-box .bk { border-top: 1px solid var(--hair); }
+    html[data-theme] .seq-row.here { background: var(--cur-bg); }
+    html[data-theme="glass"] .tag.api { background: #dff6e4; color: #1b7a33; } html[data-theme="glass"] .tag.sched { background: #e3e8ff; color: #2c3e9e; } html[data-theme="glass"] .tag.est { background: #f6e9e1; color: #8a4b22; }
+    html[data-theme="glass"] .cx { color: #d70015 !important; } html[data-theme="glass"] .ad { color: #e67300 !important; }
+    html[data-theme="glass"] .bike-box .num b, html[data-theme="glass"] .bike-item .num b { color: #b25000; } html[data-theme="glass"] .bike-box .num i, html[data-theme="glass"] .bike-item .num i { color: #00797a; }
+    html[data-theme="glass"] .seq-row.track { outline-color: #007aff; }
+    html[data-theme="glass"] .stop-no { background: #1c1c1e; color: #fff; }
+    html[data-theme="glass"] .mrt-svg text { fill: #1c1c1e; }
+    html[data-theme="glass"] .cmp s { color: #8e8e93; }
+    /* --- 地圖控制項：玻璃按鈕 --- */
+    html[data-theme] .leaflet-container { background: var(--map-bg); }
+    html[data-theme] .leaflet-control-attribution { background: var(--pop) !important; color: var(--muted); }
+    html[data-theme] .leaflet-control-attribution a, html[data-theme] .leaflet-popup-content a { color: var(--btn-text); }
+    html[data-theme] .leaflet-tooltip { background: var(--pop); color: var(--text); border: 0; box-shadow: 0 2px 10px rgba(0,0,0,.25); border-radius: 8px; }
+    html[data-theme] .leaflet-container a.leaflet-popup-close-button { color: var(--muted); }
+    html[data-theme] .map-btn, html[data-theme] .map-stack a { background: var(--glass) !important; color: var(--text) !important;
+        -webkit-backdrop-filter: blur(20px) saturate(190%); backdrop-filter: blur(20px) saturate(190%); }
+    html[data-theme] .map-btn { border-radius: 14px !important; border: 1px solid var(--glass-edge) !important; box-shadow: inset 0 1px 0 var(--glass-hi), 0 6px 20px rgba(0,0,0,.2) !important; }
+    html[data-theme] .map-btn.near-btn, html[data-theme] .map-btn.srch-btn { background: rgba(10,132,255,.88) !important; color: #fff !important; border-radius: 999px !important; }
+    html[data-theme] #key-dlg input { background: var(--soft); border: 0; border-radius: 10px; color: var(--text); }
+    /* 右上控制組：放大 / 縮小 / 定位 (同一個垂直按鈕組) */
+    .map-stack { display: flex; flex-direction: column; border-radius: 16px; overflow: hidden; border: 1px solid var(--glass-edge, #444); box-shadow: inset 0 1px 0 var(--glass-hi, transparent), 0 6px 20px rgba(0,0,0,.25); }
+    .map-stack a { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 22px; line-height: 1; text-decoration: none; cursor: pointer;
+        background: #2a2d31; color: #eee; border-bottom: 1px solid var(--hair, #444); -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+    .map-stack a:last-child { border-bottom: 0; }
+    html .map-stack a.loc { color: #0a84ff !important; }
+    html .map-stack a.loc.follow { color: #fff !important; background: #0a84ff !important; }
+    html .map-stack a.loc.compass { color: #fff !important; background: #0b57d0 !important; }
+    html .map-stack a.loc.err { color: #ff6961 !important; }
+    /* 底部抽屜把手：固定在面板上緣，拖曳調整高度、點一下在中/大之間切換 */
+    #grip { display: none; position: absolute; z-index: 610; left: 8px; right: 8px; height: 24px; justify-content: center; align-items: center; touch-action: none; cursor: ns-resize;
+        bottom: calc(var(--sheet-h, 45vh) + max(8px, env(safe-area-inset-bottom)) - 24px); transition: bottom .28s cubic-bezier(.2, .8, .2, 1); }
+    #grip.drag { transition: none; }
+    #grip span { width: 40px; height: 5px; border-radius: 3px; background: var(--grip, rgba(60,60,67,.35)); }
+    .hdr-tools { display: inline-flex; gap: 2px; align-items: center; }   /* 🎨 右邊是 🗺 */
+    #btn-base { background: none; border: 0; font-size: 18px; cursor: pointer; padding: 2px 4px; line-height: 1; color: var(--text); display: inline-flex; }
+    #btn-theme { background: none; border: 0; font-size: 18px; cursor: pointer; padding: 2px 4px; line-height: 1; }
     @media (max-width: 760px) {
         #app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 36vh 1fr; }
         .qwrap { min-width: 0; flex-basis: 100%; order: 5; }
@@ -223,6 +349,23 @@
         #app.srch #panel { grid-row: 2; border-top: 0; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
         #app.srch #map { grid-row: 3; }
         .map-btn.srch-btn { display: block; }
+        /* 手機 Liquid Glass：地圖永遠滿版，標題列浮在上方、面板為可拖曳高度的底部抽屜 (上緣圓角小把手) */
+        html[data-theme] #app { display: block; position: relative; height: 100%; }
+        html[data-theme] #map { position: absolute; inset: 0; height: auto; }
+        html[data-theme] header { position: absolute; top: 0; left: 0; right: 0; margin: max(8px, env(safe-area-inset-top)) 8px 0; border-radius: 22px; }
+        html[data-theme] #panel { position: absolute; left: 0; right: 0; bottom: 0; height: var(--sheet-h, 45vh); margin: 0 8px max(8px, env(safe-area-inset-bottom));
+            border-radius: 26px; padding-top: 24px; transition: height .28s cubic-bezier(.2, .8, .2, 1); }
+        html[data-theme] #panel.drag { transition: none; }
+        html[data-theme] #app.full #panel, html[data-theme] #app.full #grip { display: none; }
+        html[data-theme] .rt-head { top: -24px; margin-top: -24px; border-radius: 26px 26px 0 0; padding-top: 24px; }
+        html[data-theme] .leaflet-top { top: calc(var(--hdr-h, 110px) + max(8px, env(safe-area-inset-top))); }
+        /* 版權文字永遠貼地圖最下緣 (在抽屜後面)；「附近／搜尋」按鈕隨抽屜高度上移 */
+        html[data-theme] .leaflet-bottom { bottom: 0; }
+        html[data-theme] .leaflet-bottom .map-btn { transform: translateY(calc(-1 * (var(--sheet-h, 45vh) + max(8px, env(safe-area-inset-bottom))))); transition: transform .28s cubic-bezier(.2, .8, .2, 1); }
+        html[data-theme] #app.full .leaflet-bottom .map-btn { transform: translateY(calc(-1 * env(safe-area-inset-bottom))); }
+        html[data-theme] #app.sheet-max .near-btn, html[data-theme] #app.sheet-max .srch-btn { display: none !important; }   /* 抽屜完全展開時不顯示 */
+        html[data-theme] .leaflet-top.leaflet-left, html[data-theme] .leaflet-bottom.leaflet-left { left: 0; }
+        html[data-theme] #grip { display: flex; }
     }
 </style>
 </head>
@@ -234,9 +377,11 @@
         <span class="qwrap kb"><input type="search" id="q" placeholder="輸入路線，例：300、綠線" autocomplete="off" inputmode="numeric"><button id="q-kb" type="button" title="切換鍵盤">ABC 中</button></span>
         <select id="date" title="時刻表日期"></select>
         <span id="api" title="點擊查看 API 用量">--</span>
+        <span class="hdr-tools"><button id="btn-theme" type="button" title="外觀：深色 / 淺色 Liquid Glass">🎨</button><button id="btn-base" type="button" title="地圖圖層 (OSM / OSM 大眾運輸 / Mapbox / 內政部)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3 2 8l10 5 10-5-10-5Z"/><path d="m2 13 10 5 10-5"/><path d="m2 17.5 10 5 10-5" opacity=".55"/></svg></button></span>
         <a href="taichung.html">← 路線圖</a>
     </header>
     <div id="panel"><div class="hint">載入站牌資料中…</div></div>
+    <div id="grip" title="拖曳調整面板高度"><span></span></div>
     <div id="map"></div>
 </div>
 <div id="api-detail"></div>
@@ -525,9 +670,20 @@ function loadSchedule(route, high = false) {
         return v;
     });
 }
+// 站站推估班表靜態檔 (tools/mk_est.js 預先抓好放在 est/)：有就直接讀，不對 TDX 呼叫 V3
+let estIdx = null;
+const estIndex = () => estIdx || (estIdx = fetch('est/index.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).catch(() => null));
+async function loadEstStatic(route) {
+    const ix = await estIndex(), e = ix && ix.routes && ix.routes[route];
+    if (!e || (e.exp && todayKey() > e.exp)) return null;
+    const js = await fetch('est/' + e.f).then(r => r.ok ? r.json() : null).catch(() => null);
+    return js && js.subs ? { at: Date.now(), exp: js.exp || null, subs: js.subs, src: 'static' } : null;
+}
 function loadEst(route, high = false) {
     if (estGet(route)) return Promise.resolve(estGet(route));
     return loadOnce('es:' + route, async () => {
+        const st = await loadEstStatic(route);
+        if (st) { estErr.delete(route); store.set(EST_PREFIX + route, st); return st; }
         let js;
         try { js = await Api.run(`Estimation/Bus/Schedule/City/Taichung/RouteName/${encodeURIComponent(route)}`, {}, { high, label: `${route} 站站推估班表`, api: 'V3Map' }); }
         catch (e) { estErr.set(route, e.message); throw e; }
@@ -1011,7 +1167,8 @@ function upcomingLine(r, pos, t, nm, row) {
 }
 
 // ---------- 地圖 ----------
-const map = L.map('map', { zoomControl: true, preferCanvas: true }).setView([24.15, 120.67], 13);
+// 縮放鈕放右上；leaflet-rotate：羅盤視角時旋轉地圖 (不開放手勢旋轉，避免誤觸)
+const map = L.map('map', { zoomControl: false, preferCanvas: true, rotate: true, bearing: 0, rotateControl: false, touchRotate: false, shiftKeyRotate: false, compassBearing: false }).setView([24.15, 120.67], 13);
 // 底圖 (可自選)：OSM / OSM 大眾運輸 (ÖPNVKarte) / Mapbox (需 access token) / 內政部國土測繪電子地圖
 //   非 Mapbox 底圖可加深色濾鏡 (反相)，配合深色介面；Mapbox 沒有 token 時暫用內政部
 const MAPBOX_TOKEN = '';   // 例：'pk.eyJ1Ijo...'，建議在 Mapbox 帳號設定網址限制
@@ -1034,8 +1191,10 @@ const baseCfg = Object.assign({ token: MAPBOX_TOKEN, style: 'mapbox/navigation-n
 if (!BASES[baseCfg.src]) baseCfg.src = baseCfg.token ? 'mapbox' : 'nlsc';
 const saveBase = () => store.set('txg_basemap', { token: baseCfg.token, style: baseCfg.style, custom: baseCfg.custom, src: baseCfg.src, dark: baseCfg.dark });
 let baseLayer = null;
+const isLight = () => document.documentElement.dataset.theme === 'glass';
+const LIGHT_STYLE = { 'mapbox/navigation-night-v1': 'mapbox/navigation-day-v1', 'mapbox/dark-v11': 'mapbox/light-v11' };
 function mapboxStyleId() {
-    if (baseCfg.style !== 'custom') return baseCfg.style;
+    if (baseCfg.style !== 'custom') return isLight() ? (LIGHT_STYLE[baseCfg.style] || baseCfg.style) : baseCfg.style;
     const m = (baseCfg.custom || '').match(/styles\/(?:v1\/)?([\w-]+)\/([\w-]+)|mapbox:\/\/styles\/([\w-]+)\/([\w-]+)/);
     return m ? `${m[1] || m[3]}/${m[2] || m[4]}` : 'mapbox/navigation-night-v1';
 }
@@ -1051,8 +1210,9 @@ function applyBase() {
         });
     } else {
         const B = BASES[src];
-        pane.style.filter = baseCfg.dark ? DARK_FILTER : '';
-        baseLayer = L.tileLayer(B.url, { maxZoom: 20, maxNativeZoom: B.maxZoom, attribution: B.attr + (baseCfg.dark ? ' (深色濾鏡)' : '') });
+        const dk = baseCfg.dark && !isLight();   // 淺色外觀不套深色濾鏡
+        pane.style.filter = dk ? DARK_FILTER : '';
+        baseLayer = L.tileLayer(B.url, { maxZoom: 20, maxNativeZoom: B.maxZoom, attribution: B.attr + (dk ? ' (深色濾鏡)' : '') });
     }
     baseLayer.on('tileerror', () => {
         const n = $('base-note');
@@ -1062,6 +1222,31 @@ function applyBase() {
     baseLayer.addTo(map);
 }
 applyBase();
+$('btn-base').onclick = e => { e.stopPropagation(); openBaseSettings(); };
+// Liquid Glass 桌面版：面板浮在地圖左側，縮放到範圍時預留左側面板寬度
+const _fitBounds = map.fitBounds.bind(map);
+map.fitBounds = (b, o = {}) => {
+    const glass = true, mob = matchMedia('(max-width: 760px)').matches;   // 兩種外觀都是浮動玻璃排版
+    if (glass && !mob) return _fitBounds(b, { ...o, paddingTopLeft: [476, 20], paddingBottomRight: [20, 20] });
+    if (glass && mob) {   // 手機：預留上方標題列與下方抽屜
+        const app = document.getElementById('app'), hh = app.querySelector('header').offsetHeight + 16, full = app.classList.contains('full');
+        const sh = full ? 0 : (parseFloat(getComputedStyle(app).getPropertyValue('--sheet-h')) || window.innerHeight * 0.45);
+        return _fitBounds(b, { ...o, paddingTopLeft: [16, hh + 8], paddingBottomRight: [16, sh + 24] });
+    }
+    return _fitBounds(b, o);
+};
+// 外觀切換 (與路線圖共用設定)
+const THEMES = [['dark', '深色'], ['glass', '淺色']];
+$('btn-theme').onclick = () => {
+    const r = document.documentElement, cur = r.dataset.theme || 'dark';
+    const next = THEMES[(THEMES.findIndex(x => x[0] === cur) + 1) % THEMES.length];
+    r.dataset.theme = next[0];
+    try { localStorage.setItem('txg_theme', next[0]); } catch (e) {}
+    $('btn-theme').title = `外觀：${next[1]} (點擊切換)`;
+    applyBase();
+    Sheet.mode = ''; updLayout();
+    setTimeout(() => map.invalidateSize(), 50);
+};
 // 底圖選擇面板 (地圖右上 🗺)
 function openBaseSettings() {
     const d = $('base-set');
@@ -1099,7 +1284,6 @@ const MapBtn = L.Control.extend({
         return b;
     }
 });
-map.addControl(new MapBtn({ position: 'topright', html: '🗺', title: '選擇底圖 (OSM / OSM 大眾運輸 / Mapbox / 內政部)', click: openBaseSettings }));
 const layerSel = L.layerGroup().addTo(map), layerAll = L.layerGroup().addTo(map);
 // 放大到 15 級以上時顯示可視範圍內的站位，點選即查詢
 function drawNearbyStations() {
@@ -1117,23 +1301,35 @@ function drawNearbyStations() {
 map.on('moveend', drawNearbyStations);
 
 // ---------- 我的位置 (持續定位 watchPosition) ----------
-//   地圖右上按鈕三段：關 → 開＋跟隨 (地圖隨位置移動)；拖曳地圖會暫停跟隨，再按一次恢復跟隨；跟隨中再按＝關閉
-const Loc = { watch: null, pos: null, follow: false, marker: null, circle: null, first: true, err: '' };
-const LocCtl = L.Control.extend({
+//   地圖右上 (縮放鈕下方) 按鈕三段：關 → 定位並放大到我的位置 (跟隨) → 羅盤視角 (地圖隨裝置朝向旋轉) → 關閉定位
+//   拖曳地圖會暫停跟隨，再按一次恢復跟隨 (維持原本的視角模式)
+const Loc = { watch: null, pos: null, follow: false, marker: null, circle: null, first: true, err: '', compassMode: false };
+const LOC_SVG = '<svg width="20" height="20" viewBox="-10 -10 20 20"><circle r="8.2" fill="none" stroke="currentColor" stroke-width="1.6"/><circle r="4.2" fill="currentColor"/></svg>';
+const COMPASS_SVG = '<svg width="20" height="20" viewBox="-10 -10 20 20"><circle r="8.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M0 -7 L3 1 L0 -0.5 L-3 1 Z" fill="#ff3b30"/><path d="M0 7 L3 -1 L0 0.5 L-3 -1 Z" fill="currentColor" opacity=".55"/></svg>';
+// 右上按鈕組：＋ / － / 定位 (縮放鈕正下方)
+const MapStack = L.Control.extend({
     options: { position: 'topright' },
     onAdd() {
-        const b = L.DomUtil.create('a', 'loc-btn leaflet-bar');
-        b.href = '#'; b.title = '持續顯示我的位置'; b.innerHTML = '◎';
-        L.DomEvent.on(b, 'click', e => { L.DomEvent.stop(e); toggleLoc(); });
-        L.DomEvent.disableClickPropagation(b);
-        return (Loc.btn = b);
+        const box = L.DomUtil.create('div', 'map-stack leaflet-control');
+        const mk = (html, title, fn, cls = '') => {
+            const a = L.DomUtil.create('a', cls, box);
+            a.href = '#'; a.role = 'button'; a.title = title; a.innerHTML = html;
+            L.DomEvent.on(a, 'click', e => { L.DomEvent.stop(e); fn(); });
+            return a;
+        };
+        mk('+', '放大', () => map.zoomIn());
+        mk('−', '縮小', () => map.zoomOut());
+        Loc.btn = mk(LOC_SVG, '顯示我的位置', () => toggleLoc(), 'loc');
+        L.DomEvent.disableClickPropagation(box); L.DomEvent.disableScrollPropagation(box);
+        return box;
     }
 });
-map.addControl(new LocCtl());
+map.addControl(new MapStack());
 function locBtnState() {
     if (!Loc.btn) return;
-    Loc.btn.className = 'loc-btn leaflet-bar' + (Loc.watch === null ? '' : Loc.follow ? ' follow' : ' on') + (Loc.err ? ' err' : '');
-    Loc.btn.title = Loc.err || (Loc.watch === null ? '持續顯示我的位置' : Loc.follow ? '跟隨中 (再按關閉定位)' : '定位中 (按一下回到我的位置並跟隨)');
+    Loc.btn.className = 'loc' + (Loc.watch === null ? '' : Loc.follow ? ' follow' : ' on') + (Loc.compassMode && Loc.watch !== null ? ' compass' : '') + (Loc.err ? ' err' : '');
+    Loc.btn.innerHTML = Loc.compassMode && Loc.watch !== null ? COMPASS_SVG : LOC_SVG;
+    Loc.btn.title = Loc.err || (Loc.watch === null ? '顯示我的位置' : !Loc.follow ? '回到我的位置' : Loc.compassMode ? '羅盤視角中 (再按關閉定位)' : '跟隨中 (再按切換羅盤視角)');
 }
 // 定位點：藍點 + 朝向小三角 (裝置指北針優先；沒有指北針時用移動方向)
 function meIcon() {
@@ -1146,7 +1342,8 @@ function updateMeArrow() {
     const h = Loc.compass !== null && Loc.compass !== undefined ? Loc.compass : Loc.moveHd;
     if (h === null || h === undefined || !isFinite(h)) { p.style.display = 'none'; return; }
     p.style.display = '';
-    p.setAttribute('transform', `rotate(${Math.round(h)})`);
+    const mb = map.getBearing ? map.getBearing() : 0;
+    p.setAttribute('transform', `rotate(${Math.round(h + mb)})`);
 }
 // 裝置朝向 (DeviceOrientation)：iOS 需在點按時取得權限 (webkitCompassHeading)；Android 用 deviceorientationabsolute 的 alpha
 const screenAngle = () => (screen.orientation && screen.orientation.angle) || window.orientation || 0;
@@ -1159,8 +1356,14 @@ function onOrient(e) {
     const now = Date.now();
     if (now - (Loc.orientAt || 0) < 80) return;   // 約 12 次/秒
     Loc.orientAt = now;
+    if (Loc.compassMode && Loc.watch !== null && map.setBearing) {
+        const target = (360 - Loc.compass) % 360, cur = map.getBearing();
+        const d = ((target - cur + 540) % 360) - 180;
+        if (Math.abs(d) > 1.5) map.setBearing(cur + d * 0.5);
+    }
     updateMeArrow();
 }
+map.on('rotate', updateMeArrow);
 function startCompass() {
     if (Loc.compassEv || !window.DeviceOrientationEvent) return;
     const go = () => {
@@ -1192,7 +1395,7 @@ function onLoc(p) {
     updateMeArrow();
     Loc.marker.setTooltipContent(`我的位置 (誤差約 ${Math.round(accuracy)} 公尺)`);
     if (Loc.follow) {
-        if (Loc.first) map.setView(ll, Math.max(map.getZoom(), 16)); else map.panTo(ll, { animate: true });
+        if (Loc.first) map.setView(ll, Math.max(map.getZoom(), 17)); else map.panTo(ll, { animate: true });
     }
     Loc.first = false;
     locBtnState();
@@ -1213,7 +1416,8 @@ function startLoc() {
 function stopLoc() {
     if (Loc.watch !== null) navigator.geolocation.clearWatch(Loc.watch);
     stopCompass();
-    Loc.watch = null; Loc.follow = false;
+    Loc.watch = null; Loc.follow = false; Loc.compassMode = false;
+    if (map.setBearing) map.setBearing(0);
     if (Loc.marker) { map.removeLayer(Loc.marker); map.removeLayer(Loc.circle); Loc.marker = Loc.circle = null; }
     store.set('txg_loc_on', false);
     locBtnState();
@@ -1221,7 +1425,8 @@ function stopLoc() {
 function toggleLoc() {
     if (Loc.watch === null) startLoc();
     // 自動恢復定位時 (非點按) iOS 無法取得指北針權限，點一下按鈕時再要一次
-    else if (!Loc.follow) { Loc.follow = true; startCompass(); if (Loc.pos) map.setView([Loc.pos.lat, Loc.pos.lng], Math.max(map.getZoom(), 16)); locBtnState(); }
+    else if (!Loc.follow) { Loc.follow = true; startCompass(); if (Loc.pos) map.setView([Loc.pos.lat, Loc.pos.lng], Math.max(map.getZoom(), 17)); locBtnState(); }
+    else if (!Loc.compassMode) { Loc.compassMode = true; startCompass(); if (Loc.pos) map.setView([Loc.pos.lat, Loc.pos.lng], Math.max(map.getZoom(), 17)); locBtnState(); }
     else stopLoc();
 }
 // 手動拖曳地圖＝暫停跟隨 (定位持續更新)
@@ -1416,10 +1621,57 @@ function srchClick() {
     $('q').focus();   // 需在點擊事件內同步呼叫，手機才會跳出鍵盤
 }
 // 手機版：沒有開啟任何頁面且沒按搜尋＝全地圖
+// 手機 Liquid Glass 底部抽屜：高度存在 --sheet-h；搜尋模式自動拉到最高 (鍵盤不擋清單)，其他頁面回到上次高度
+const Sheet = { h: null, user: null, mode: '' };
+const glassMobile = () => isMobile();
+const sheetMax = () => window.innerHeight - ($('app').querySelector('header').offsetHeight + 24);
+const sheetSnaps = () => [Math.round(window.innerHeight * 0.22), Math.round(window.innerHeight * 0.45), sheetMax()];
+function setSheet(h, remember = false) {
+    const [lo] = sheetSnaps();
+    h = Math.max(lo * 0.6, Math.min(sheetMax(), h));
+    Sheet.h = h; if (remember) Sheet.user = h;
+    $('app').style.setProperty('--sheet-h', h + 'px');
+    $('app').classList.toggle('sheet-max', h >= sheetMax() - 12);   // 完全展開：隱藏「附近／搜尋」
+}
+function sheetForMode(mode) {
+    if (!glassMobile()) return;
+    $('app').style.setProperty('--hdr-h', $('app').querySelector('header').offsetHeight + 'px');
+    if (mode === 'full') $('app').classList.remove('sheet-max');   // 全地圖首頁：抽屜收起，按鈕要顯示
+    else if (Sheet.h !== null) $('app').classList.toggle('sheet-max', Sheet.h >= sheetMax() - 12);
+    if (mode === Sheet.mode && Sheet.h !== null) return;
+    Sheet.mode = mode;
+    if (mode === 'srch') setSheet(sheetMax());
+    else if (mode === 'norm') setSheet(Sheet.user || sheetSnaps()[1]);
+}
+(function () {
+    const g = $('grip');
+    let y0 = 0, h0 = 0, moved = false;
+    g.addEventListener('pointerdown', e => {
+        if (!glassMobile()) return;
+        y0 = e.clientY; h0 = Sheet.h || $('panel').offsetHeight; moved = false;
+        g.setPointerCapture(e.pointerId); g.classList.add('drag'); $('panel').classList.add('drag');
+    });
+    g.addEventListener('pointermove', e => {
+        if (!g.classList.contains('drag')) return;
+        const dy = e.clientY - y0;
+        if (Math.abs(dy) > 4) moved = true;
+        setSheet(h0 - dy);
+    });
+    const end = () => {
+        if (!g.classList.contains('drag')) return;
+        g.classList.remove('drag'); $('panel').classList.remove('drag');
+        const snaps = sheetSnaps();
+        // 點一下：中 ↔ 大；拖曳：吸附到最近的高度 (小 / 中 / 大)
+        const t = !moved ? (Sheet.h < snaps[2] - 10 ? snaps[2] : snaps[1]) : snaps.reduce((a, b) => Math.abs(b - Sheet.h) < Math.abs(a - Sheet.h) ? b : a);
+        setSheet(t, true);
+    };
+    g.addEventListener('pointerup', end); g.addEventListener('pointercancel', end);
+})();
 function updLayout() {
     const full = isMobile() && !view && !listOpen, srch = isMobile() && !view && listOpen, app = $('app');
     const b = document.querySelector('.srch-btn');
     if (b) b.innerHTML = !view && listOpen ? '🗺 地圖' : '🔍 搜尋';
+    sheetForMode(full ? 'full' : srch ? 'srch' : 'norm');
     if (app.classList.contains('full') === full && app.classList.contains('srch') === srch) return;
     app.classList.toggle('full', full);
     app.classList.toggle('srch', srch);

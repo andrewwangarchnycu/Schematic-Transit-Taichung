@@ -13,3 +13,4 @@ tools/shape_all.json
 # QGIS 分析：TDX 下載快取與輸出 (可重新產生)
 analysis/cache/
 analysis/output/
+tools/est_cache/
