@@ -326,6 +326,19 @@
     html .map-stack a.loc.follow { color: #fff !important; background: #0a84ff !important; }
     html .map-stack a.loc.compass { color: #fff !important; background: #0b57d0 !important; }
     html .map-stack a.loc.err { color: #ff6961 !important; }
+
+    /* 多選＋附近：地圖上最近站的到站卡片 */
+    .mn-ico { pointer-events: none; }
+    .mn-card { position: absolute; left: 0; bottom: 14px; transform: translateX(-50%); min-width: 150px; max-width: 240px; padding: 7px 10px; border-radius: 14px; font-size: 12px; line-height: 1.45; white-space: nowrap;
+        background: var(--pop, rgba(36,36,38,.9)); color: var(--text, #eee); border: 1px solid var(--glass-edge, rgba(255,255,255,.15)); box-shadow: 0 6px 20px rgba(0,0,0,.35);
+        -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%); }
+    .mn-card::after { content: ''; position: absolute; left: 50%; bottom: -7px; margin-left: -7px; border: 7px solid transparent; border-bottom: 0; border-top-color: var(--pop, rgba(36,36,38,.9)); }
+    .mn-h { font-size: 13px; margin-bottom: 2px; } .mn-h small { color: var(--muted, #999); }
+    .mn-r { display: flex; gap: 6px; align-items: center; } .mn-r .badge { font-size: 11px; min-width: 0; padding: 0 6px; }
+    .mn-r b, .mn-sub b { color: var(--live, #64d2ff); }
+    .mn-sub { font-size: 12px; color: var(--muted, #999); white-space: normal; }
+    .mn-card.pick { pointer-events: auto; border-color: rgba(10,132,255,.6); }
+    .mn-go { color: var(--btn-text, #64d2ff); cursor: pointer; margin-left: 6px; font-size: 12px; text-decoration: none; }
     /* 底部抽屜把手：固定在面板上緣，拖曳調整高度、點一下在中/大之間切換 */
     #grip { display: none; position: absolute; z-index: 610; left: 8px; right: 8px; height: 24px; justify-content: center; align-items: center; touch-action: none; cursor: ns-resize;
         bottom: calc(var(--sheet-h, 45vh) + max(8px, env(safe-area-inset-bottom)) - 24px); transition: bottom .28s cubic-bezier(.2, .8, .2, 1); }
@@ -1594,11 +1607,13 @@ function stopTrack() {
 function nearClick() {
     if (Track.on) { stopTrack(); return; }
     if (view && view.type === 'route') { startTrack(); return; }
+    if (view && view.type === 'multi' && MultiNear.on) { multiNearOff(); renderMulti(); return; }
     if (!navigator.geolocation) { alert('此裝置不支援定位'); return; }
     // 持續定位中且位置夠新就直接用
     const fresh = Loc.pos && Date.now() - Loc.pos.at < 30000;
     (fresh ? f => f({ coords: { latitude: Loc.pos.lat, longitude: Loc.pos.lng } }) : f => navigator.geolocation.getCurrentPosition(f, () => alert('無法取得定位'), { enableHighAccuracy: true, timeout: 8000 }))(p => {
         const { latitude: lat, longitude: lng } = p.coords;
+        if (view && view.type === 'multi') { multiNear(lat, lng); return; }
         if (mode === 'route') { openNearRoutes(lat, lng); return; }
         setMode('station');
         const list = [...STATIONS.values()].map(s => ({ ...s, dist: Math.hypot((s.lng - lng) * 101700, (s.lat - lat) * 110900) })).sort((a, b) => a.dist - b.dist).slice(0, 20);
@@ -1672,6 +1687,7 @@ function updLayout() {
     const b = document.querySelector('.srch-btn');
     if (b) b.innerHTML = !view && listOpen ? '🗺 地圖' : '🔍 搜尋';
     sheetForMode(full ? 'full' : srch ? 'srch' : 'norm');
+    if ((MultiNear.on || MultiPick.si !== null) && (!view || view.type !== 'multi')) { MultiPick.si = null; multiNearOff(); }
     if (app.classList.contains('full') === full && app.classList.contains('srch') === srch) return;
     app.classList.toggle('full', full);
     app.classList.toggle('srch', srch);
@@ -2026,12 +2042,90 @@ function drawMultiMap(fit = true) {
             .bindTooltip(`${r.sub} 往 ${destOf(r)}`, { sticky: true }).on('click', () => openRoute(r.sub, r.dir)).addTo(layerSel));
         multiLines.set(r.i, ls);
         r.seq.forEach((si, k) => L.circleMarker([STOPS[si].lat, STOPS[si].lng], { radius: k === 0 || k === r.seq.length - 1 ? 6 : 3.5, color: c, weight: 2, fillColor: '#fff', fillOpacity: 1 })
-            .bindTooltip(`${r.sub} ${k + 1}. ${STOPS[si].name}`).on('click', () => openStation(SAME_OF[si])).addTo(layerSel));
+            .bindTooltip(`${r.sub} ${k + 1}. ${STOPS[si].name}`).on('click', () => pickMultiStop(si)).addTo(layerSel));
         sets.push({ lines, w: 5 }); all.push(...pts);
     });
     setArrows(sets);
     if (fit && all.length) map.fitBounds(L.latLngBounds(all).pad(0.08));
 }
+// ---------- 多選路線＋「附近」：各選取路線離我最近的一站，地圖上標出本班／下一班預計到站 ----------
+const MultiNear = { on: false, ll: null, layer: L.layerGroup().addTo(map), timer: null };
+const mnMin = ms => { const m = Math.round((ms - Date.now()) / 60000); return m <= 0 ? '進站中' : `${m} 分`; };
+// 某路線某站：本班 (最近一台車的預估) 與下一班 (第二台車的預估；沒有就用時刻表下一班)
+function mnTimes(r, pos) {
+    const s = STOPS[r.seq[pos]], c = etaCache.get('rt:' + r.route);
+    const rows = c ? c.rows.filter(x => x.name === s.name && x.sub === r.sub && x.dir === r.dir) : [];
+    const dls = [...new Set(rows.flatMap(x => [x.dl, ...(x.ests || []).map(q => q.dl)]).filter(v => v !== null && v !== undefined && v > Date.now() - 60000))].sort((a, b) => a - b);
+    const cur = dls.length ? dls[0] : null;
+    let nxt = dls.length > 1 ? dls[1] : null, nxtSched = null, txt = '';
+    if (cur === null) {
+        const r0 = rows.find(x => x.status === 1 && x.next) || rows[0];
+        txt = !c ? '即時載入中…' : !r0 ? '暫無到站資訊' : r0.status === 1 && r0.next ? `表定 ${fmt(minOfMs(Date.parse(r0.next)))} 發車` : (STATUS[r0.status] || '暫無到站資訊');
+    }
+    if (nxt === null) {
+        const t = timesAt(r, pos, todayKey());
+        if (!t.pending && t.times && t.times.length) { const base = cur !== null ? minOfMs(cur) + 1 : nowMin(); const x = t.times.find(v => v > base); if (x !== undefined) nxtSched = x; }
+    }
+    return { cur, nxt, nxtSched, txt };
+}
+const mnLine = t => t.cur !== null
+    ? `本班 <b>${mnMin(t.cur)}</b>${t.nxt !== null ? ` · 下一班 <b>${mnMin(t.nxt)}</b>` : t.nxtSched !== null ? ` · 下一班 <b>${fmt(t.nxtSched)}</b> <small>表定</small>` : ''}`
+    : `${esc(t.txt)}${t.nxtSched !== null ? ` · 下一班 <b>${fmt(t.nxtSched)}</b> <small>表定</small>` : ''}`;
+// 每條選取路線 (方向) 離我最近的站
+function mnNearest() {
+    const me = { lat: MultiNear.ll[0], lng: MultiNear.ll[1] };
+    return multiRoutes().map(r => {
+        let best = null;
+        r.seq.forEach((si, pos) => { const d = mDist(STOPS[si], me); if (!best || d < best.d) best = { pos, d }; });
+        return best && { r, pos: best.pos, si: r.seq[best.pos], d: best.d };
+    }).filter(Boolean);
+}
+// 點選的站：選取路線中經過同一站位 (同名站) 的，各列本班／下一班
+const MultiPick = { si: null };
+function mnPicked() {
+    if (MultiPick.si === null) return [];
+    const k0 = SAME_OF[MultiPick.si];
+    return multiRoutes().map(r => { const pos = r.seq.findIndex(si => SAME_OF[si] === k0); return pos >= 0 ? { r, pos, si: r.seq[pos], d: null, pick: true } : null; }).filter(Boolean);
+}
+function pickMultiStop(si) {
+    MultiPick.si = MultiPick.si !== null && SAME_OF[MultiPick.si] === SAME_OF[si] ? null : si;   // 再點同一站＝收起
+    if (MultiPick.si !== null) [...new Set(mnPicked().map(it => it.r.route))].forEach(rt => { etaRoute(rt, `${rt} 即時`).catch(() => {}); if (!dayLoaded(rt) && !schedLoading(rt)) loadDay(rt).catch(() => {}); });
+    drawMultiNear();
+}
+function drawMultiNear() {
+    MultiNear.layer.clearLayers();
+    const groups = new Map();
+    const add = it => { const k = SAME_OF[it.si] || it.si; if (!groups.has(k)) groups.set(k, []); if (!groups.get(k).some(x => x.r === it.r)) groups.get(k).push(it); };
+    if (MultiNear.on) mnNearest().forEach(add);
+    mnPicked().forEach(add);
+    groups.forEach(list => {
+        const s = STOPS[list[0].si], d = list.find(x => x.d !== null), pick = list.some(x => x.pick);
+        const html = `<div class="mn-card${pick ? ' pick' : ''}"><div class="mn-h"><b>${esc(s.name)}</b>${d ? ` <small>${Math.round(d.d)} m</small>` : ''}${pick ? ` <a class="mn-go" data-st="${esc(SAME_OF[s.i] || '')}">站位 ›</a>` : ''}</div>${list.map(it =>
+            `<div class="mn-r">${badge(it.r.sub)}<span>${mnLine(mnTimes(it.r, it.pos))}</span></div>`).join('')}</div>`;
+        const mk = L.marker([s.lat, s.lng], { icon: L.divIcon({ className: 'mn-ico', html, iconSize: [0, 0] }), zIndexOffset: 2000, interactive: false }).addTo(MultiNear.layer);
+        const go = mk.getElement() && mk.getElement().querySelector('.mn-go');
+        if (go) { L.DomEvent.disableClickPropagation(go); go.onclick = () => openStation(go.dataset.st); }
+        L.circleMarker([s.lat, s.lng], { radius: 8, color: '#fff', weight: 3, fillColor: colorOf(list[0].r.sub), fillOpacity: 1 }).on('click', () => pickMultiStop(s.i)).addTo(MultiNear.layer);
+    });
+    if (MultiNear.on && !Loc.marker) L.circleMarker(MultiNear.ll, { radius: 8, color: '#fff', weight: 3, fillColor: '#0a84ff', fillOpacity: 1 }).addTo(MultiNear.layer);
+}
+function multiNear(lat, lng) {
+    MultiNear.on = true; MultiNear.ll = [lat, lng];
+    const routes = [...new Set(multiRoutes().map(r => r.route))];
+    routes.forEach(rt => { etaRoute(rt, `${rt} 即時 (附近)`).catch(() => {}); if (!dayLoaded(rt) && !schedLoading(rt)) loadDay(rt).catch(() => {}); });
+    drawMultiNear();
+    const pts = [MultiNear.ll, ...mnNearest().map(it => [STOPS[it.si].lat, STOPS[it.si].lng])];
+    map.fitBounds(L.latLngBounds(pts).pad(0.35), { maxZoom: 17 });
+    clearInterval(MultiNear.timer);
+    MultiNear.timer = setInterval(() => { if (MultiNear.on) drawMultiNear(); }, 20000);   // 倒數分鐘更新 (資料本身由載入完成時重畫)
+    nearBtnLabel(); renderMulti();
+}
+function multiNearOff() {
+    MultiNear.on = false; clearInterval(MultiNear.timer);
+    drawMultiNear();   // 點選的站卡片保留
+    nearBtnLabel();
+}
+function nearBtnLabel() { const b = document.querySelector('.near-btn'); if (b && !Track.on) b.innerHTML = MultiNear.on ? '📍 清除附近' : '📍 附近'; }
 function renderMulti() {
     const rs = multiRoutes();
     if (!rs.length) { view = null; layerSel.clearLayers(); drawVehicles(); renderSearch(); return; }
@@ -2040,7 +2134,8 @@ function renderMulti() {
         const vc = vehCache.get(r.route), other = ROUTES.find(x => x.sub === r.sub && x.dir !== r.dir);
         const n = vc ? vc.rows.filter(v => v.sub === r.sub && v.dir === r.dir).length : null;
         return `<div class="list-item" data-open="${r.i}">${badge(r.sub)}<div style="min-width:0;flex:1"><div>往 ${esc(destOf(r))}</div>
-            <div class="sub">${r.seq.length} 站 · ${n !== null ? `${n} 輛公車` : loading.has('v:' + r.route) ? '公車位置載入中…' : '尚無公車位置'}</div></div>
+            <div class="sub">${r.seq.length} 站 · ${n !== null ? `${n} 輛公車` : loading.has('v:' + r.route) ? '公車位置載入中…' : '尚無公車位置'}</div>
+            ${MultiNear.on ? (() => { const it = mnNearest().find(x => x.r === r); return it ? `<div class="mn-sub">📍 ${esc(STOPS[it.si].name)} ${Math.round(it.d)} m · ${mnLine(mnTimes(r, it.pos))}</div>` : ''; })() : ''}</div>
             ${other ? `<button class="btn" data-rev="${r.i}" title="改看往 ${esc(destOf(other))}">⇄</button>` : ''}<button class="btn" data-del="${r.i}" title="移出多選">✕</button></div>`;
     }).join('');
     const vt = Math.max(0, ...routes.map(rt => (vehCache.get(rt) || {}).at || 0));
@@ -2048,8 +2143,9 @@ function renderMulti() {
         <div class="row"><button class="btn" id="b-add">＋ 加入路線</button><button class="btn" id="b-clr">清除多選</button></div>
         <div class="row">${autoBtn(autoBusy(routes), `公車位置，每次 ${routes.length} 次 API`)}<span class="muted">${vehAuto ? '每分鐘自動更新' : '自動更新已關'}</span>
             ${vt ? `<span class="muted">${Math.round((Date.now() - vt) / 1000)} 秒前查詢</span>` : ''}</div>
-        <div class="hint">地圖只顯示所選路線方向的公車；點路線看完整站序與時刻，⇄ 切換方向。</div>${rows}`;
+        <div class="hint">地圖只顯示所選路線方向的公車；點路線看完整站序與時刻，⇄ 切換方向。按「📍 附近」標出各路線離你最近的一站，點地圖上任一站可看該站本班／下一班。</div>${rows}`;
     $('b-add').onclick = () => { view = null; layerSel.clearLayers(); setArrows([]); drawVehicles(); $('q').value = ''; renderSearch(); };
+    if (MultiNear.on || MultiPick.si !== null) drawMultiNear();
     $('b-clr').onclick = () => { multi = []; saveMulti(); renderMulti(); };
     $('b-auto').onclick = () => setVehAuto(!vehAuto);
     panel.querySelectorAll('[data-open]').forEach(e => {
