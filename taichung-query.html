@@ -789,8 +789,9 @@ function loadS2S(route, high = false) {
     if (s2sGet(route)) return Promise.resolve(s2sGet(route));
     return loadOnce('s2:' + route, async () => {
         const st = await loadStatic(route);
-        let subs = st && st.s2s && Object.keys(st.s2s).length ? st.s2s : null;
-        if (!subs) {   // 沒有靜態檔：單條路線約 2～5 KB
+        // 有靜態檔就以它為準：s2s 為空代表 TDX 本來就沒有這條路線的站間旅行時間 (改用里程×車速推估)，不再打 API
+        let subs = st ? (st.s2s || {}) : null;
+        if (!subs) {   // 靜態檔沒有這條路線 (新路線等)：單條路線約 2～5 KB
             const js = await Api.run('S2STravelTime/City/Taichung/' + encodeURIComponent(route), { '$select': 'SubRouteID,Direction,TravelTimes' }, { high, label: `${route} 站間旅行時間` });
             subs = s2sMatch(route, js);
         }
