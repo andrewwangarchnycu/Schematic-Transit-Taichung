@@ -3,6 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#16181b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="臺中公車">
 <title>臺中公車查詢</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -13,9 +18,20 @@
         let t = null;
         try { t = new URLSearchParams(location.search).get('theme') || localStorage.getItem('txg_theme'); } catch (e) {}
         document.documentElement.dataset.theme = t === 'light' || t === 'glass' ? 'glass' : 'dark';
+        // 瀏覽器分頁的狀態列顏色 (接近地圖底色)；主畫面 App 模式另有漸層半透明遮罩 (#sbar)
+        window.syncThemeColor = () => { const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = document.documentElement.dataset.theme === 'glass' ? '#ebe8e2' : '#16181b'; };
+        syncThemeColor();
+        try { if (navigator.standalone || matchMedia('(display-mode: standalone)').matches) document.documentElement.classList.add('standalone'); } catch (e) {}
     })();
 </script>
 <style>
+    /* 主畫面 App 模式：網頁畫到狀態列底下，上緣加漸層半透明＋模糊遮罩讓時間／電量 (白字) 看得清楚 */
+    #sbar { display: none; }
+    html.standalone #sbar { display: block; position: fixed; z-index: 4000; top: 0; left: 0; right: 0; height: calc(env(safe-area-inset-top) + 18px); pointer-events: none;
+        background: linear-gradient(to bottom, var(--sbar, rgba(14,15,17,.72)) 0%, var(--sbar, rgba(14,15,17,.72)) 45%, rgba(0,0,0,0) 100%);
+        -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+        -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent); mask-image: linear-gradient(to bottom, #000 55%, transparent); }
+    html[data-theme="glass"] #sbar { --sbar: rgba(60,60,67,.42); }
     :root { --bg: #161719; --panel: #1f2124; --line: #34373c; --text: #ececec; --muted: #9aa0a6; --accent: #4caf50; --live: #00bcd4; }
     * { box-sizing: border-box; }
     html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif; }
@@ -425,6 +441,7 @@
 </style>
 </head>
 <body>
+<div id="sbar"></div>
 <div id="app">
     <header>
         <h1>臺中公車查詢</h1>
@@ -1424,6 +1441,7 @@ $('btn-theme').onclick = () => {
     const r = document.documentElement, cur = r.dataset.theme || 'dark';
     const next = THEMES[(THEMES.findIndex(x => x[0] === cur) + 1) % THEMES.length];
     r.dataset.theme = next[0];
+    syncThemeColor();
     try { localStorage.setItem('txg_theme', next[0]); } catch (e) {}
     $('btn-theme').title = `外觀：${next[1]} (點擊切換)`;
     applyBase();
