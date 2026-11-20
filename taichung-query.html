@@ -2942,9 +2942,16 @@ function navWaitInfo(g) {
 // ---- 導航車隊：要搭／要轉乘的公車 (主車) ＋靠近各上車站的同路線其他公車 (半透明) ----
 //   位置：GPS 投影到路線線形 → 依 API 回傳車速從 GPS 時間往前推 (API 沒給車速時才用「到下一站距離 ÷ 預估到站」推算)
 //         未到預估時刻不越過該站；顯示值每幀往目標指數緩動，畫面平順移動
-//   外觀：BUS3D 有登錄的路線用 3D 模型 (fill-extrusion 組成)，其餘用公車圖示
+//   外觀：busLivery 有對應的路線／車輛用 3D 模型 (fill-extrusion 組成)，其餘用公車圖示
 const NAV_NEAR_R = 1200;
-const BUS3D = { '45': 'tcpower' };   // 路線 → 3D 塗裝
+// 路線＋車牌 → 3D 塗裝 (null＝用公車圖示)
+//   45：中鹿 Taichung Power 電動公車 (紅)
+//   23：EAL 開頭 (電動) ＝統聯 Taichung Power 電動公車 (白)；其餘＝Ubus 綠色公車
+function busLivery(route, plate) {
+    if (route === '45') return 'tcpower';
+    if (route === '23') return /^EAL/i.test(plate || '') ? 'tcpower_w' : 'ubus';
+    return null;
+}
 const navFleetS = new Map();         // 車牌 → { s 顯示中的沿線里程, leg }
 // 某車到某站的預估到站時刻 (ms)：同站同子路線同方向，主預估或 Estimates 內的同車牌
 function navEtaOf(g, plate, name) {
@@ -3022,26 +3029,40 @@ function navBusPos(g) {
     return it ? { ...it.p, v: it.v, jam: it.T.jam, s: (navFleetS.get(it.v.plate) || {}).s } : null;
 }
 // 3D 公車塗裝：[x0, x1, y0, y1, 底高, 頂高, 顏色]；x 往車頭 (公尺)、y 往車身左側
+//   共用車身幾何 (約 10.6 m 中型公車)，各塗裝只給顏色
+function busParts(c) {
+    const L = c.L || 10.6, hw = 1.25, xr = -L / 2, xf = L / 2, xc = xf - 0.32, xw = xf - 1.4, TIRE = '#1b1b1d';
+    const P = [
+        // 輪胎
+        [xr + 1.7, xr + 2.7, -hw + 0.02, -hw + 0.34, 0, 0.36, TIRE], [xr + 1.7, xr + 2.7, hw - 0.34, hw - 0.02, 0, 0.36, TIRE],
+        [xf - 2.9, xf - 1.9, -hw + 0.02, -hw + 0.34, 0, 0.36, TIRE], [xf - 2.9, xf - 1.9, hw - 0.34, hw - 0.02, 0, 0.36, TIRE],
+        // 車身側面：裙邊、下段 (近車頭一段可換色)、窗帶 (車尾留一條車身色)、上段
+        [xr, xw, -hw, hw, 0.33, 0.55, c.skirt], [xw, xc, -hw, hw, 0.33, 0.55, c.skirtF || c.skirt],
+        [xr, xw, -hw, hw, 0.55, 1.15, c.lower], [xw, xc, -hw, hw, 0.55, 1.15, c.lowerF || c.lower],
+        [xr, xr + 0.18, -hw, hw, 1.15, 2.5, c.rear || c.upper], [xr + 0.18, xc, -hw, hw, 1.15, 2.5, c.band],
+        [xr, xc, -hw, hw, 2.5, 3.0, c.upper],
+        // 車頭：下緣 (可分段：閃電、保險桿)、擋風玻璃、LED 路線看板、頂緣
+        [xc, xf, -hw, hw, 1.2, 2.42, c.glass || '#22313a'], [xc, xf, -hw, hw, 2.42, 2.82, c.led || '#2a1a08'], [xc, xf, -hw, hw, 2.82, 3.0, c.frontTop || c.upper],
+        // 後照鏡 (伸出車頭兩側)
+        [xf - 0.05, xf + 0.32, hw + 0.08, hw + 0.38, 1.85, 2.55, c.mirror], [xf - 0.05, xf + 0.32, -hw - 0.38, -hw - 0.08, 1.85, 2.55, c.mirror]
+    ];
+    const z0 = c.bumper ? 0.6 : 0.33;
+    if (c.bumper) P.push([xc, xf, -hw, hw, 0.33, 0.6, c.bumper]);
+    (c.front || [[-hw, hw, c.lowerF || c.lower]]).forEach(([y0, y1, col]) => P.push([xc, xf, y0, y1, z0, 1.2, col]));
+    (c.ac || []).forEach(([x0, x1, col]) => P.push([x0, x1, -0.85, 0.85, 3.0, 3.34, col]));
+    return P;
+}
+const PWR_FRONT = (W, G, N) => [[-1.25, 0.05, W], [0.05, 0.62, G], [0.62, 0.74, N], [0.74, 1.25, W]];   // 白底＋右側綠色閃電＋深藍邊
 const BUS_LIVERY = {
-    // 中鹿客運 Taichung Power 電動公車：紅色車身、黑色窗帶、白色車頭、綠色閃電、紅色後照鏡與車頂冷氣
-    tcpower: (() => {
-        const L = 10.6, hw = 1.25, xr = -L / 2, xf = L / 2, xc = xf - 0.32, xw = xf - 1.4;
-        const RED = '#e3241b', RED2 = '#b81a13', BLK = '#141517', GLASS = '#22313a', WHITE = '#f3f3f0', GREEN = '#41c63a', NAVY = '#1f2a4d', TIRE = '#1b1b1d', LED = '#2a1a08';
-        return [
-            [xr + 1.7, xr + 2.7, -hw + 0.02, -hw + 0.34, 0, 0.36, TIRE], [xr + 1.7, xr + 2.7, hw - 0.34, hw - 0.02, 0, 0.36, TIRE],
-            [xf - 2.9, xf - 1.9, -hw + 0.02, -hw + 0.34, 0, 0.36, TIRE], [xf - 2.9, xf - 1.9, hw - 0.34, hw - 0.02, 0, 0.36, TIRE],
-            [xr, xw, -hw, hw, 0.33, 0.55, RED2], [xw, xc, -hw, hw, 0.33, 0.55, WHITE],
-            [xr, xw, -hw, hw, 0.55, 1.15, RED], [xw, xc, -hw, hw, 0.55, 1.15, WHITE],
-            [xr, xr + 0.18, -hw, hw, 1.15, 2.5, RED], [xr + 0.18, xc, -hw, hw, 1.15, 2.5, BLK],
-            [xr, xc, -hw, hw, 2.5, 3.0, RED],
-            [-1.6, 2.4, -0.85, 0.85, 3.0, 3.34, RED],
-            // 車頭：白色下緣 (右側綠色閃電＋深藍邊)、擋風玻璃、LED 路線看板、紅色頂緣
-            [xc, xf, -hw, 0.05, 0.33, 1.2, WHITE], [xc, xf, 0.05, 0.62, 0.33, 1.2, GREEN], [xc, xf, 0.62, 0.74, 0.33, 1.2, NAVY], [xc, xf, 0.74, hw, 0.33, 1.2, WHITE],
-            [xc, xf, -hw, hw, 1.2, 2.42, GLASS], [xc, xf, -hw, hw, 2.42, 2.82, LED], [xc, xf, -hw, hw, 2.82, 3.0, RED],
-            // 後照鏡 (紅色，伸出車頭兩側)
-            [xf - 0.05, xf + 0.32, hw + 0.08, hw + 0.38, 1.85, 2.55, RED], [xf - 0.05, xf + 0.32, -hw - 0.38, -hw - 0.08, 1.85, 2.55, RED]
-        ];
-    })()
+    // 中鹿客運 Taichung Power 電動公車 (45)：紅色車身、黑色窗帶、白色車頭與前段、綠色閃電、紅色後照鏡與車頂冷氣
+    tcpower: busParts({ skirt: '#b81a13', skirtF: '#f3f3f0', lower: '#e3241b', lowerF: '#f3f3f0', band: '#141517', rear: '#e3241b', upper: '#e3241b',
+        front: PWR_FRONT('#f3f3f0', '#41c63a', '#1f2a4d'), frontTop: '#e3241b', mirror: '#e3241b', ac: [[-1.6, 2.4, '#e3241b']] }),
+    // 統聯客運 Taichung Power 電動公車 (23，EAL 車牌)：全白車身、黑色窗帶、綠色閃電、白色後照鏡、車頂兩組冷氣/電池箱
+    tcpower_w: busParts({ skirt: '#d6d6d2', lower: '#f4f4f1', band: '#141517', rear: '#f4f4f1', upper: '#f4f4f1',
+        front: PWR_FRONT('#f4f4f1', '#41c63a', '#1f2a4d'), frontTop: '#f4f4f1', led: '#14100a', mirror: '#f0f0ee', ac: [[-3.4, -0.6, '#e6e6e2'], [1.0, 3.4, '#e6e6e2']] }),
+    // Ubus (23 一般車)：亮綠色車身、黑色窗帶、黑色保險桿、綠色後照鏡
+    ubus: busParts({ skirt: '#4fa51f', lower: '#66c42b', band: '#141517', upper: '#66c42b', bumper: '#1c1d1f',
+        frontTop: '#66c42b', mirror: '#66c42b', ac: [[-2.2, 1.8, '#5cb526']] })
 };
 // 3D 公車 → GeoJSON 多邊形 (依方位角旋轉；k＝放大倍數，遠看時放大以便辨識)
 function bus3dFeatures(p, brg, livery, k, plate) {
@@ -3078,7 +3099,7 @@ function navFleetFrame() {
     const mpp = 78271.517 * Math.cos((items[0] ? items[0].p.lat : 24.15) * Math.PI / 180) / Math.pow(2, z);   // 每像素公尺
     if (Nav.sel && !items.some(x => x.v.plate === Nav.sel)) Nav.sel = null;   // 選取的車已不在畫面資料中
     items.forEach(x => {
-        const liv = BUS3D[x.g.r.route], key = x.v.plate;
+        const liv = busLivery(x.g.r.route, x.v.plate), key = x.v.plate;
         if (liv) {
             (x.primary ? f3 : f3d).push(...bus3dFeatures(x.p, x.p.brg, liv, k, key));
             // 塞車：與路線查詢相同的紅色呼吸燈 (貼地光圈，大小隨 3D 車身)
