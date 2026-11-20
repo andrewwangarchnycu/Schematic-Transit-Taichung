@@ -2988,8 +2988,10 @@ function navFleetList() {
 }
 // 目標沿線里程 (現在)
 function navBusTarget(g, v) {
+    // 投影提示用「上次 GPS 的投影位置」(不可用畫面上外推後的位置：外推超過 300 m 時會把真正位置排除在搜尋範圍外，車就消失)
     const prev = navFleetS.get(v.plate);
-    const pr = lineProject(g.line, v, prev ? prev.s - 300 : -1);
+    let pr = lineProject(g.line, v, prev && prev.raw !== undefined ? prev.raw - 300 : -1);
+    if (pr.d > 300 && prev) pr = lineProject(g.line, v, -1);
     if (pr.d > 300) return null;   // 離線形太遠 (調度、繞駛)
     const st = vehState(g.r, v), jam = !!(st && st.jam), now = Date.now();
     const dt = Math.max(0, Math.min(180, (now - v.gps) / 1000));
@@ -3006,17 +3008,21 @@ function navBusTarget(g, v) {
             if (now < eta) lim = tgt[1] - 3;   // 預估時刻前不越過該站 (在站前等候)
         }
     }
-    return { s: Math.min(lim, pr.s + Math.min(1500, vel * dt)), jam, eta, vel };
+    return { s: Math.min(lim, pr.s + Math.min(1500, vel * dt)), raw: pr.s, jam, eta, vel };
 }
 // 每幀：計算各車顯示位置 (緩動) → Nav.fleet
 function navFleetCalc(dtf) {
     const items = [];
     navFleetList().forEach(x => {
-        const T = navBusTarget(x.g, x.v);
-        if (!T) return;
+        const T = navBusTarget(x.g, x.v), now = Date.now();
         let S = navFleetS.get(x.v.plate);
-        if (!S || S.leg !== x.i || Math.abs(T.s - S.s) > 800) S = { s: T.s, leg: x.i };
-        else S.s += (T.s - S.s) * (1 - Math.exp(-dtf / 0.8));
+        if (!T) {   // 暫時算不出位置 (GPS 偏離線形等)：3 分鐘內停在最後位置，不讓車消失
+            if (S && S.leg === x.i && S.T && now - S.at < 180000) items.push({ ...x, p: lineAt(x.g.line, S.s), T: S.T });
+            return;
+        }
+        if (!S || S.leg !== x.i || T.s - S.s > 800 || S.s - T.s > 300) S = { s: T.s, leg: x.i };
+        else if (T.s > S.s) S.s += (T.s - S.s) * (1 - Math.exp(-dtf / 0.8));   // 只往前緩動；新 GPS 比畫面位置稍後面時原地等，不倒退
+        S.raw = T.raw; S.T = T; S.at = now;
         navFleetS.set(x.v.plate, S);
         items.push({ ...x, p: lineAt(x.g.line, S.s), T });
     });
