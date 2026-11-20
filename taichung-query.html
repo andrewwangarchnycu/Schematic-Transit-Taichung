@@ -231,6 +231,11 @@
     .nav-sheet .grab { position: sticky; top: 0; z-index: 3; height: 24px; margin: 0 -14px 4px; display: flex; justify-content: center; align-items: center; cursor: ns-resize; touch-action: none; }
     .nav-sheet .grab::before { content: ''; width: 40px; height: 5px; border-radius: 3px; background: var(--grip, rgba(255,255,255,.35)); }
     .nav-btns { display: flex; gap: 8px; margin: 2px 0 10px; }
+    .nav-vlab { background: var(--pop, rgba(36,36,38,.86)); color: var(--text, #fff); border: 1px solid var(--glass-edge, rgba(255,255,255,.14)); border-radius: 12px; padding: 4px 9px; font-size: 12px;
+        white-space: nowrap; box-shadow: 0 4px 14px rgba(0,0,0,.35); cursor: pointer; -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
+    .nav-vlab .badge { font-size: 12px; }
+    #nav-back { display: none; position: fixed; z-index: 3100; left: 50%; transform: translateX(-50%); top: calc(max(8px, env(safe-area-inset-top)) + 4px); align-items: center; gap: 6px;
+        border: 0; border-radius: 999px; padding: 9px 16px; background: #0a84ff; color: #fff; font: 600 14px/1 -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif; box-shadow: 0 6px 20px rgba(0,0,0,.35); cursor: pointer; }
     .nav-gl, .pl-gl { display: inline-block; margin-top: 4px; padding: 3px 10px; border-radius: 999px; background: #ff9f0a; color: #fff !important; font-weight: 600; font-size: 12px; text-decoration: none; white-space: nowrap; }
     .tl.bike .tl-s { color: #ff9f0a; }
     .nav-btns button { flex: 1; border: 0; border-radius: 999px; padding: 10px 8px; font: inherit; font-weight: 600; color: var(--text, #fff); background: var(--soft, #3a3a3c); cursor: pointer; }
@@ -456,6 +461,7 @@
 </style>
 </head>
 <body>
+<button id="nav-back" onclick="history.back()">🧭 回到導航</button>
 <div id="sbar"></div>
 <div id="app">
     <header>
@@ -2807,6 +2813,9 @@ function navOpen(p) {
 })();
 function navClose() {
     clearInterval(Nav.tick); clearInterval(Nav.cam); clearInterval(Nav.poll);
+    if (Nav.raf) cancelAnimationFrame(Nav.raf);
+    Nav.raf = null; Nav.fleet = []; Nav.labAt = {}; navFleetS.clear();
+    Nav.hidden = false; $('nav-back').style.display = 'none';
     if (Nav.watch !== null && Nav.watch !== undefined) navigator.geolocation.clearWatch(Nav.watch);
     if (Nav.map) Nav.map.remove();
     Object.assign(Nav, { on: false, started: false, map: null, watch: null, marks: {}, walkSrc: '' });
@@ -2861,6 +2870,13 @@ function navPoll() {
     if (due('eta')) { Nav.pt.eta = now; navEta(g.r.route); }
     if (due('veh')) { Nav.pt.veh = now; loadVehicles(g.r.route, true).catch(() => {}); }
     if (due('a2')) { Nav.pt.a2 = now; loadA2(g.r.route, true, true).catch(() => {}); }
+    // 之後要轉乘的路線：公車位置＋到站 (畫面上的轉乘公車)，每 90 秒
+    const gi = Nav.legs.indexOf(g);
+    Nav.legs.forEach((h, i) => {
+        if (h.k !== 'bus' || i <= gi || h.r.route === g.r.route) return;
+        const k = 'up:' + h.r.route;
+        if (!Nav.pt[k] || now - Nav.pt[k] >= 90000) { Nav.pt[k] = now; loadVehicles(h.r.route, true).catch(() => {}); navEta(h.r.route); }
+    });
 }
 function navGo(k) {
     k = Math.max(0, Math.min(Nav.steps.length - 1, k));
@@ -2916,19 +2932,180 @@ function navWaitInfo(g) {
     if (row.dl === null) return { txt: row.status === 1 && row.next ? `表定 ${new Date(row.next).toTimeString().slice(0, 5)} 發車` : (STATUS[row.status] || '--'), row };
     return { dl: row.dl, cmp: compareEta(g.r, g.b.name, row), row, plate: row.plate };
 }
-// 公車在路線上的平順位置 (依車速外推，顯示值往目標緩動)
-function navBusPos(g) {
-    const v = navVeh(g);
-    if (!v) return null;
-    const pr = lineProject(g.line, v, Nav.busS !== null ? Nav.busS - 300 : -1);
-    const st = vehState(g.r, v), jam = !!(st && st.jam);
-    const ms = jam ? 0 : isFinite(v.speed) && v.speed !== null ? v.speed / 3.6 : 0;
-    const dt = Math.max(0, Math.min(90, (Date.now() - v.gps) / 1000));
-    const target = Math.min(g.line.len, pr.s + Math.min(500, ms * dt * 0.85));
-    Nav.busS = Nav.busS === null || Math.abs(target - Nav.busS) > 600 ? target : Nav.busS + (target - Nav.busS) * 0.25;
-    const p = lineAt(g.line, Nav.busS);
-    return { ...p, v, jam, s: Nav.busS };
+// ---- 導航車隊：要搭／要轉乘的公車 (主車) ＋靠近各上車站的同路線其他公車 (半透明) ----
+//   位置：GPS 投影到路線線形 → 依「到下一個目標站 (上車站／下車站) 的預估到站」反推速度往前推；沒有預估時依車速；塞車不動
+//         未到預估時刻不越過該站；顯示值每幀往目標指數緩動，畫面平順移動
+//   外觀：BUS3D 有登錄的路線用 3D 模型 (fill-extrusion 組成)，其餘用公車圖示
+const NAV_NEAR_R = 1200;
+const BUS3D = { '45': 'tcpower' };   // 路線 → 3D 塗裝
+const navFleetS = new Map();         // 車牌 → { s 顯示中的沿線里程, leg }
+// 某車到某站的預估到站時刻 (ms)：同站同子路線同方向，主預估或 Estimates 內的同車牌
+function navEtaOf(g, plate, name) {
+    const c = etaCache.get('rt:' + g.r.route);
+    if (!c || !plate) return null;
+    for (const x of c.rows) {
+        if (x.name !== name || x.sub !== g.r.sub || x.dir !== g.r.dir) continue;
+        if (x.plate === plate && x.dl) return x.dl;
+        const q = (x.ests || []).find(q => q.plate === plate && q.dl);
+        if (q) return q.dl;
+    }
+    return null;
 }
+function navLegIdx() { const g = navLeg(); return g ? Nav.legs.indexOf(g) : Nav.legs.length; }
+// 要顯示的車：目前及之後的公車段
+function navFleetList() {
+    const out = [], seen = new Set(), curI = navLegIdx(), st = Nav.steps[Nav.cur];
+    Nav.legs.forEach((g, i) => {
+        if (g.k !== 'bus' || i < curI) return;
+        const c = vehCache.get(g.r.route);
+        if (!c) return;
+        const riding = i === curI && st && st.t === 'ride';
+        let plate = i === curI ? Nav.plate : null;
+        if (!plate) { const row = navEtaRow(g, g.b.name); plate = row && row.plate && row.plate !== '-1' ? row.plate : null; }
+        c.rows.filter(v => v.sub === g.r.sub && v.dir === g.r.dir).forEach(v => {
+            if (seen.has(v.plate)) return;
+            const primary = v.plate === plate;
+            if (!primary && (riding || gDist(v, g.b) > NAV_NEAR_R)) return;
+            seen.add(v.plate);
+            out.push({ g, i, v, primary });
+        });
+    });
+    return out;
+}
+// 目標沿線里程 (現在)
+function navBusTarget(g, v) {
+    const prev = navFleetS.get(v.plate);
+    const pr = lineProject(g.line, v, prev ? prev.s - 300 : -1);
+    if (pr.d > 300) return null;   // 離線形太遠 (調度、繞駛)
+    const st = vehState(g.r, v), jam = !!(st && st.jam), now = Date.now();
+    const dt = Math.max(0, Math.min(180, (now - v.gps) / 1000));
+    let vel = jam ? 0 : isFinite(v.speed) && v.speed !== null ? v.speed / 3.6 : 0, lim = g.line.len, eta = null;
+    // 下一個目標站：還沒到上車站＝上車站；搭乘段上＝下車站
+    const tgt = pr.s < g.sB - 15 ? [g.b.name, g.sB] : pr.s < g.sA - 15 ? [g.a.name, g.sA] : null;
+    if (tgt) {
+        eta = navEtaOf(g, v.plate, tgt[0]);
+        if (eta) {
+            const tt = (eta - v.gps) / 1000;
+            if (tt > 5) vel = jam ? 0 : Math.max(0, Math.min(22, (tgt[1] - pr.s) / tt));
+            if (now < eta) lim = tgt[1] - 3;   // 預估時刻前不越過該站
+        }
+    }
+    return { s: Math.min(lim, pr.s + Math.min(1500, vel * dt)), jam, eta, vel };
+}
+// 每幀：計算各車顯示位置 (緩動) → Nav.fleet
+function navFleetCalc(dtf) {
+    const items = [];
+    navFleetList().forEach(x => {
+        const T = navBusTarget(x.g, x.v);
+        if (!T) return;
+        let S = navFleetS.get(x.v.plate);
+        if (!S || S.leg !== x.i || Math.abs(T.s - S.s) > 800) S = { s: T.s, leg: x.i };
+        else S.s += (T.s - S.s) * (1 - Math.exp(-dtf / 0.8));
+        navFleetS.set(x.v.plate, S);
+        items.push({ ...x, p: lineAt(x.g.line, S.s), T });
+    });
+    Nav.fleet = items;
+    return items;
+}
+// 主車位置 (跟隨視角、剩餘站數用)
+function navBusPos(g) {
+    const it = (Nav.fleet || []).find(x => x.g === g && x.primary);
+    return it ? { ...it.p, v: it.v, jam: it.T.jam, s: (navFleetS.get(it.v.plate) || {}).s } : null;
+}
+// 3D 公車塗裝：[x0, x1, y0, y1, 底高, 頂高, 顏色]；x 往車頭 (公尺)、y 往車身左側
+const BUS_LIVERY = {
+    // 中鹿客運 Taichung Power 電動公車：紅色車身、黑色窗帶、白色車頭、綠色閃電、紅色後照鏡與車頂冷氣
+    tcpower: (() => {
+        const L = 10.6, hw = 1.25, xr = -L / 2, xf = L / 2, xc = xf - 0.32, xw = xf - 1.4;
+        const RED = '#e3241b', RED2 = '#b81a13', BLK = '#141517', GLASS = '#22313a', WHITE = '#f3f3f0', GREEN = '#41c63a', NAVY = '#1f2a4d', TIRE = '#1b1b1d', LED = '#2a1a08';
+        return [
+            [xr + 1.7, xr + 2.7, -hw + 0.02, -hw + 0.34, 0, 0.36, TIRE], [xr + 1.7, xr + 2.7, hw - 0.34, hw - 0.02, 0, 0.36, TIRE],
+            [xf - 2.9, xf - 1.9, -hw + 0.02, -hw + 0.34, 0, 0.36, TIRE], [xf - 2.9, xf - 1.9, hw - 0.34, hw - 0.02, 0, 0.36, TIRE],
+            [xr, xw, -hw, hw, 0.33, 0.55, RED2], [xw, xc, -hw, hw, 0.33, 0.55, WHITE],
+            [xr, xw, -hw, hw, 0.55, 1.15, RED], [xw, xc, -hw, hw, 0.55, 1.15, WHITE],
+            [xr, xr + 0.18, -hw, hw, 1.15, 2.5, RED], [xr + 0.18, xc, -hw, hw, 1.15, 2.5, BLK],
+            [xr, xc, -hw, hw, 2.5, 3.0, RED],
+            [-1.6, 2.4, -0.85, 0.85, 3.0, 3.34, RED],
+            // 車頭：白色下緣 (右側綠色閃電＋深藍邊)、擋風玻璃、LED 路線看板、紅色頂緣
+            [xc, xf, -hw, 0.05, 0.33, 1.2, WHITE], [xc, xf, 0.05, 0.62, 0.33, 1.2, GREEN], [xc, xf, 0.62, 0.74, 0.33, 1.2, NAVY], [xc, xf, 0.74, hw, 0.33, 1.2, WHITE],
+            [xc, xf, -hw, hw, 1.2, 2.42, GLASS], [xc, xf, -hw, hw, 2.42, 2.82, LED], [xc, xf, -hw, hw, 2.82, 3.0, RED],
+            // 後照鏡 (紅色，伸出車頭兩側)
+            [xf - 0.05, xf + 0.32, hw + 0.08, hw + 0.38, 1.85, 2.55, RED], [xf - 0.05, xf + 0.32, -hw - 0.38, -hw - 0.08, 1.85, 2.55, RED]
+        ];
+    })()
+};
+// 3D 公車 → GeoJSON 多邊形 (依方位角旋轉；k＝放大倍數，遠看時放大以便辨識)
+function bus3dFeatures(p, brg, livery, k, plate) {
+    const parts = BUS_LIVERY[livery];
+    if (!parts) return [];
+    const b = brg * Math.PI / 180, fe = Math.sin(b), fn = Math.cos(b), le = -fn, ln = fe;   // 車頭、左側單位向量 (東, 北)
+    const mLat = 110900, mLng = 111320 * Math.cos(p.lat * Math.PI / 180);
+    const at = (x, y) => [p.lng + (x * fe + y * le) * k / mLng, p.lat + (x * fn + y * ln) * k / mLat];
+    return parts.map(([x0, x1, y0, y1, z0, z1, c]) => ({ type: 'Feature', properties: { c, b: z0 * k, h: z1 * k, plate },
+        geometry: { type: 'Polygon', coordinates: [[at(x0, y0), at(x1, y0), at(x1, y1), at(x0, y1), at(x0, y0)]] } }));
+}
+// 主車標籤 (同路線查詢的資訊：路線、車牌、往哪、到站倒數、早/遲、車速)
+function navBusLabel(x) {
+    const { g, v, T } = x, st = Nav.steps[Nav.cur], riding = st && st.t === 'ride' && st.g === g;
+    const mt = matchTrips(g.r.route, v.sub, v.dir), h = mt && mt.byPlate.get(v.plate);
+    const tgt = riding ? g.a.name : g.b.name, dl = navEtaOf(g, v.plate, tgt);
+    return `<div class="nav-vlab"><div><span class="badge" style="background:${g.color}">${esc(g.label)}</span> <b>${esc(v.plate)}</b>${h ? ` <span class="dly ${lateCls(h.late)}">${lateWord(h.late)}</span>` : ''}</div>
+        <div class="nc-s">${riding ? '搭乘中 · ' : ''}${dl ? `<span data-dl="${dl}">${remain(dl)}</span> 到 ${esc(tgt)}` : `往 ${esc(g.dest)}`}${T.jam ? ' · <span class="dly late">塞車</span>' : isFinite(v.speed) && v.speed !== null ? ` · ${Math.round(v.speed)} km/h` : ''}</div></div>`;
+}
+// 每幀繪製
+function navFleetFrame() {
+    if (!Nav.on || !Nav.map) { Nav.raf = null; return; }
+    Nav.raf = requestAnimationFrame(navFleetFrame);
+    const now = performance.now();
+    if (Nav.hidden || now - (Nav.fleetT || 0) < 50) return;
+    const dtf = Math.min(1, (now - (Nav.fleetT || now)) / 1000);
+    Nav.fleetT = now;
+    const m = Nav.map;
+    if (!m.getSource('nav-bus3d')) return;
+    const items = navFleetCalc(dtf), z = m.getZoom(), k = Math.max(1.6, Math.min(8, 1.6 * Math.pow(2, (17.3 - z) * 0.75)));
+    const f3 = [], f3d = [], keep = new Set();
+    items.forEach(x => {
+        const liv = BUS3D[x.g.r.route], key = x.v.plate;
+        if (liv) (x.primary ? f3 : f3d).push(...bus3dFeatures(x.p, x.p.brg, liv, k, key));
+        else {
+            const mk = navMark('veh:' + key, x.p, busDot(x.g.color, 0, x.T.jam, !x.primary), { cls: 'nav-bus', rot: true, rotation: x.p.brg });
+            mk.getElement().onclick = () => navShowRoute(x.g.r.sub, x.g.r.dir);
+            keep.add('veh:' + key);
+        }
+        if (x.primary) {
+            const lab = Nav.labAt && Nav.labAt[key] && now - Nav.labAt[key].t < 1000 ? Nav.labAt[key].h : navBusLabel(x);
+            (Nav.labAt = Nav.labAt || {})[key] = { t: Nav.labAt[key] && Nav.labAt[key].h === lab ? Nav.labAt[key].t : now, h: lab };
+            const mk = navMark('vlab:' + key, x.p, lab, { anchor: 'bottom', cls: 'nav-ca', offset: [0, liv ? -Math.round(18 + 6 * k) : -18] });
+            mk.getElement().onclick = () => navShowRoute(x.g.r.sub, x.g.r.dir);
+            keep.add('vlab:' + key);
+        }
+    });
+    m.getSource('nav-bus3d').setData({ type: 'FeatureCollection', features: f3 });
+    m.getSource('nav-bus3d-dim').setData({ type: 'FeatureCollection', features: f3d });
+    Object.keys(Nav.marks).forEach(key => { if (/^(veh|vlab):/.test(key) && !keep.has(key)) navDropMark(key); });
+}
+// 點公車：暫時離開導航，看該路線查詢結果；「回到導航」或返回手勢回來
+function navShowRoute(sub, dir) {
+    if (Nav.hidden) return;
+    Nav.hidden = true;
+    $('nav').classList.remove('on');
+    document.body.style.overflow = '';
+    $('nav-back').style.display = 'flex';
+    try { history.pushState({ navBack: 1 }, ''); } catch (e) {}
+    openRoute(sub, dir);
+    setTimeout(() => map.invalidateSize(), 50);
+}
+function navReturn() {
+    if (!Nav.hidden) return;
+    Nav.hidden = false;
+    $('nav-back').style.display = 'none';
+    if (!Nav.on) return;
+    $('nav').classList.add('on');
+    document.body.style.overflow = 'hidden';
+    if (Nav.map) setTimeout(() => Nav.map.resize(), 30);
+    navRender();
+}
+addEventListener('popstate', () => { if (Nav.hidden) navReturn(); });
 // 搭乘中：剩幾站
 function navStopsLeft(g) {
     if (g.k === 'mrt') {
@@ -3038,6 +3215,18 @@ function navLayers() {
     m.addLayer({ id: 'nav-arrows', type: 'symbol', source: 'nav-legs', slot: 'top',
         layout: { 'symbol-placement': 'line', 'symbol-spacing': 40, 'icon-image': 'nav-arrow', 'icon-size': 0.55, 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-rotation-alignment': 'map', 'icon-pitch-alignment': 'map' },
         paint: { 'icon-emissive-strength': 1 } });
+    // 3D 公車 (主車不透明、附近其他車半透明)；點擊看路線
+    ['nav-bus3d', 'nav-bus3d-dim'].forEach(id => m.addSource(id, { type: 'geojson', data: E }));
+    const busPaint = op => ({ 'fill-extrusion-color': ['get', 'c'], 'fill-extrusion-base': ['get', 'b'], 'fill-extrusion-height': ['get', 'h'], 'fill-extrusion-opacity': op,
+        'fill-extrusion-vertical-gradient': false, 'fill-extrusion-emissive-strength': 0.75 });
+    m.addLayer({ id: 'nav-bus3d-dim', type: 'fill-extrusion', source: 'nav-bus3d-dim', slot: 'middle', paint: busPaint(0.45) });
+    m.addLayer({ id: 'nav-bus3d', type: 'fill-extrusion', source: 'nav-bus3d', slot: 'middle', paint: busPaint(1) });
+    ['nav-bus3d', 'nav-bus3d-dim'].forEach(id => {
+        m.on('click', id, e => { const pl = e.features && e.features[0] && e.features[0].properties.plate, x = (Nav.fleet || []).find(q => q.v.plate === pl); if (x) navShowRoute(x.g.r.sub, x.g.r.dir); });
+        m.on('mouseenter', id, () => { m.getCanvas().style.cursor = 'pointer'; });
+        m.on('mouseleave', id, () => { m.getCanvas().style.cursor = ''; });
+    });
+    if (!Nav.raf) Nav.raf = requestAnimationFrame(navFleetFrame);
     m.addLayer({ id: 'nav-stops', type: 'circle', source: 'nav-stops', slot: 'top',
         paint: { 'circle-radius': ['case', ['get', 'end'], 7, 4], 'circle-color': '#fff', 'circle-stroke-color': ['get', 'c'], 'circle-stroke-width': ['case', ['get', 'end'], 4, 2.5], 'circle-pitch-alignment': 'map', 'circle-emissive-strength': 1 } });
 }
@@ -3070,6 +3259,7 @@ function navMark(key, ll, html, opt = {}) {
     mk.setLngLat([ll.lng, ll.lat]);
     if (html !== undefined && mk._html !== html) { mk.getElement().innerHTML = html; mk._html = html; }
     if (opt.rotation !== undefined) mk.setRotation(opt.rotation);
+    if (opt.offset) mk.setOffset(opt.offset);
     return mk;
 }
 function navDropMark(key) { if (Nav.marks[key]) { Nav.marks[key].remove(); delete Nav.marks[key]; } }
@@ -3087,11 +3277,8 @@ function navMarks() {
         navMark('a' + i, g.a, `<div class="nav-pin" style="--c:${g.color}">${i === Nav.legs.length - 1 ? '下車' : '下車・轉乘'}<small>${esc(g.a.name)}</small></div>`, { anchor: 'bottom', cls: 'nav-ca' });
     });
     navMark('dest', Nav.dest, `<div class="nav-pin dest">🏁 ${esc(Nav.dest.name)}</div>`, { anchor: 'bottom', cls: 'nav-ca' });
-    // 當班公車 (候車時＝即將到站的那台；搭乘中＝我搭的那台)
-    const g = navLeg();
-    const b = g && g.k === 'bus' && (st.t === 'wait' || st.t === 'ride') ? navBusPos(g) : null;
-    if (b) navMark('bus', b, busDot(g.color, 0, b.jam), { cls: 'nav-bus', rot: true, rotation: isFinite(b.v.az) && b.v.az !== null ? b.v.az : b.brg });
-    else { navDropMark('bus'); Nav.busS = null; }
+    // 公車 (要搭、要轉乘、附近同路線) 由 navFleetFrame 每幀繪製
+    navDropMark('bus');
 }
 function navMe() {
     if (!Nav.map || !Nav.pos) return;
