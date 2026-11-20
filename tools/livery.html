@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3D 公車塗裝編輯器</title>
+<style>
+    :root { --bg: #16181b; --panel: #202327; --line: #33373c; --text: #e8e8ea; --muted: #9a9ca1; --acc: #0a84ff; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 -apple-system, "Segoe UI", "Noto Sans TC", "Microsoft JhengHei", sans-serif; }
+    header { padding: 10px 16px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+    header h1 { font-size: 17px; margin: 0; }
+    header .muted { font-size: 12px; }
+    .muted { color: var(--muted); }
+    main { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(320px, 1fr); gap: 14px; padding: 14px 16px; }
+    @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+    section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; }
+    section h2 { font-size: 14px; margin: 0 0 8px; }
+    button, select, input[type=text] { font: inherit; color: var(--text); background: #2c3035; border: 1px solid #44484e; border-radius: 7px; padding: 5px 10px; }
+    button { cursor: pointer; }
+    button.pri { background: var(--acc); border-color: var(--acc); color: #fff; }
+    input[type=text] { width: 100%; }
+    #drop { position: relative; min-height: 220px; border: 2px dashed #44484e; border-radius: 8px; display: flex; align-items: center; justify-content: center; text-align: center; color: var(--muted); overflow: hidden; }
+    #drop.has { border-style: solid; display: block; min-height: 0; }
+    #drop.over { border-color: var(--acc); }
+    #photo { display: none; width: 100%; height: auto; cursor: crosshair; }
+    #drop.has #photo { display: block; }
+    #drop.has .hint { display: none; }
+    #loupe { position: absolute; width: 88px; height: 88px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px #000; pointer-events: none; display: none; image-rendering: pixelated; }
+    .parts { display: grid; grid-template-columns: 1fr; gap: 2px; }
+    .pt { display: grid; grid-template-columns: 26px 1fr auto auto; gap: 8px; align-items: center; padding: 4px 6px; border-radius: 7px; cursor: pointer; border: 1px solid transparent; }
+    .pt:hover { background: #2a2e33; }
+    .pt.on { border-color: var(--acc); background: #1d2a3a; }
+    .pt .sw { width: 24px; height: 24px; border-radius: 5px; border: 1px solid #555; }
+    .pt .sw.fb { background-image: repeating-linear-gradient(45deg, transparent 0 4px, rgba(255,255,255,.25) 4px 6px) !important; }
+    .pt .nm small { color: var(--muted); margin-left: 6px; }
+    .pt input[type=color] { width: 30px; height: 24px; padding: 0; border: 0; background: none; }
+    .pt .clr { padding: 1px 7px; font-size: 12px; }
+    .row { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin: 6px 0; }
+    .row label { display: inline-flex; gap: 6px; align-items: center; }
+    .grid2 { display: grid; grid-template-columns: 90px 1fr; gap: 6px 10px; align-items: center; }
+    #pv { width: 100%; height: auto; background: #d9d6cf; border-radius: 8px; display: block; }
+    textarea { width: 100%; min-height: 140px; font: 12px/1.4 ui-monospace, Consolas, monospace; color: var(--text); background: #15171a; border: 1px solid #44484e; border-radius: 7px; padding: 8px; }
+    .ok { color: #30d158; } .err { color: #ff453a; }
+    .steps { margin: 0; padding-left: 20px; color: var(--muted); font-size: 13px; }
+    .dot { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px #000; pointer-events: none; font-size: 10px; }
+</style>
+</head>
+<body>
+<header>
+    <h1>3D 公車塗裝編輯器</h1>
+    <span class="muted">照片取色 → 共用車身 (bus3d.js) → data/livery.json</span>
+</header>
+<main>
+<div>
+    <section>
+        <h2>1. 公車照片</h2>
+        <div id="drop"><div class="hint">把照片拖進來、貼上 (Ctrl+V)，或 <button id="pick-btn">選擇照片</button><br><small>側面或斜前方照片最好取色</small></div>
+            <img id="photo" alt=""><canvas id="loupe" width="88" height="88"></canvas></div>
+        <input type="file" id="file" accept="image/*" hidden>
+        <p class="muted" style="margin:6px 0 0;font-size:12px">先在右邊點選部位，再點照片上對應位置；取點周圍一小塊的中位數 (避開反光、雜點)，取完自動跳下一個部位。</p>
+    </section>
+    <section>
+        <h2>預覽</h2>
+        <canvas id="pv" width="960" height="560"></canvas>
+        <div class="row"><label>轉角 <input type="range" id="yaw" min="-314" max="314" value="-240"></label>
+            <label>俯角 <input type="range" id="pitch" min="-90" max="-10" value="-40"></label>
+            <button id="pv-reset">重設視角</button></div>
+    </section>
+    <section>
+        <h2>工作流程</h2>
+        <ol class="steps">
+            <li>拍／找該業者公車的側面或斜前方照片，載入上方。</li>
+            <li>右邊逐部位點選取色；選填部位留空＝沿用括號內部位顏色。調整車長、保險桿、閃電、車頂箱。</li>
+            <li>填塗裝 id、名稱、屬於此車型的車牌 (已確認的車)，和比對規則 (路線、車牌正則、業者名稱，留空＝不限；涵蓋還沒確認車牌的車)。</li>
+            <li>按「下載 livery.json」覆蓋 <code>data/livery.json</code>；或複製「此塗裝 JSON」手動合併。</li>
+            <li>本機導航測試頁確認後 commit。</li>
+        </ol>
+    </section>
+</div>
+<div>
+    <section>
+        <h2>2. 部位顏色</h2>
+        <div class="parts" id="parts"></div>
+        <div class="row">
+            <label>車長 <select id="L"><option value="10.6">10.6 m 中型</option><option value="12">12 m 大型</option><option value="8.5">8.5 m 小型</option></select></label>
+            <label><input type="checkbox" id="has-bumper"> 黑色保險桿</label>
+            <label><input type="checkbox" id="has-power"> 車頭綠色閃電</label>
+        </div>
+        <div class="row">
+            <label>車頂冷氣／電池箱 <select id="ac-n"><option value="0">無</option><option value="1">一組</option><option value="2">兩組</option><option value="keep">保留原設定</option></select></label>
+        </div>
+    </section>
+    <section>
+        <h2>3. 塗裝與比對規則</h2>
+        <div class="grid2">
+            <span>載入既有</span><span class="row" style="margin:0"><select id="exist"><option value="">(新塗裝)</option></select><button id="open-json">開啟 livery.json…</button><input type="file" id="json-file" accept=".json,application/json" hidden></span>
+            <span>塗裝 id</span><input type="text" id="id" placeholder="例：tcbus_blue (英數、底線)">
+            <span>名稱</span><input type="text" id="name" placeholder="例：台中客運 藍色公車">
+            <span>備註</span><input type="text" id="note" placeholder="照片來源">
+            <span>車牌</span><textarea id="plates" style="min-height:58px" placeholder="屬於此車型的車牌，逗號或換行分隔，例：EAL-0373, EAL-0380"></textarea>
+            <span>路線</span><input type="text" id="r-route" placeholder="例：45 或 23, 23延 (留空＝不限)">
+            <span>車牌正則</span><input type="text" id="r-plate" placeholder="例：^EAL (留空＝不限)">
+            <span>業者</span><input type="text" id="r-op" placeholder="例：台中客運 (名稱包含即符合；留空＝不限)">
+        </div>
+        <p class="muted" style="font-size:12px;margin:8px 0 0">比對順序：先查車牌清單 (已確認車型，任何路線都適用；同一車牌只能屬於一種車型，填在這裡會從其他車型移過來)，查不到再比對規則。<span id="plate-n"></span></p>
+        <p class="muted" style="font-size:12px;margin:4px 0 0">規則由上往下比對，第一條符合的生效：有車牌條件的新規則放最上面，其餘放最後。三項都留空＝不新增規則。</p>
+        <div class="row"><button class="pri" id="dl">下載 livery.json</button><button id="copy">複製此塗裝 JSON</button><span id="msg" class="muted"></span></div>
+    </section>
+    <section>
+        <h2>比對測試</h2>
+        <div class="row"><input type="text" id="t-route" placeholder="路線" style="width:80px"><input type="text" id="t-plate" placeholder="車牌" style="width:110px"><input type="text" id="t-op" placeholder="業者名稱" style="width:120px"><span id="t-out" class="muted"></span></div>
+        <p class="muted" style="font-size:12px;margin:4px 0 0">用「下載」後會寫入的規則 (含目前編輯中) 比對。</p>
+    </section>
+    <section>
+        <h2>此塗裝 JSON</h2>
+        <textarea id="out" readonly></textarea>
+        <h2 style="margin-top:10px">規則 (可直接編輯)</h2>
+        <textarea id="rules"></textarea>
+        <span id="rules-err" class="err" style="font-size:12px"></span>
+    </section>
+</div>
+</main>
+<script src="../bus3d.js"></script>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+// 部位：key、名稱、選填時沿用哪個部位
+const PARTS = [
+    ['upper', '車身上段'], ['band', '窗帶'], ['lower', '車身下段'], ['skirt', '裙邊'],
+    ['lowerF', '車頭前段 下段', 'lower'], ['skirtF', '車頭前段 裙邊', 'skirt'], ['rear', '車尾邊條', 'upper'],
+    ['glass', '擋風玻璃', '#22313a'], ['led', '路線看板', '#2a1a08'], ['frontTop', '車頭頂緣', 'upper'], ['mirror', '後照鏡', 'upper'],
+    ['bumper', '保險桿', null, 'bumper'], ['pw', '閃電：底色', 'lowerF', 'power'], ['pg', '閃電：綠', '#41c63a', 'power'], ['pn', '閃電：邊條', '#1f2a4d', 'power'],
+    ['ac', '車頂箱', 'upper', 'ac']
+];
+const LABEL = Object.fromEntries(PARTS.map(p => [p[0], p[1]]));
+let C = {}, acKeep = null, active = 'upper', DB = { liveries: {}, rules: [] }, picks = {};
+const store = { get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} } };
+
+// ---- 顏色 ----
+const fallback = k => { const p = PARTS.find(x => x[0] === k); const f = p && p[2]; return !f ? null : f[0] === '#' ? f : C[f] || fallback(f); };
+const colorOf = k => C[k] || fallback(k);
+function partVisible(p) { return !p[3] || (p[3] === 'bumper' && $('has-bumper').checked) || (p[3] === 'power' && $('has-power').checked) || (p[3] === 'ac' && $('ac-n').value !== '0'); }
+function renderParts() {
+    $('parts').innerHTML = PARTS.filter(partVisible).map(([k, nm, fb]) => {
+        const c = colorOf(k) || '#888888', own = !!C[k];
+        return `<div class="pt${k === active ? ' on' : ''}" data-k="${k}"><span class="sw${own ? '' : ' fb'}" style="background:${c}"></span>
+            <span class="nm">${nm}${fb ? `<small>${own ? '' : '沿用 ' + (fb[0] === '#' ? '預設' : LABEL[fb])}</small>` : ''}</span>
+            <input type="color" value="${c}">${fb && own ? '<button class="clr" title="清除，改沿用">清除</button>' : '<span></span>'}</div>`;
+    }).join('');
+}
+$('parts').addEventListener('click', e => {
+    const row = e.target.closest('.pt'); if (!row) return;
+    if (e.target.classList.contains('clr')) { delete C[row.dataset.k]; update(); return; }
+    if (e.target.type === 'color') return;
+    active = row.dataset.k; renderParts();
+});
+$('parts').addEventListener('input', e => { if (e.target.type === 'color') { const k = e.target.closest('.pt').dataset.k; C[k] = e.target.value; active = k; update(false); } });
+$('parts').addEventListener('change', e => { if (e.target.type === 'color') renderParts(); });
+['has-bumper', 'has-power', 'ac-n', 'L'].forEach(id => $(id).addEventListener('change', () => update()));
+
+// ---- 照片 ----
+const img = $('photo'), work = document.createElement('canvas'), wctx = work.getContext('2d', { willReadFrequently: true });
+function loadFile(f) { if (!f || !/^image\//.test(f.type)) return; const u = URL.createObjectURL(f); img.onload = () => { work.width = img.naturalWidth; work.height = img.naturalHeight; wctx.drawImage(img, 0, 0); $('drop').classList.add('has'); clearDots(); }; img.src = u; }
+$('pick-btn').onclick = () => $('file').click();
+$('file').onchange = e => loadFile(e.target.files[0]);
+const drop = $('drop');
+drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); loadFile(e.dataTransfer.files[0]); });
+document.addEventListener('paste', e => { const it = [...(e.clipboardData || {}).items || []].find(i => i.type.startsWith('image/')); if (it) loadFile(it.getAsFile()); });
+const imgXY = e => { const r = img.getBoundingClientRect(); return [(e.clientX - r.left) * img.naturalWidth / r.width, (e.clientY - r.top) * img.naturalHeight / r.height, e.clientX - r.left, e.clientY - r.top]; };
+// 點擊位置周圍一塊的中位數 (各通道分開)
+function sample(x, y) {
+    const R = Math.max(2, Math.round(Math.min(work.width, work.height) / 250));
+    const x0 = Math.max(0, Math.round(x) - R), y0 = Math.max(0, Math.round(y) - R), w = Math.min(work.width - x0, 2 * R + 1), h = Math.min(work.height - y0, 2 * R + 1);
+    const d = wctx.getImageData(x0, y0, w, h).data, ch = [[], [], []];
+    for (let i = 0; i < d.length; i += 4) { ch[0].push(d[i]); ch[1].push(d[i + 1]); ch[2].push(d[i + 2]); }
+    const med = a => a.sort((p, q) => p - q)[a.length >> 1];
+    return '#' + ch.map(a => med(a).toString(16).padStart(2, '0')).join('');
+}
+img.addEventListener('click', e => {
+    const [x, y, cx, cy] = imgXY(e), col = sample(x, y);
+    C[active] = col; picks[active] = [cx / img.getBoundingClientRect().width, cy / img.getBoundingClientRect().height];
+    const vis = PARTS.filter(partVisible).map(p => p[0]), i = vis.indexOf(active);
+    if (i >= 0 && i < vis.length - 1) active = vis[i + 1];
+    update(); drawDots();
+});
+function clearDots() { picks = {}; drop.querySelectorAll('.dot').forEach(d => d.remove()); }
+function drawDots() {
+    drop.querySelectorAll('.dot').forEach(d => d.remove());
+    Object.entries(picks).forEach(([k, [fx, fy]]) => { const d = document.createElement('div'); d.className = 'dot'; d.title = LABEL[k]; d.style.left = fx * 100 + '%'; d.style.top = fy * 100 + '%'; d.style.background = C[k] || '#888'; drop.appendChild(d); });
+}
+// 放大鏡
+const loupe = $('loupe'), lctx = loupe.getContext('2d');
+img.addEventListener('mousemove', e => {
+    const [x, y, cx, cy] = imgXY(e);
+    loupe.style.display = 'block'; loupe.style.left = (cx + 16) + 'px'; loupe.style.top = (cy - 104) + 'px';
+    lctx.imageSmoothingEnabled = false; lctx.clearRect(0, 0, 88, 88);
+    lctx.drawImage(work, x - 11, y - 11, 22, 22, 0, 0, 88, 88);
+    lctx.strokeStyle = '#fff'; lctx.strokeRect(40, 40, 8, 8);
+});
+img.addEventListener('mouseleave', () => { loupe.style.display = 'none'; });
+
+// ---- 組出塗裝參數 ----
+function build() {
+    const c = { L: +$('L').value };
+    ['skirt', 'skirtF', 'lower', 'lowerF', 'band', 'rear', 'upper', 'glass', 'led', 'frontTop', 'mirror'].forEach(k => { if (C[k]) c[k] = C[k]; });
+    c.skirt = c.skirt || colorOf('skirt') || '#777777'; c.lower = c.lower || colorOf('lower') || '#999999';
+    c.band = c.band || '#141517'; c.upper = c.upper || colorOf('upper') || '#999999';
+    if ($('has-bumper').checked) c.bumper = colorOf('bumper') || '#1c1d1f';
+    if ($('has-power').checked) c.power = [colorOf('pw') || c.lowerF || c.lower, colorOf('pg'), colorOf('pn')];
+    const n = $('ac-n').value, acc = colorOf('ac');
+    if (n === 'keep') { if (acKeep) c.ac = acKeep.map(([a, b, col]) => [a, b, C.ac || col]); }
+    else if (+n) { const half = c.L / 2 - 1.8; c.ac = Bus3D.AC_PRESET[n].map(([a, b]) => [Math.max(-half, a), Math.min(half, b), acc]); }
+    return c;
+}
+function routeList() { const v = $('r-route').value.split(/[,，、\s]+/).map(s => s.trim()).filter(Boolean); return v.length > 1 ? v : v[0]; }
+function newRule(id) {
+    const r = {}, rt = routeList(); if (rt) r.route = rt;
+    const pl = $('r-plate').value.trim(), op = $('r-op').value.trim();
+    if (pl) r.plate = pl; if (op) r.op = op;
+    if (!Object.keys(r).length) return null;
+    r.livery = id; return r;
+}
+// 車牌欄 → 正規化後的清單 (去重)；不像車牌的另外回報
+function plateList() {
+    const all = $('plates').value.split(/[,，、;\s]+/).map(Bus3D.normPlate).filter(Boolean);
+    const ok = [...new Set(all.filter(p => /^[A-Z0-9]{2,4}-[A-Z0-9]{2,4}$/.test(p)))];
+    return { ok, bad: all.filter(p => !ok.includes(p)) };
+}
+function liveryEntry() { return { name: $('name').value.trim() || $('id').value.trim(), note: $('note').value.trim() || undefined, c: build() }; }
+// 合併後整份資料 (規則文字框為基準，加入目前編輯中的規則 — 若已有完全相同的規則則不重複)
+function merged() {
+    const id = $('id').value.trim();
+    let rules; try { rules = JSON.parse($('rules').value || '[]'); $('rules-err').textContent = ''; } catch (e) { $('rules-err').textContent = '規則 JSON 格式錯誤：' + e.message; rules = DB.rules; }
+    const out = { liveries: Object.assign({}, DB.liveries), plates: Object.assign({}, DB.plates || {}), rules: rules.slice() };
+    if (id) {
+        out.liveries[id] = liveryEntry();
+        // 此車型的車牌：先移除原本屬於此車型的，再寫入目前清單 (會覆蓋其他車型的同一車牌)
+        Object.keys(out.plates).forEach(p => { if (out.plates[p] === id) delete out.plates[p]; });
+        plateList().ok.forEach(p => { out.plates[p] = id; });
+        out.plates = Object.fromEntries(Object.entries(out.plates).sort(([a], [b]) => a.localeCompare(b)));
+        const r = newRule(id);
+        if (r && !out.rules.some(q => JSON.stringify(q) === JSON.stringify(r))) { if (r.plate) out.rules.unshift(r); else out.rules.push(r); }
+    }
+    return out;
+}
+
+// ---- 預覽 ----
+const pv = $('pv'), pctx = pv.getContext('2d');
+function drawPreview() {
+    const P = Bus3D.parts(build()), yaw = +$('yaw').value / 100, pitch = +$('pitch').value / 100;
+    pctx.clearRect(0, 0, pv.width, pv.height);
+    pctx.fillStyle = '#c9c5bc'; pctx.fillRect(0, pv.height * 0.62, pv.width, pv.height);
+    Bus3D.draw(pctx, P, yaw, pitch, 300, 300, 30);
+    Bus3D.draw(pctx, P, yaw + Math.PI * 0.82, pitch, 700, 330, 24);   // 另一側／車尾
+    pctx.fillStyle = '#555'; pctx.font = '20px sans-serif'; pctx.fillText('主視角', 20, 30); pctx.fillText('另一側', 620, 30);
+}
+$('yaw').oninput = $('pitch').oninput = drawPreview;
+$('pv-reset').onclick = () => { $('yaw').value = -240; $('pitch').value = -40; drawPreview(); };
+
+// ---- 輸出 ----
+function update(parts = true) {
+    if (parts) renderParts();
+    drawPreview();
+    const id = $('id').value.trim() || '(id)';
+    $('out').value = JSON.stringify({ [id]: liveryEntry() }, null, 2);
+    testMatch();
+    const pl = plateList(), moved = pl.ok.filter(p => DB.plates && DB.plates[p] && DB.plates[p] !== $('id').value.trim());
+    $('plate-n').innerHTML = `此車型 ${pl.ok.length} 個車牌，資料庫共 ${Object.keys(merged().plates).length} 個。`
+        + (moved.length ? ` <span class="err">將從其他車型移過來：${moved.map(p => `${p} (${DB.plates[p]})`).join('、')}</span>` : '')
+        + (pl.bad.length ? ` <span class="err">格式不像車牌、不會寫入：${pl.bad.join('、')}</span>` : '');
+    store.set('livery_draft', { C, acKeep, f: ['L', 'id', 'name', 'note', 'plates', 'r-route', 'r-plate', 'r-op'].reduce((o, k) => (o[k] = $(k).value, o), {}),
+        ck: { b: $('has-bumper').checked, p: $('has-power').checked, ac: $('ac-n').value } });
+}
+['id', 'name', 'note', 'plates', 'r-route', 'r-plate', 'r-op'].forEach(k => $(k).addEventListener('input', () => update(false)));
+$('rules').addEventListener('input', () => { merged(); testMatch(); });
+function testMatch() {
+    const d = merged(), rt = $('t-route').value.trim(), pl = $('t-plate').value.trim(), op = $('t-op').value.trim();
+    if (!rt && !pl && !op) { $('t-out').textContent = ''; return; }
+    Bus3D.setData(JSON.parse(JSON.stringify(d)));
+    const m = Bus3D.match(rt, pl, op, op);
+    $('t-out').innerHTML = m ? `<span class="ok">→ ${m}</span> ${d.liveries[m].name || ''}` : '<span class="muted">沒有符合 → 公車圖示</span>';
+}
+['t-route', 't-plate', 't-op'].forEach(k => $(k).addEventListener('input', testMatch));
+function flash(t, cls) { $('msg').className = cls || 'ok'; $('msg').textContent = t; setTimeout(() => { $('msg').textContent = ''; }, 3000); }
+$('dl').onclick = () => {
+    if (!/^[A-Za-z0-9_]+$/.test($('id').value.trim())) { flash('塗裝 id 只能用英數與底線', 'err'); return; }
+    const d = merged(), s = JSON.stringify(d, null, 2);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([s + '\n'], { type: 'application/json' })); a.download = 'livery.json'; a.click();
+    flash('已下載，覆蓋 data/livery.json');
+};
+$('copy').onclick = () => { navigator.clipboard.writeText($('out').value).then(() => flash('已複製'), () => { $('out').select(); flash('請手動複製', 'err'); }); };
+
+// ---- 既有資料 ----
+function setDB(d) {
+    DB = d && d.liveries ? d : { liveries: {}, plates: {}, rules: [] };
+    DB.plates = DB.plates || {}; DB.rules = DB.rules || [];
+    $('rules').value = JSON.stringify(DB.rules, null, 2);
+    $('exist').innerHTML = '<option value="">(新塗裝)</option>' + Object.entries(DB.liveries).map(([k, v]) => `<option value="${k}">${k} — ${v.name || ''}</option>`).join('');
+    update();
+}
+$('exist').onchange = () => {
+    const id = $('exist').value, L = DB.liveries[id]; if (!L) return;
+    const c = L.c; C = {};
+    ['skirt', 'skirtF', 'lower', 'lowerF', 'band', 'rear', 'upper', 'glass', 'led', 'frontTop', 'mirror', 'bumper'].forEach(k => { if (c[k]) C[k] = c[k]; });
+    $('has-bumper').checked = !!c.bumper;
+    $('has-power').checked = !!c.power; if (c.power) { C.pw = c.power[0]; C.pg = c.power[1]; C.pn = c.power[2]; }
+    acKeep = c.ac || null; $('ac-n').value = c.ac && c.ac.length ? 'keep' : '0'; if (c.ac && c.ac[0]) C.ac = c.ac[0][2];
+    $('L').value = String(c.L || 10.6);
+    $('id').value = id; $('name').value = L.name || ''; $('note').value = L.note || '';
+    $('plates').value = Object.keys(DB.plates).filter(p => DB.plates[p] === id).join(', ');
+    $('r-route').value = $('r-plate').value = $('r-op').value = '';   // 既有規則在下方規則框
+    clearDots(); update();
+};
+$('open-json').onclick = () => $('json-file').click();
+$('json-file').onchange = e => { const f = e.target.files[0]; if (f) f.text().then(t => { setDB(JSON.parse(t)); flash('已載入 ' + f.name); }).catch(err => flash('讀取失敗：' + err.message, 'err')); };
+
+// ---- 啟動：還原草稿、嘗試載入網站上的 livery.json ----
+(function init() {
+    const dr = store.get('livery_draft');
+    if (dr) {
+        C = dr.C || {}; acKeep = dr.acKeep || null;
+        Object.entries(dr.f || {}).forEach(([k, v]) => { if ($(k)) $(k).value = v; });
+        if (dr.ck) { $('has-bumper').checked = dr.ck.b; $('has-power').checked = dr.ck.p; $('ac-n').value = dr.ck.ac; }
+    } else { C = { upper: '#2f7fd8', band: '#141517', lower: '#2f7fd8', skirt: '#245f9e' }; $('ac-n').value = '1'; }
+    update();
+    fetch('../data/livery.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).then(d => { if (d) setDB(d); }).catch(() => {
+        $('rules').placeholder = '以本機檔案開啟時瀏覽器擋住讀取：請按「開啟 livery.json…」選 data/livery.json';
+    });
+})();
+</script>
+</body>
+</html>

@@ -489,6 +489,7 @@
 <div id="key-dlg"></div>
 <div id="nav"><div id="nav-map"></div><div id="nav-top" class="nav-top"></div><div id="nav-sheet" class="nav-sheet"></div></div>
 <script src="taichung-network.js"></script>
+<script src="bus3d.js"></script>
 <!-- 本機開發用金鑰 (gitignore)；公開網站沒有此檔，訪客自行輸入金鑰 -->
 <script src="tdx-key.local.js"></script>
 <script>
@@ -973,20 +974,37 @@ function loadToday(route, high = false) {
                 null, trips0.map((t, k) => String(t.TripID != null ? t.TripID : k + 1)));
         });
         if (!Object.keys(v.subs).length) {
-            const st = await Api.run('DailyStopTimeTable/City/Taichung', { ...f, '$select': 'RouteName,SubRouteName,Direction,Stops' }, { high, label: `${route} 今日起訖站時刻` });
+            // DailyStopTimeTable 沒有 Direction 欄位 (選取會回 HTTP 400)；方向由有時刻的站在哪個方向的站序裡依序出現判斷
+            //   各業者格式不一：有的兩站同序號＝同一班的起站發車與終點到站 (例 300：相差 46–52 分) → 可內插各站
+            //   有的兩站同序號時刻相同＝兩端各自的發車 (例 675) → 不是同一班，不能內插，不採用
+            const st = await Api.run('DailyStopTimeTable/City/Taichung', { ...f, '$select': 'RouteName,SubRouteName,Stops' }, { high, label: `${route} 今日起訖站時刻` });
             st.forEach(r => {
                 const sub = (r.SubRouteName && r.SubRouteName.Zh_tw) || r.RouteName.Zh_tw;
                 const known = (r.Stops || []).filter(s => (s.TimeTables || []).length);
-                let ref = null;
+                // 某方向站序下，同序號各站時刻 → 各班 [[站序位置, 分鐘]]；只留沿站序嚴格遞增的班次 (時刻相同或倒退＝不是同一班)
+                const tripsOf = names => {
+                    const bySeq = new Map();
+                    known.forEach(s => { const i = names.indexOf(s.StopName.Zh_tw); if (i < 0) return;
+                        s.TimeTables.forEach(t => { const m = hm(t.ArrivalTime || t.DepartureTime); if (!isFinite(m)) return;
+                            if (!bySeq.has(t.Sequence)) bySeq.set(t.Sequence, []); bySeq.get(t.Sequence).push([i, m]); }); });
+                    let multi = 0;
+                    const ok = new Map();
+                    bySeq.forEach((pts, k) => {
+                        if (pts.length < 2) return;
+                        multi++;
+                        pts.sort((a, b) => a[0] - b[0]);
+                        if (pts.every((p, j) => !j || (p[0] > pts[j - 1][0] && p[1] > pts[j - 1][1]))) ok.set(k, pts);
+                    });
+                    return { ok, multi };
+                };
+                let ref = null, bySeq = null;
                 for (const R of ROUTES.filter(x => x.sub === sub)) {
-                    const names = R.seq.map(si => STOPS[si].name);
-                    const ks = known.map(s => ({ i: names.indexOf(s.StopName.Zh_tw), t: hm(s.TimeTables[0].ArrivalTime) })).filter(x => x.i >= 0).sort((a, b) => a.i - b.i);
-                    if (ks.length >= 2 && ks.every((x, k) => !k || x.t >= ks[k - 1].t) && !(v.subs[sub] && v.subs[sub][R.dir])) { ref = R; break; }
+                    if (v.subs[sub] && v.subs[sub][R.dir]) continue;
+                    const { ok, multi } = tripsOf(R.seq.map(si => STOPS[si].name));
+                    if (multi && ok.size >= multi * 0.8) { ref = R; bySeq = ok; break; }   // 八成以上班次沿站序遞增才採用
                 }
                 if (!ref) return;
-                const names = ref.seq.map(si => STOPS[si].name), d = distAlong(ref), bySeq = new Map();
-                known.forEach(s => { const i = names.indexOf(s.StopName.Zh_tw); if (i < 0) return;
-                    s.TimeTables.forEach(t => { if (!bySeq.has(t.Sequence)) bySeq.set(t.Sequence, []); bySeq.get(t.Sequence).push([i, hm(t.ArrivalTime)]); }); });
+                const names = ref.seq.map(si => STOPS[si].name), d = distAlong(ref);
                 const seqs = [...bySeq.keys()].sort((a, b) => a - b);
                 const trips = seqs.map(k => { const pts = bySeq.get(k).sort((a, b) => a[0] - b[0]);
                     return names.map((_, i) => { const hi = pts.findIndex(p => p[0] >= i); if (hi < 0) return null; if (pts[hi][0] === i) return pts[hi][1]; if (hi === 0) return null;
@@ -2802,6 +2820,8 @@ function navOpen(p) {
     document.body.style.overflow = 'hidden';
     // 預先載入：各段路線即時、時刻表 (早/遲比對)、線上班次、公車位置
     navRoutes().forEach(rt => { navEta(rt); loadDay(rt, true).catch(() => {}); loadA2(rt, false, true).catch(() => {}); loadVehicles(rt, true).catch(() => {}); });
+    // 3D 公車塗裝；有依業者比對的規則才載入業者名稱 (每 30 天一次)
+    if (window.Bus3D) Bus3D.load().then(() => { if (Bus3D.needsOp()) loadOperators().catch(() => {}); });
     navRender();
     if (!baseCfg.token) return;
     navLoadGL().then(navMap).catch(e => { $('nav-top').innerHTML = `<div class="small">${esc(e.message)}</div>`; });
@@ -2942,15 +2962,13 @@ function navWaitInfo(g) {
 // ---- 導航車隊：要搭／要轉乘的公車 (主車) ＋靠近各上車站的同路線其他公車 (半透明) ----
 //   位置：GPS 投影到路線線形 → 依 API 回傳車速從 GPS 時間往前推 (API 沒給車速時才用「到下一站距離 ÷ 預估到站」推算)
 //         未到預估時刻不越過該站；顯示值每幀往目標指數緩動，畫面平順移動
-//   外觀：busLivery 有對應的路線／車輛用 3D 模型 (fill-extrusion 組成)，其餘用公車圖示
+//   外觀：data/livery.json 規則有對應的路線／車牌／業者用 3D 模型 (fill-extrusion 組成，見 bus3d.js)，其餘用公車圖示
 const NAV_NEAR_R = 1200;
-// 路線＋車牌 → 3D 塗裝 (null＝用公車圖示)
-//   45：中鹿 Taichung Power 電動公車 (紅)
-//   23：EAL 開頭 (電動) ＝統聯 Taichung Power 電動公車 (白)；其餘＝Ubus 綠色公車
-function busLivery(route, plate) {
-    if (route === '45') return 'tcpower';
-    if (route === '23') return /^EAL/i.test(plate || '') ? 'tcpower_w' : 'ubus';
-    return null;
+// 路線＋車牌＋業者 → 3D 塗裝 id (null＝用公車圖示)；規則與塗裝在 data/livery.json，用 tools/livery.html 由照片取色製作
+function busLivery(route, v) {
+    if (!window.Bus3D) return null;
+    const ops = opsMap();
+    return Bus3D.match(route, v.plate, v.op, ops ? ops[v.op] || '' : '');
 }
 const navFleetS = new Map();         // 車牌 → { s 顯示中的沿線里程, leg }
 // 某車到某站的預估到站時刻 (ms)：同站同子路線同方向，主預估或 Estimates 內的同車牌
@@ -3034,51 +3052,10 @@ function navBusPos(g) {
     const it = (Nav.fleet || []).find(x => x.g === g && x.primary);
     return it ? { ...it.p, v: it.v, jam: it.T.jam, s: (navFleetS.get(it.v.plate) || {}).s } : null;
 }
-// 3D 公車塗裝：[x0, x1, y0, y1, 底高, 頂高, 顏色]；x 往車頭 (公尺)、y 往車身左側
-//   共用車身幾何 (約 10.6 m 中型公車)，各塗裝只給顏色
-function busParts(c) {
-    const L = c.L || 10.6, hw = 1.25, xr = -L / 2, xf = L / 2, xc = xf - 0.32, xw = xf - 1.4, TIRE = '#1b1b1d';
-    const P = [
-        // 輪胎
-        [xr + 1.7, xr + 2.7, -hw + 0.02, -hw + 0.34, 0, 0.36, TIRE], [xr + 1.7, xr + 2.7, hw - 0.34, hw - 0.02, 0, 0.36, TIRE],
-        [xf - 2.9, xf - 1.9, -hw + 0.02, -hw + 0.34, 0, 0.36, TIRE], [xf - 2.9, xf - 1.9, hw - 0.34, hw - 0.02, 0, 0.36, TIRE],
-        // 車身側面：裙邊、下段 (近車頭一段可換色)、窗帶 (車尾留一條車身色)、上段
-        [xr, xw, -hw, hw, 0.33, 0.55, c.skirt], [xw, xc, -hw, hw, 0.33, 0.55, c.skirtF || c.skirt],
-        [xr, xw, -hw, hw, 0.55, 1.15, c.lower], [xw, xc, -hw, hw, 0.55, 1.15, c.lowerF || c.lower],
-        [xr, xr + 0.18, -hw, hw, 1.15, 2.5, c.rear || c.upper], [xr + 0.18, xc, -hw, hw, 1.15, 2.5, c.band],
-        [xr, xc, -hw, hw, 2.5, 3.0, c.upper],
-        // 車頭：下緣 (可分段：閃電、保險桿)、擋風玻璃、LED 路線看板、頂緣
-        [xc, xf, -hw, hw, 1.2, 2.42, c.glass || '#22313a'], [xc, xf, -hw, hw, 2.42, 2.82, c.led || '#2a1a08'], [xc, xf, -hw, hw, 2.82, 3.0, c.frontTop || c.upper],
-        // 後照鏡 (伸出車頭兩側)
-        [xf - 0.05, xf + 0.32, hw + 0.08, hw + 0.38, 1.85, 2.55, c.mirror], [xf - 0.05, xf + 0.32, -hw - 0.38, -hw - 0.08, 1.85, 2.55, c.mirror]
-    ];
-    const z0 = c.bumper ? 0.6 : 0.33;
-    if (c.bumper) P.push([xc, xf, -hw, hw, 0.33, 0.6, c.bumper]);
-    (c.front || [[-hw, hw, c.lowerF || c.lower]]).forEach(([y0, y1, col]) => P.push([xc, xf, y0, y1, z0, 1.2, col]));
-    (c.ac || []).forEach(([x0, x1, col]) => P.push([x0, x1, -0.85, 0.85, 3.0, 3.34, col]));
-    return P;
-}
-const PWR_FRONT = (W, G, N) => [[-1.25, 0.05, W], [0.05, 0.62, G], [0.62, 0.74, N], [0.74, 1.25, W]];   // 白底＋右側綠色閃電＋深藍邊
-const BUS_LIVERY = {
-    // 中鹿客運 Taichung Power 電動公車 (45)：紅色車身、黑色窗帶、白色車頭與前段、綠色閃電、紅色後照鏡與車頂冷氣
-    tcpower: busParts({ skirt: '#b81a13', skirtF: '#f3f3f0', lower: '#e3241b', lowerF: '#f3f3f0', band: '#141517', rear: '#e3241b', upper: '#e3241b',
-        front: PWR_FRONT('#f3f3f0', '#41c63a', '#1f2a4d'), frontTop: '#e3241b', mirror: '#e3241b', ac: [[-1.6, 2.4, '#e3241b']] }),
-    // 統聯客運 Taichung Power 電動公車 (23，EAL 車牌)：全白車身、黑色窗帶、綠色閃電、白色後照鏡、車頂兩組冷氣/電池箱
-    tcpower_w: busParts({ skirt: '#d6d6d2', lower: '#f4f4f1', band: '#141517', rear: '#f4f4f1', upper: '#f4f4f1',
-        front: PWR_FRONT('#f4f4f1', '#41c63a', '#1f2a4d'), frontTop: '#f4f4f1', led: '#14100a', mirror: '#f0f0ee', ac: [[-3.4, -0.6, '#e6e6e2'], [1.0, 3.4, '#e6e6e2']] }),
-    // Ubus (23 一般車)：亮綠色車身、黑色窗帶、黑色保險桿、綠色後照鏡
-    ubus: busParts({ skirt: '#4fa51f', lower: '#66c42b', band: '#141517', upper: '#66c42b', bumper: '#1c1d1f',
-        frontTop: '#66c42b', mirror: '#66c42b', ac: [[-2.2, 1.8, '#5cb526']] })
-};
 // 3D 公車 → GeoJSON 多邊形 (依方位角旋轉；k＝放大倍數，遠看時放大以便辨識)
 function bus3dFeatures(p, brg, livery, k, plate) {
-    const parts = BUS_LIVERY[livery];
-    if (!parts) return [];
-    const b = brg * Math.PI / 180, fe = Math.sin(b), fn = Math.cos(b), le = -fn, ln = fe;   // 車頭、左側單位向量 (東, 北)
-    const mLat = 110900, mLng = 111320 * Math.cos(p.lat * Math.PI / 180);
-    const at = (x, y) => [p.lng + (x * fe + y * le) * k / mLng, p.lat + (x * fn + y * ln) * k / mLat];
-    return parts.map(([x0, x1, y0, y1, z0, z1, c]) => ({ type: 'Feature', properties: { c, b: z0 * k, h: z1 * k, plate },
-        geometry: { type: 'Polygon', coordinates: [[at(x0, y0), at(x1, y0), at(x1, y1), at(x0, y1), at(x0, y0)]] } }));
+    const parts = Bus3D.partsOf(livery);
+    return parts ? Bus3D.features(parts, p, brg, k, { plate }) : [];
 }
 // 車輛資訊卡 (點公車才出現；同路線查詢的資訊：路線、車牌、往哪、到站倒數、早/遲、車速)
 function navBusLabel(x) {
@@ -3105,7 +3082,7 @@ function navFleetFrame() {
     const mpp = 78271.517 * Math.cos((items[0] ? items[0].p.lat : 24.15) * Math.PI / 180) / Math.pow(2, z);   // 每像素公尺
     if (Nav.sel && !items.some(x => x.v.plate === Nav.sel)) Nav.sel = null;   // 選取的車已不在畫面資料中
     items.forEach(x => {
-        const liv = busLivery(x.g.r.route, x.v.plate), key = x.v.plate;
+        const liv = busLivery(x.g.r.route, x.v), key = x.v.plate;
         if (liv) {
             (x.primary ? f3 : f3d).push(...bus3dFeatures(x.p, x.p.brg, liv, k, key));
             // 塞車：與路線查詢相同的紅色呼吸燈 (貼地光圈，大小隨 3D 車身)

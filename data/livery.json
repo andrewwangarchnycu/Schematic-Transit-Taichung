@@ -1,0 +1,33 @@
+{
+  "liveries": {
+    "tcpower": {
+      "name": "中鹿客運 Taichung Power 電動公車 (紅)",
+      "note": "45 路，EAL-0373 / EAL-0380 照片",
+      "c": { "L": 10.6, "skirt": "#b81a13", "skirtF": "#f3f3f0", "lower": "#e3241b", "lowerF": "#f3f3f0", "band": "#141517", "rear": "#e3241b", "upper": "#e3241b",
+             "power": ["#f3f3f0", "#41c63a", "#1f2a4d"], "frontTop": "#e3241b", "mirror": "#e3241b", "ac": [[-1.6, 2.4, "#e3241b"]] }
+    },
+    "tcpower_w": {
+      "name": "統聯客運 Taichung Power 電動公車 (白)",
+      "note": "23 路 EAL 車牌，EAL-0898 照片",
+      "c": { "L": 10.6, "skirt": "#d6d6d2", "lower": "#f4f4f1", "band": "#141517", "rear": "#f4f4f1", "upper": "#f4f4f1",
+             "power": ["#f4f4f1", "#41c63a", "#1f2a4d"], "frontTop": "#f4f4f1", "led": "#14100a", "mirror": "#f0f0ee", "ac": [[-3.4, -0.6, "#e6e6e2"], [1.0, 3.4, "#e6e6e2"]] }
+    },
+    "ubus": {
+      "name": "Ubus 綠色公車",
+      "note": "23 路一般車，678-FZ 照片",
+      "c": { "L": 10.6, "skirt": "#4fa51f", "lower": "#66c42b", "band": "#141517", "upper": "#66c42b", "bumper": "#1c1d1f",
+             "frontTop": "#66c42b", "mirror": "#66c42b", "ac": [[-2.2, 1.8, "#5cb526"]] }
+    }
+  },
+  "plates": {
+    "EAL-0373": "tcpower",
+    "EAL-0380": "tcpower",
+    "EAL-0898": "tcpower_w",
+    "678-FZ": "ubus"
+  },
+  "rules": [
+    { "route": "45", "livery": "tcpower" },
+    { "route": "23", "plate": "^EAL", "livery": "tcpower_w" },
+    { "route": "23", "livery": "ubus" }
+  ]
+}
