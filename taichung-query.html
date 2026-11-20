@@ -203,6 +203,8 @@
     .nav-sheet .grab { position: sticky; top: 0; z-index: 3; height: 24px; margin: 0 -14px 4px; display: flex; justify-content: center; align-items: center; cursor: ns-resize; touch-action: none; }
     .nav-sheet .grab::before { content: ''; width: 40px; height: 5px; border-radius: 3px; background: var(--grip, rgba(255,255,255,.35)); }
     .nav-btns { display: flex; gap: 8px; margin: 2px 0 10px; }
+    .nav-gl, .pl-gl { display: inline-block; margin-top: 4px; padding: 3px 10px; border-radius: 999px; background: #ff9f0a; color: #fff !important; font-weight: 600; font-size: 12px; text-decoration: none; white-space: nowrap; }
+    .tl.bike .tl-s { color: #ff9f0a; }
     .nav-btns button { flex: 1; border: 0; border-radius: 999px; padding: 10px 8px; font: inherit; font-weight: 600; color: var(--text, #fff); background: var(--soft, #3a3a3c); cursor: pointer; }
     .nav-btns button:disabled { opacity: .35; }
     .nav-btns .go { background: #0a84ff; color: #fff; flex: 2; }
@@ -255,6 +257,11 @@
     .pl-ic { text-align: center; }
     .pl-pin div { width: 28px; height: 28px; border-radius: 50%; border: 3px solid #fff; color: #fff; font-weight: 700; font-size: 13px; display: flex; align-items: center; justify-content: center; box-shadow: 0 3px 10px rgba(0,0,0,.4); }
     body[data-mode="plan"] .qwrap { display: none; }
+    .pl-bk { font-size: 12px; color: #ff9f0a; font-weight: 600; }
+    .pl-leg.bike .pl-ic .pl-bk { font-size: 16px; }
+    .pl-ybt { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; white-space: nowrap; cursor: pointer; }
+    .pl-ybt input { margin: 0; accent-color: #ff9f0a; }
+    .pl-pin div { white-space: nowrap; }
 
     /* ================= 外觀：Liquid Glass 排版 (深色 / 淺色兩種配色，共用同一套浮動玻璃排版) ================= */
     html[data-theme] {
@@ -1700,7 +1707,7 @@ function listStations(list, head, place = null, fit = true) {
     if (place) items.sort((a, b) => a.d - b.d);
     const STAT = { 0: '停止營運', 2: '暫停營運' };
     const bikeHead = place ? `<div class="hint">🚲 ${bikeR(place)} 公尺內 YouBike：${loading.has('bk:' + place.id) ? '載入中…' : bikeList(place) ? `${bikes.length} 站${av ? ` · ${new Date(av.at).toLocaleTimeString('zh-TW', { hour12: false })}` : ''}` : '尚未查詢'}
-        ${bikeList(place) ? `<button class="btn" id="b-bike" style="padding:1px 8px">更新 (1 次 API)</button>` : ''}</div>` : '';
+        ${bikeList(place) ? `<button class="btn" id="b-bike" style="padding:1px 8px" title="臺中市政府開放資料，不耗 TDX 流量">更新</button>` : ''}</div>` : '';
     panel.innerHTML = `<div class="hint">${head}</div>${bikeHead}` + items.map(it => {
         if (it.kind === 'bus') { const s = it.s;
             return `<div class="list-item" data-id="${esc(s.id)}">${ICO_BUS}
@@ -1947,41 +1954,64 @@ function renderStation() {
 }
 
 // ---------- 1b. 公共自行車 (YouBike)：站位附近 300 公尺 ----------
-//   站點清單 Bike/Station ($spatialFilter nearby) 依座標快取 30 天；可借/可還 Bike/Availability 每次查詢 (60 秒內用快取)
-const BIKE_R = 300, NEAR_BIKE_R = 500, bikeAvail = new Map();   // 站位 id → { at, map: StationUID → 可借可還 }
+//   站點：data/bike.json (tools/mk_bike.js 由臺中市政府開放資料產生)
+//   可借／可還：臺中市政府開放資料即時車位 (全市一份約 0.8 MB，約每 10 分更新；3 分鐘內用快取)，不耗 TDX 流量
+const BIKE_R = 300, NEAR_BIKE_R = 500, bikeAvail = new Map();   // 站位 id → { at, map: 站點代碼 → 可借可還 }
+const YB_URL = 'https://newdatacenter.taichung.gov.tw/api/v1/no-auth/resource.download?rid=bf0fee92-9980-418c-a095-2eacf2eb49f6';
 const layerBike = L.layerGroup().addTo(map);
 let bikeDrawn = '';
+// 全市站點 (靜態檔；沒有時改用即時資料內的站點)
+let YBS = null, ybsP = null;
+function ybStations() {
+    if (YBS) return Promise.resolve(YBS);
+    return ybsP || (ybsP = fetch('data/bike.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).catch(() => null)
+        .then(async j => {
+            if (j && j.s && j.s.length) return j.s.map(([sno, name, lat, lng, tot, addr]) => ({ uid: sno, name, lat, lng, cap: tot, addr, type: 2 }));
+            const m = await ybLive();
+            return [...m.values()].map(x => ({ uid: x.uid, name: x.name, lat: x.lat, lng: x.lng, cap: x.tot, addr: x.addr, type: 2 }));
+        }).then(a => (YBS = a)).finally(() => { ybsP = null; }));
+}
+// 全市即時車位 → Map 站點代碼 → { rent, ret, ebike, status (1 營運／2 暫停), upd }
+const YB = { at: 0, map: null, p: null };
+function ybLive(force = false) {
+    if (!force && YB.map && Date.now() - YB.at < 180000) return Promise.resolve(YB.map);
+    if (YB.p) return YB.p;
+    const ms = d => d && d.length >= 14 ? new Date(+d.slice(0, 4), +d.slice(4, 6) - 1, +d.slice(6, 8), +d.slice(8, 10), +d.slice(10, 12), +d.slice(12, 14)).getTime() : null;
+    return (YB.p = Promise.race([fetch(YB_URL).then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))),
+        new Promise((_, no) => setTimeout(() => no(new Error('逾時')), 15000))])
+        .then(js => {
+            const m = new Map();
+            js.forEach(x => { const d = String(x.sbi_detail || '').split(',').map(Number);
+                m.set(x.sno, { uid: x.sno, name: String(x.sna || '').replace(/^YouBike\d(\.\d)?_/, ''), lat: +x.lat, lng: +x.lng, tot: +x.tot || 0, addr: x.ar || '',
+                    rent: +x.sbi || 0, ret: +x.bemp || 0, ebike: d.length === 2 && isFinite(d[1]) ? d[1] : null, status: x.act === '1' ? 1 : 2, upd: ms(x.mday) }); });
+            YB.at = Date.now(); YB.map = m; return m;
+        }).finally(() => { YB.p = null; }));
+}
 // st：站位或「附近」地點 { id, name, lat, lng, r? (搜尋半徑，預設 BIKE_R) }
 const bikeR = st => st.r || BIKE_R;
-const bikeKey = st => `txg_bike_st_v1:${st.lat.toFixed(4)},${st.lng.toFixed(4)}` + (bikeR(st) === BIKE_R ? '' : `,${bikeR(st)}`);
-const bikeList = st => { const v = store.get(bikeKey(st)); return v && Date.now() - v.at < 30 * 86400000 ? v.list : null; };
+const bikeNearMemo = new Map();
+const bikeList = st => {
+    if (!YBS) return null;
+    const k = `${st.lat.toFixed(5)},${st.lng.toFixed(5)},${bikeR(st)}`;
+    if (!bikeNearMemo.has(k)) bikeNearMemo.set(k, YBS.map(b => ({ ...b, dist: mDist(b, st) })).filter(b => b.dist <= bikeR(st)).sort((a, b) => a.dist - b.dist));
+    return bikeNearMemo.get(k);
+};
 function loadBikes(st, force = false) {
     const go = async () => {
-        let list = bikeList(st);
-        if (!list) {
-            const js = await Api.run('Station/City/Taichung', { '$spatialFilter': `nearby(${st.lat.toFixed(6)},${st.lng.toFixed(6)},${bikeR(st)})`, '$select': 'StationUID,StationName,ServiceType,StationPosition,BikesCapacity,StationAddress' }, { label: `${st.name} 附近 YouBike 站點`, api: 'Bike' });
-            list = js.map(b => ({ uid: b.StationUID, name: ((b.StationName && b.StationName.Zh_tw) || '').replace(/^YouBike\d(\.\d)?_/, ''),
-                type: b.ServiceType, lat: b.StationPosition.PositionLat, lng: b.StationPosition.PositionLon, cap: b.BikesCapacity,
-                addr: (b.StationAddress && b.StationAddress.Zh_tw) || '' }))
-                .map(b => ({ ...b, dist: mDist(b, st) })).sort((a, b) => a.dist - b.dist);
-            store.set(bikeKey(st), { at: Date.now(), list });
-        }
-        if (!list.length) { bikeAvail.set(st.id, { at: Date.now(), map: {} }); return; }
-        const js = await Api.run('Availability/City/Taichung', { '$filter': list.map(b => `StationUID eq '${b.uid}'`).join(' or '), '$select': 'StationUID,ServiceStatus,AvailableRentBikes,AvailableReturnBikes,AvailableRentBikesDetail,SrcUpdateTime,UpdateTime' }, { label: `${st.name} YouBike 車輛數`, api: 'Bike' });
-        const m = {};
-        js.forEach(a => { m[a.StationUID] = { rent: a.AvailableRentBikes, ret: a.AvailableReturnBikes, ebike: a.AvailableRentBikesDetail ? a.AvailableRentBikesDetail.ElectricBikes : null,
-            status: a.ServiceStatus, upd: Date.parse(a.SrcUpdateTime || a.UpdateTime) }; });
-        bikeAvail.set(st.id, { at: Date.now(), map: m });
+        await ybStations();
+        const list = bikeList(st) || [], m = {};
+        if (list.length) { const live = await ybLive(force); list.forEach(b => { const a = live.get(b.uid); if (a) m[b.uid] = a; }); }
+        bikeAvail.set(st.id, { at: list.length ? YB.at : Date.now(), map: m });
     };
     const c = bikeAvail.get(st.id);
-    if (!force && c && Date.now() - c.at < 60000) return Promise.resolve();
+    if (!force && c && Date.now() - c.at < 180000) return Promise.resolve();
     return loadOnce('bk:' + st.id, go);
 }
 function bikeHtml(st) {
     const list = bikeList(st), av = bikeAvail.get(st.id), busy = loading.has('bk:' + st.id);
     drawBikes(st, list, av);
     const head = `<div class="row" style="margin:0"><b>🚲 YouBike 公共自行車</b><span class="muted">${bikeR(st)} 公尺內${av ? ` · ${new Date(av.at).toLocaleTimeString('zh-TW', { hour12: false })}` : ''}</span>
-        <button class="btn" id="b-bike" style="margin-left:auto">${busy ? '載入中…' : av ? '更新' : '查詢'} (${list ? 1 : 2} 次 API)</button></div>`;
+        <button class="btn" id="b-bike" style="margin-left:auto" title="臺中市政府開放資料，不耗 TDX 流量">${busy ? '載入中…' : av ? '更新' : '查詢'}</button></div>`;
     if (!list) return `<div class="bike-box">${head}${busy ? '' : '<div class="muted">尚未查詢</div>'}</div>`;
     if (!list.length) return `<div class="bike-box">${head}<div class="muted">附近沒有 YouBike 站</div></div>`;
     const STAT = { 0: '停止營運', 2: '暫停營運' };
@@ -2695,14 +2725,17 @@ function navResolve(p) {
     });
     if (legs.some(x => !x)) return null;
     const steps = [];
+    // 騎 YouBike：步行到借車站 (dock) → 騎車 (bike) → 還車後步行
+    const bikeSteps = (bk, from) => { steps.push({ t: 'walk', to: bk.A, name: bk.A.name, from, dock: true }); steps.push({ t: 'walk', bike: true, from: bk.A, to: bk.B, name: bk.B.name }); return bk.B; };
     legs.forEach((g, i) => {
-        if (i === 0) steps.push({ t: 'walk', to: g.b, name: g.b.name, from: p.from });
+        if (i === 0) steps.push({ t: 'walk', to: g.b, name: g.b.name, from: p.bs ? bikeSteps(p.bs, p.from) : p.from });
         else if (gDist(legs[i - 1].a, g.b) > 30) steps.push({ t: 'walk', to: g.b, name: g.b.name, from: legs[i - 1].a, xfer: true });
         steps.push({ t: 'wait', g, i, xfer: i > 0 });
         steps.push({ t: 'ride', g, i });
     });
     const last = legs[legs.length - 1], dest = p.to && isFinite(p.to.lat) ? p.to : { name: last.a.name, lat: last.a.lat, lng: last.a.lng };
-    if (gDist(last.a, dest) > 40) steps.push({ t: 'walk', to: dest, name: dest.name, from: last.a, end: true });
+    const lastAt = p.be ? bikeSteps(p.be, last.a) : last.a;
+    if (gDist(lastAt, dest) > 40) steps.push({ t: 'walk', to: dest, name: dest.name, from: lastAt, end: true });
     steps.push({ t: 'arrive', to: dest, name: dest.name });
     return { legs, steps, dest };
 }
@@ -2906,8 +2939,8 @@ function navAuto() {
     }
 }
 // ---- 步行路徑 (Mapbox Directions walking) ----
-async function navDirections(a, b) {
-    const base = `https://api.mapbox.com/directions/v5/mapbox/walking/${a.lng.toFixed(6)},${a.lat.toFixed(6)};${b.lng.toFixed(6)},${b.lat.toFixed(6)}?geometries=geojson&overview=full&steps=true&access_token=${encodeURIComponent(baseCfg.token)}`;
+async function navDirections(a, b, prof = 'walking') {
+    const base = `https://api.mapbox.com/directions/v5/mapbox/${prof}/${a.lng.toFixed(6)},${a.lat.toFixed(6)};${b.lng.toFixed(6)},${b.lat.toFixed(6)}?geometries=geojson&overview=full&steps=true&access_token=${encodeURIComponent(baseCfg.token)}`;
     let js = null;
     try { js = await (await fetch(base + '&language=zh-Hant')).json(); } catch (e) { js = null; }
     if (!js || js.code !== 'Ok') js = await (await fetch(base)).json();
@@ -2925,7 +2958,7 @@ function navWalkAll() {
         const from = k === Nav.cur && Nav.pos ? Nav.pos : st.from;
         if (!from || !isFinite(from.lat)) return;
         st.busy = true;
-        navDirections(from, st.to).then(w => { st.route = w; navDraw(); navRender(); }).catch(() => {}).finally(() => { st.busy = false; });
+        navDirections(from, st.to, st.bike ? 'cycling' : 'walking').then(w => { st.route = w; navDraw(); navRender(); }).catch(() => {}).finally(() => { st.busy = false; });
     });
 }
 function navWalk(st, force = false) {
@@ -2934,7 +2967,7 @@ function navWalk(st, force = false) {
     if (!force && !off) return;
     if (st.route && Date.now() - st.route.at < 20000 && !force) return;
     st.busy = true;
-    navDirections(Nav.pos, st.to).then(w => { st.route = w; navDraw(); }).catch(() => {}).finally(() => { st.busy = false; });
+    navDirections(Nav.pos, st.to, st.bike ? 'cycling' : 'walking').then(w => { st.route = w; navDraw(); }).catch(() => {}).finally(() => { st.busy = false; });
 }
 // ---- 地圖 ----
 function navMap() {
@@ -2963,7 +2996,7 @@ function navLayers() {
     ['nav-legs', 'nav-walk', 'nav-stops'].forEach(id => m.addSource(id, { type: 'geojson', data: E }));
     if (!m.hasImage('nav-arrow')) m.addImage('nav-arrow', navArrowImg(), { pixelRatio: 2 });
     m.addLayer({ id: 'nav-walk', type: 'line', source: 'nav-walk', slot: 'middle', layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': ['case', ['get', 'cur'], '#0a84ff', '#7fb6ff'], 'line-width': ['case', ['get', 'cur'], 7, 5], 'line-dasharray': [0, 1.8], 'line-emissive-strength': 1 } });
+        paint: { 'line-color': ['case', ['get', 'bike'], '#ff9f0a', ['get', 'cur'], '#0a84ff', '#7fb6ff'], 'line-width': ['case', ['get', 'cur'], 7, 5], 'line-dasharray': [0, 1.8], 'line-emissive-strength': 1 } });
     m.addLayer({ id: 'nav-legs-case', type: 'line', source: 'nav-legs', slot: 'middle', layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: { 'line-color': '#fff', 'line-width': ['case', ['get', 'cur'], 13, 10], 'line-opacity': 0.9, 'line-emissive-strength': 1 } });
     m.addLayer({ id: 'nav-legs', type: 'line', source: 'nav-legs', slot: 'middle', layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -2988,7 +3021,7 @@ function navDraw() {
         else [g.b, g.a].forEach(s => pts.push({ p: s, c: g.color, end: true }));
     });
     m.getSource('nav-stops').setData({ type: 'FeatureCollection', features: pts.map(x => ({ type: 'Feature', properties: { c: x.c, end: x.end }, geometry: { type: 'Point', coordinates: [x.p.lng, x.p.lat] } })) });
-    m.getSource('nav-walk').setData({ type: 'FeatureCollection', features: Nav.steps.map((s, k) => s.t === 'walk' ? { type: 'Feature', properties: { cur: k === Nav.cur },
+    m.getSource('nav-walk').setData({ type: 'FeatureCollection', features: Nav.steps.map((s, k) => s.t === 'walk' ? { type: 'Feature', properties: { cur: k === Nav.cur, bike: !!s.bike },
         geometry: { type: 'LineString', coordinates: s.route ? s.route.line.pts.map(toLL) : [[s.from ? s.from.lng : s.to.lng, s.from ? s.from.lat : s.to.lat], [s.to.lng, s.to.lat]] } } : null).filter(Boolean) });
     navMarks();
 }
@@ -3067,7 +3100,8 @@ function navTop() {
             const nx = w.steps.find(s => s.at > pr.s + 5);
             if (nx && nx.ins) ins = `${Math.round(nx.at - pr.s)} m 後 ${nx.ins}`;
         }
-        return { ic: '🚶', big: `步行至 ${st.end ? '' : '上車站 '}${st.name}`, small: [left !== null ? `剩 ${Math.round(left)} m · 約 ${Math.max(1, Math.round(left / 72))} 分` : '定位中…', ins].filter(Boolean).join('<br>') };
+        if (st.bike) return { ic: '🚲', big: `騎車至 ${esc(st.name)} 還車`, small: [left !== null ? `剩 ${Math.round(left)} m · 約 ${Math.max(1, Math.round(left / PL_BK_MPM))} 分` : '定位中…', ins, gBikeBtn(st.from, st.to, 'nav-gl')].filter(Boolean).join('<br>') };
+        return { ic: '🚶', big: st.dock ? `步行至 ${esc(st.name)} 借車` : `步行至 ${st.end ? '' : '上車站 '}${st.name}`, small: [left !== null ? `剩 ${Math.round(left)} m · 約 ${Math.max(1, Math.round(left / 72))} 分` : '定位中…', ins].filter(Boolean).join('<br>') };
     }
     if (st.t === 'wait') {
         const g = st.g, w = navWaitInfo(g);
@@ -3086,7 +3120,7 @@ function navTop() {
 }
 function navRender() {
     if (!Nav.on) return;
-    const t = Nav.started ? navTop() : { ic: '🧭', big: `${esc(Nav.plan.from ? Nav.plan.from.name : '')} → ${esc(Nav.dest.name)}`, small: `${Nav.legs.map(g => `<span class="badge" style="background:${g.color}">${esc(g.label)}</span>`).join(' ')} · 轉乘 ${Nav.legs.length - 1} 次` };
+    const t = Nav.started ? navTop() : { ic: '🧭', big: `${esc(Nav.plan.from ? Nav.plan.from.name : '')} → ${esc(Nav.dest.name)}`, small: `${Nav.plan.bs ? '🚲 › ' : ''}${Nav.legs.map(g => `<span class="badge" style="background:${g.color}">${esc(g.label)}</span>`).join(' ')}${Nav.plan.be ? ' › 🚲' : ''} · 轉乘 ${Nav.legs.length - 1} 次` };
     const top = $('nav-top');
     top.classList.toggle('alert', !!t.alert);
     top.innerHTML = `<div class="ic">${t.ic}</div><div style="min-width:0"><div class="big">${t.big}</div><div class="small">${t.small}</div></div>`;
@@ -3094,6 +3128,10 @@ function navRender() {
     const nextLbl = !Nav.started ? '' : st.t === 'wait' ? '已上車 ▶' : st.t === 'ride' ? '已下車 ▶' : st.t === 'walk' ? '已到達 ▶' : '';
     const tl = Nav.steps.map((s, k) => {
         const cls = k < Nav.cur ? 'done' : k === Nav.cur && Nav.started ? 'cur' : '';
+        if (s.t === 'walk' && s.bike) {
+            const d = s.route ? s.route.dist : gDist(s.from, s.to) * PL_BK_DET;
+            return `<div class="tl ${cls} walk bike" data-k="${k}"><div class="tl-ic">🚲</div><div><b>騎 YouBike 約 ${Math.max(1, Math.round((s.route ? s.route.dur / 60 : d / PL_BK_MPM)))} 分</b><div class="tl-s">${(d / 1000).toFixed(1)} km → ${esc(s.name)} 還車</div>${gBikeBtn(s.from, s.to, 'nav-gl')}</div></div>`;
+        }
         if (s.t === 'walk') {
             const d = s.route ? s.route.dist : gDist(s.from || s.to, s.to);
             return `<div class="tl ${cls} walk" data-k="${k}"><div class="tl-ic">🚶</div><div><b>步行 約 ${Math.max(1, Math.round((s.route ? s.route.dur : d / 1.2) / 60))} 分</b><div class="tl-s">${Math.round(d)} m → ${esc(s.name)}${s.xfer ? '（轉乘）' : ''}</div></div></div>`;
@@ -3135,7 +3173,10 @@ function navTick() {
 //   資料：data/plan.json (各子路線方向的預排發車＋各站相對發車分鐘，tools/mk_static.js 產生，不耗 API)＋捷運班距
 //   起訖可為站位、地圖點選、我的位置；步行轉乘＝350 m 內的站牌 (同站位轉乘預留 1 分)
 //   結果前 3 個方案的第一段公車再查即時到站 (每條路線 1 次 API)
-const PL = { from: null, to: null, active: 'from', res: null, sel: 0, at: null, data: null, busy: false, err: '' };
+const PL = { from: null, to: null, active: 'from', res: null, sel: 0, at: null, data: null, busy: false, err: '', bike: (() => { try { return localStorage.getItem('txg_pl_bike') === '1'; } catch (e) { return false; } })() };
+// YouBike 接駁：起點端「走→借車→騎→還車→走到公車站」、終點端反向，另有全程騎車方案
+//   騎車時間＝直線 × 1.3 ÷ 13 km/h；借、還各 1 分；每段騎車 ≤ 25 分 (含借還不超過 30 分)；站點到起訖 ≤ 300 m、到公車站 ≤ 250 m
+const PL_BK_MPM = 13000 / 60, PL_BK_DET = 1.3, PL_BK_FIX = 1, PL_BK_MAX = 25, PL_BK_MIN_M = 400, PL_BK_END = 300, PL_BK_STOP = 250;
 const PL_WALK_R = 350, PL_WALK_MPM = 72, PL_XFER = 1, PL_ROUNDS = 3, PL_ORIGIN_R = 600;
 let PLG = null;   // 規劃用路網 (第一次規劃時建立)
 function planLoad() {
@@ -3211,8 +3252,9 @@ function raptor(src, dst, t0, ds) {
     const arr = [], lab = [], best = new Float64Array(N).fill(INF);
     for (let k = 0; k <= PL_ROUNDS; k++) { arr.push(new Float64Array(N).fill(INF)); lab.push(new Array(N)); }
     let marked = new Set();
-    src.forEach(([s, w]) => { const t = t0 + w; if (t < arr[0][s]) { arr[0][s] = t; best[s] = t; lab[0][s] = { type: 'start', w }; marked.add(s); } });
-    const dstMap = new Map(dst.map(([s, w]) => [s, w]));
+    src.forEach(([s, w, bk]) => { const t = t0 + w; if (t < arr[0][s]) { arr[0][s] = t; best[s] = t; lab[0][s] = { type: 'start', w, bk }; marked.add(s); } });
+    const dstMap = new Map();
+    dst.forEach(([s, w, bk]) => { const o = dstMap.get(s); if (!o || w < o.w) dstMap.set(s, { w, bk }); });
     let bestDst = INF;
     const out = [];
     for (let k = 1; k <= PL_ROUNDS && marked.size; k++) {
@@ -3243,19 +3285,19 @@ function raptor(src, dst, t0, ds) {
         }));
         // 終點
         let bk = INF, bs = -1;
-        dstMap.forEach((w, s) => { const t = arr[k][s] + w; if (t < bk) { bk = t; bs = s; } });
+        dstMap.forEach((e, s) => { const t = arr[k][s] + e.w; if (t < bk) { bk = t; bs = s; } });
         if (bs >= 0 && bk < bestDst - 0.5) { bestDst = bk; out.push(planTrace(lab, arr, k, bs, dstMap.get(bs), ds)); }
         marked = nm;
     }
     return out.filter(Boolean);
 }
-function planTrace(lab, arr, k, s, wEnd, ds) {
-    const g = planGraph(), legs = [], tStop = arr[k][s];
+function planTrace(lab, arr, k, s, end, ds) {
+    const g = planGraph(), legs = [], tStop = arr[k][s], wEnd = end.w, sEnd = s;
     let guard = 0;
     while (guard++ < 20) {
         const L = lab[k][s];
         if (!L) return null;
-        if (L.type === 'start') { if (L.w > 0.2) legs.unshift({ type: 'walk', to: s, min: L.w, start: true }); break; }
+        if (L.type === 'start') { if (L.bk) legs.unshift(...planBikeLegs(L.bk, true, s)); else if (L.w > 0.2) legs.unshift({ type: 'walk', to: s, min: L.w, start: true }); break; }
         if (L.type === 'walk') { legs.unshift({ type: 'walk', from: L.from, to: s, min: L.w }); s = L.from; continue; }
         const R = g.routes[L.ri], dep = L.dep;
         legs.unshift({ type: 'ride', ri: L.ri, R, b: L.bStop, a: s, bPos: L.bPos, aPos: L.pos, tb: dep + planOff(R, L.bPos), ta: dep + (R.kind === 'mrt' ? R.arr[L.pos] : planOff(R, L.pos)), dep, live: L.live });
@@ -3263,12 +3305,106 @@ function planTrace(lab, arr, k, s, wEnd, ds) {
     }
     const last = legs[legs.length - 1];
     const tEnd = tStop + wEnd;
-    if (wEnd > 0.2) legs.push({ type: 'walk', end: true, min: wEnd });
+    if (end.bk) legs.push(...planBikeLegs(end.bk, false, sEnd)); else if (wEnd > 0.2) legs.push({ type: 'walk', end: true, min: wEnd });
     let at = null;
-    legs.forEach(l => { if (l.type === 'walk') { if (at !== null) at += l.min; return; } if (at !== null) { l.ready = at; l.slack = l.tb - at; } at = l.ta; });
+    legs.forEach(l => { if (l.type !== 'ride') { if (at !== null) at += l.min; return; } if (at !== null) { l.ready = at; l.slack = l.tb - at; } at = l.ta; });
     const rides = legs.filter(l => l.type === 'ride');
-    return rides.length ? { legs, rides, arrive: tEnd, depart: rides[0].tb - (legs[0].type === 'walk' ? legs[0].min : 0), xfers: rides.length - 1,
-        walk: legs.filter(l => l.type === 'walk').reduce((a, l) => a + l.min, 0) } : null;
+    if (!rides.length) return null;
+    const pre = legs.slice(0, legs.indexOf(rides[0])).reduce((a, l) => a + l.min, 0);
+    return planSum({ legs, rides, arrive: tEnd, depart: rides[0].tb - pre, xfers: rides.length - 1 });
+}
+// 方案彙總：步行、騎車分鐘與騎車段數
+function planSum(p) {
+    p.walk = p.legs.filter(l => l.type === 'walk').reduce((a, l) => a + l.min, 0);
+    p.bikeMin = p.legs.filter(l => l.type === 'bike').reduce((a, l) => a + l.min, 0);
+    p.bikes = p.legs.filter(l => l.type === 'bike').length;
+    return p;
+}
+// ---- YouBike 接駁 ----
+const plWalkMin = d => d * 1.3 / PL_WALK_MPM, plBikeMin = d => d * PL_BK_DET / PL_BK_MPM + 2 * PL_BK_FIX;
+const plLL = b => [b.lat, b.lng];
+// 騎車接駁的三段：起點端 (起點→A 借→B 還→站牌 s)；終點端 (站牌 s→A 借→B 還→終點)
+function planBikeLegs(bk, start, s) {
+    const g = planGraph(), O = plLL(planPt(start ? PL.from : PL.to)), S = [g.pts[s].lat, g.pts[s].lng];
+    const bike = { type: 'bike', A: bk.A, B: bk.B, min: bk.ride, fut: !start };
+    return start
+        ? [{ type: 'walk', start: true, pa: O, pb: plLL(bk.A), min: bk.wa, txt: `到 YouBike ${bk.A.name}` }, bike, { type: 'walk', pa: plLL(bk.B), pb: S, to: s, min: bk.wb, txt: `到 ${g.pts[s].name}` }]
+        : [{ type: 'walk', pa: S, pb: plLL(bk.A), min: bk.wa, txt: `到 YouBike ${bk.A.name}` }, bike, { type: 'walk', end: true, pa: plLL(bk.B), pb: O, min: bk.wb }];
+}
+// 可用站點：營運中
+const ybOk = b => !b.av || b.av.status === 1;
+// OSM 單車路線 (FOSSGIS OSRM routed-bike，依 OpenStreetMap 道路／自行車道)：只查選取方案的騎車段，裝置快取 30 天
+const OSMBK_V = new Map(), OSMBK_P = new Map();
+const osmBkKey = (A, B) => `txg_osmbk_v1:${A.lat.toFixed(5)},${A.lng.toFixed(5)};${B.lat.toFixed(5)},${B.lng.toFixed(5)}`;
+function osmBikeGet(A, B) {
+    const k = osmBkKey(A, B);
+    if (!OSMBK_V.has(k)) { const c = store.get(k); if (c && Date.now() - c.at < 30 * 86400000) OSMBK_V.set(k, c); }
+    return OSMBK_V.get(k) || null;
+}
+function osmBike(A, B) {
+    const k = osmBkKey(A, B), v = osmBikeGet(A, B);
+    if (v) return Promise.resolve(v);
+    if (OSMBK_P.has(k)) return OSMBK_P.get(k);
+    const url = `https://routing.openstreetmap.de/routed-bike/route/v1/driving/${A.lng.toFixed(6)},${A.lat.toFixed(6)};${B.lng.toFixed(6)},${B.lat.toFixed(6)}?overview=full&geometries=geojson`;
+    const p = Promise.race([fetch(url).then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))), new Promise((_, no) => setTimeout(() => no(new Error('逾時')), 12000))])
+        .then(js => {
+            const rt = js && js.routes && js.routes[0];
+            if (!rt || !rt.geometry) throw new Error('找不到單車路線');
+            const v = { at: Date.now(), line: rt.geometry.coordinates.map(([x, y]) => [Math.round(y * 1e5) / 1e5, Math.round(x * 1e5) / 1e5]), dist: rt.distance, dur: rt.duration };
+            store.set(k, v); OSMBK_V.set(k, v); return v;
+        }).finally(() => OSMBK_P.delete(k));
+    OSMBK_P.set(k, p);
+    return p;
+}
+// Google 地圖單車路線
+const gBike = (A, B) => `https://www.google.com/maps/dir/?api=1&origin=${A.lat},${A.lng}&destination=${B.lat},${B.lng}&travelmode=bicycling`;
+const gBikeBtn = (A, B, cls) => `<a class="${cls}" href="${gBike(A, B)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Google 單車路線 ↗</a>`;
+// 起點端 (start)：回傳 [[站牌, 起點到站牌分, bk]]；終點端：[[站牌, 站牌到終點分, bk]]
+//   即時模式下：起點借車要有車、起點端還車要有位 (終點端為未來時刻，只作提示不排除)
+function planBikeEnds(p, start) {
+    const g = planGraph(), q = planPt(p), Y = PL.yb, out = new Map();
+    const ends = Y.filter(b => ybOk(b) && mDist(b, q) <= PL_BK_END);
+    const rideMax = (PL_BK_MAX - 2 * PL_BK_FIX) * PL_BK_MPM / PL_BK_DET;
+    ends.forEach(E => {
+        if (start && PL.ybNow && E.av && E.av.rent === 0) return;
+        const we = plWalkMin(mDist(E, q));
+        Y.forEach(F => {
+            if (F === E || !ybOk(F)) return;
+            if (start && PL.ybNow && F.av && F.av.ret === 0) return;
+            const d = mDist(E, F);
+            if (d < PL_BK_MIN_M || d > rideMax) return;
+            const ride = plBikeMin(d);
+            g.near(F, PL_BK_STOP).forEach(([s, ds]) => {
+                const wf = plWalkMin(ds), w = we + ride + wf, o = out.get(s);
+                if (!o || w < o[1]) out.set(s, [s, w, start ? { A: E, B: F, wa: we, ride, wb: wf } : { A: F, B: E, wa: wf, ride, wb: we }]);
+            });
+        });
+    });
+    return [...out.values()];
+}
+// 全程騎車 (起點附近借、終點附近還)
+function planBikeOnly(t0) {
+    const qa = planPt(PL.from), qb = planPt(PL.to), Y = PL.yb.filter(ybOk);
+    let best = null;
+    const As = Y.filter(b => mDist(b, qa) <= PL_BK_END && !(PL.ybNow && b.av && b.av.rent === 0)), Bs = Y.filter(b => mDist(b, qb) <= PL_BK_END);
+    As.forEach(A => Bs.forEach(B => {
+        const d = mDist(A, B); if (A === B || d < PL_BK_MIN_M) return;
+        const wa = plWalkMin(mDist(A, qa)), ride = plBikeMin(d), wb = plWalkMin(mDist(B, qb)), tot = wa + ride + wb;
+        if (ride <= PL_BK_MAX + 1e-6 && (!best || tot < best.tot)) best = { A, B, wa, ride, wb, tot };
+    }));
+    if (!best) return null;
+    const legs = [{ type: 'walk', start: true, pa: plLL(qa), pb: plLL(best.A), min: best.wa, txt: `到 YouBike ${best.A.name}` },
+        { type: 'bike', A: best.A, B: best.B, min: best.ride, fut: false }, { type: 'walk', end: true, pa: plLL(best.B), pb: plLL(qb), min: best.wb }];
+    return planSum({ legs, rides: [], arrive: t0 + best.tot, depart: t0, xfers: 0, bikeOnly: true });
+}
+// 載入站點＋(今日現在出發時) 即時車位
+async function planYB(now) {
+    const list = await ybStations();
+    let live = null;
+    if (now) { try { live = await ybLive(); } catch (e) { live = null; } }
+    PL.ybNow = !!live;
+    PL.yb = list.map(b => ({ ...b, av: live ? live.get(b.uid) || null : null }));
+    PL.ybNote = live ? `YouBike 車位 ${new Date(YB.at).toLocaleTimeString('zh-TW', { hour12: false })} (臺中市政府開放資料)` : now ? 'YouBike 即時車位取得失敗，未檢查有無車位' : 'YouBike 未檢查車位 (非現在出發)';
 }
 // 起訖點 → 附近站牌與步行時間
 function planEnds(p) {
@@ -3288,23 +3424,38 @@ async function runPlan() {
     try { await planLoad(); } catch (e) { PL.busy = false; PL.err = e.message; renderPlan(); return; }
     const ds = selDate(), now = new Date();
     const t0 = PL.at !== null ? PL.at : (ds === todayKey() ? now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60 : 300);
+    const nowMode = ds === todayKey() && PL.at === null;
     const src = planEnds(PL.from), dst = planEnds(PL.to);
-    if (!src.length || !dst.length) { PL.busy = false; PL.err = `${!src.length ? '起點' : '終點'}附近 ${PL_ORIGIN_R} 公尺內沒有站牌`; renderPlan(); return; }
-    PL.live = null; PL.liveNote = '';
-    if (ds === todayKey() && PL.at === null) await planLiveFetch(src);
-    // 依序找各轉乘次數最佳＋之後幾個出發時間的方案 (去除同樣路線組合)
-    const seen = new Map();
-    let t = t0;
-    for (let n = 0; n < 4; n++) {
-        const rs = raptor(src, dst, t, ds);
-        if (!rs.length) break;
-        rs.forEach(p => { const key = p.rides.map(l => l.ri).join('>'); const o = seen.get(key); if (!o || p.arrive < o.arrive) seen.set(key, p); });
-        t = Math.min(...rs.map(p => p.rides[0].tb - (p.legs[0].type === 'walk' ? p.legs[0].min : 0))) + 1;
+    PL.ybNote = '';
+    let srcB = null, dstB = null, bikeOnly = null;
+    if (PL.bike) {
+        try {
+            await planYB(nowMode);
+            srcB = src.concat(planBikeEnds(PL.from, true)); dstB = dst.concat(planBikeEnds(PL.to, false));
+            bikeOnly = planBikeOnly(t0);
+        } catch (e) { PL.ybNote = 'YouBike 站點載入失敗'; }
     }
-    const cost = p => p.arrive + p.xfers * 5 + p.walk * 0.5;
-    // 去掉被其他方案全面勝過的 (更晚到、轉乘更多、步行更多)
+    if ((!src.length || !dst.length) && !(srcB && srcB.length && dstB && dstB.length) && !bikeOnly) { PL.busy = false; PL.err = `${!src.length ? '起點' : '終點'}附近 ${PL_ORIGIN_R} 公尺內沒有站牌`; renderPlan(); return; }
+    PL.live = null; PL.liveNote = '';
+    if (nowMode && src.length) await planLiveFetch(src);
+    // 依序找各轉乘次數最佳＋之後幾個出發時間的方案 (去除同樣路線組合)；含 YouBike 時另跑一次 (保留純公車方案)
+    const seen = new Map();
+    const runs = [[src, dst]]; if (srcB && dstB) runs.push([srcB, dstB]);
+    runs.forEach(([S, D]) => {
+        if (!S.length || !D.length) return;
+        let t = t0;
+        for (let n = 0; n < 4; n++) {
+            const rs = raptor(S, D, t, ds);
+            if (!rs.length) break;
+            rs.forEach(p => { const key = p.legs.map(l => l.type === 'ride' ? l.ri : l.type === 'bike' ? 'b' : '').filter(x => x !== '').join('>'); const o = seen.get(key); if (!o || p.arrive < o.arrive) seen.set(key, p); });
+            t = Math.min(...rs.map(p => p.depart)) + 1;
+        }
+    });
+    if (bikeOnly) seen.set('bike-only', bikeOnly);
+    const cost = p => p.arrive + p.xfers * 5 + p.walk * 0.5 + p.bikes * 3;
+    // 去掉被其他方案全面勝過的 (更晚到、轉乘更多、步行更多；騎車段較多的方案不能淘汰騎車較少的)
     const all = [...seen.values()];
-    PL.res = all.filter(p => !all.some(q => q !== p && q.arrive <= p.arrive && q.xfers <= p.xfers && q.walk <= p.walk + 3 && (q.arrive < p.arrive || q.xfers < p.xfers)))
+    PL.res = all.filter(p => !all.some(q => q !== p && q.arrive <= p.arrive && q.xfers <= p.xfers && q.walk <= p.walk + 3 && q.bikes <= p.bikes && (q.arrive < p.arrive || q.xfers < p.xfers)))
         .sort((a, b) => cost(a) - cost(b)).slice(0, 6);
     PL.sel = 0; PL.busy = false; PL.ds = ds; PL.t0 = t0;
     if (!PL.res.length) PL.err = '找不到 2 次轉乘內、90 分鐘內可搭的方案';
@@ -3313,7 +3464,7 @@ async function runPlan() {
 // 起點附近站牌 (最多 40 支) 一次查即時到站 → PL.live：「路線|站」→ 可搭時刻 (分鐘＋ms) 或停駛
 const PL_UID = new Map(STOPS.map((s, i) => [s.uid, i])), PL_RIX = new Map(ROUTES.map(r => [r.sub + '|' + r.dir, r.i]));
 async function planLiveFetch(src) {
-    const stops = src.filter(([s]) => s < STOPS.length).sort((a, b) => a[1] - b[1]).slice(0, 40).map(([s]) => s);
+    const stops = src.filter(x => x[0] < STOPS.length && !x[2]).sort((a, b) => a[1] - b[1]).slice(0, 40).map(([s]) => s);
     if (!stops.length) return;
     const uids = [...new Set(stops.map(s => STOPS[s].uid))];
     const key = 'pl:' + uids.slice().sort().join(',');
@@ -3382,10 +3533,13 @@ function renderPlan() {
     if (PL.busy) res = '<div class="hint">規劃中…</div>';
     else if (PL.err) res = `<div class="hint">${esc(PL.err)}</div>`;
     else if (PL.res) res = PL.res.map((p, k) => {
-        const first = p.rides[0], live = planLive(first);
-        const chips = p.legs.map(l => l.type === 'walk' ? `<span class="pl-walk">🚶${Math.max(1, Math.round(l.min))}</span>` : `<span class="badge" style="background:${legColor(l)}">${esc(legName(l))}</span>`).join('<span class="pl-arrow">›</span>');
+        const first = p.rides[0], live = first ? planLive(first) : null;
+        const chips = p.legs.map(l => l.type === 'walk' ? `<span class="pl-walk">🚶${Math.max(1, Math.round(l.min))}</span>` : l.type === 'bike' ? `<span class="pl-bk">🚲${Math.round(l.min)}</span>` : `<span class="badge" style="background:${legColor(l)}">${esc(legName(l))}</span>`).join('<span class="pl-arrow">›</span>');
         const detail = k === PL.sel ? `<div class="pl-legs">${p.legs.map(l => {
-            if (l.type === 'walk') return `<div class="pl-leg walk"><span class="pl-ic">🚶</span><span>步行約 ${Math.max(1, Math.round(l.min))} 分${l.end ? ` 到 ${esc(planEndLabel(PL.to))}` : l.start ? ` 到 ${esc(ptName(l.to))}` : ` 轉乘到 ${esc(ptName(l.to))}`}</span></div>`;
+            if (l.type === 'walk') return `<div class="pl-leg walk"><span class="pl-ic">🚶</span><span>步行約 ${Math.max(1, Math.round(l.min))} 分${l.end ? ` 到 ${esc(planEndLabel(PL.to))}` : l.txt ? ' ' + esc(l.txt) : l.start ? ` 到 ${esc(ptName(l.to))}` : ` 轉乘到 ${esc(ptName(l.to))}`}</span></div>`;
+            if (l.type === 'bike') return `<div class="pl-leg bike"><span class="pl-ic"><span class="pl-bk">🚲</span></span><span><b>${esc(l.A.name)}</b> 借車 ${ybCnt(l.A, 'rent', l.fut)}
+                <br><small>騎約 ${Math.round(l.min)} 分 (含借還${(o => o ? `，OSM 路線 ${(o.dist / 1000).toFixed(1)} km` : '，直線估算')(osmBikeGet(l.A, l.B))}) 到 <b>${esc(l.B.name)}</b> 還車 ${ybCnt(l.B, 'ret', true)}</small>
+                <br>${gBikeBtn(l.A, l.B, 'pl-gl')}</span></div>`;
             const lv = l === first ? live : null;
             const xf = l !== first ? `${l.slack !== undefined && l.slack < 3 ? ` <span class="dly late">轉乘緊湊 (餘 ${Math.max(0, Math.round(l.slack))} 分)</span>` : ''}${planXferLive(l)}` : '';
             return `<div class="pl-leg ride" style="--c:${legColor(l)}"><span class="pl-ic"><span class="badge" style="background:${legColor(l)}">${esc(legName(l))}</span></span>
@@ -3393,11 +3547,11 @@ function renderPlan() {
 ${xf}
                 <br><small>往 ${esc(legDest(l))} · 搭 ${l.aPos - l.bPos} 站 · 約 ${fmt(l.ta)} 到 <b>${esc(ptName(l.a))}</b></small></span></div>`;
         }).join('')}
-            <div class="row"><button class="btn pl-nav" data-k="${k}">🧭 開始導航</button>${first.R.kind === 'bus' ? `<button class="btn pl-rt" data-k="${k}">查看 ${esc(legName(first))} 路線</button>` : ''}</div></div>` : '';
-        return `<div class="pl-card${k === PL.sel ? ' sel' : ''}" data-k="${k}"><div class="pl-sum"><b>${fmt(p.arrive)} 抵達</b><span class="muted">${Math.round(p.arrive - PL.t0)} 分 · ${p.xfers ? `轉乘 ${p.xfers} 次` : '直達'} · 步行 ${Math.round(p.walk)} 分</span></div>
+            ${first ? `<div class="row"><button class="btn pl-nav" data-k="${k}">🧭 開始導航</button>${first.R.kind === 'bus' ? `<button class="btn pl-rt" data-k="${k}">查看 ${esc(legName(first))} 路線</button>` : ''}</div>` : ''}</div>` : '';
+        return `<div class="pl-card${k === PL.sel ? ' sel' : ''}" data-k="${k}"><div class="pl-sum"><b>${fmt(p.arrive)} 抵達</b><span class="muted">${Math.round(p.arrive - PL.t0)} 分 · ${p.bikeOnly ? '全程 YouBike' : p.xfers ? `轉乘 ${p.xfers} 次` : '直達'}${p.bikes ? ` · 騎車 ${Math.round(p.bikeMin)} 分` : ''} · 步行 ${Math.round(p.walk)} 分</span></div>
             <div class="pl-chips">${chips}</div>
-            <div class="muted pl-first">${live ? `<span data-dl="${live}">${remain(live)}</span> 後於 ${esc(ptName(first.b))} 上車 (即時)` : `${fmt(first.tb)} 於 ${esc(ptName(first.b))} 上車`}</div>${detail}</div>`;
-    }).join('') + `<div class="hint">${PL.liveNote ? esc(PL.liveNote) + '；' : ''}第一段上車依起點即時到站 (末班已過／未營運的路線不列入)，其後各段依路線班表與 TDX 站間旅行時間推算 (轉乘預留 1 分、步行 ${PL_WALK_R} m 內)；選取方案時另查轉乘路線即時，標示是否接得上。</div>`;
+            <div class="muted pl-first">${!first ? `${fmt(p.depart)} 出發，到 ${esc(p.legs[1].A.name)} 借車` : live ? `<span data-dl="${live}">${remain(live)}</span> 後於 ${esc(ptName(first.b))} 上車 (即時)` : `${fmt(first.tb)} 於 ${esc(ptName(first.b))} 上車`}</div>${detail}</div>`;
+    }).join('') + `<div class="hint">${PL.ybNote ? esc(PL.ybNote) + '；' : ''}${PL.liveNote ? esc(PL.liveNote) + '；' : ''}${PL.bike ? `YouBike 騎車以直線距離 ×1.3、時速 13 km/h 估算，每段 ≤ ${PL_BK_MAX} 分，地圖路線依 OpenStreetMap (FOSSGIS 單車路線)；終點端的借車與還車為未來時刻，數量僅供參考；` : ''}第一段上車依起點即時到站 (末班已過／未營運的路線不列入)，其後各段依路線班表與 TDX 站間旅行時間推算 (轉乘預留 1 分、步行 ${PL_WALK_R} m 內)；選取方案時另查轉乘路線即時，標示是否接得上。</div>`;
     panel.innerHTML = `<h2>路徑規劃</h2>
         <div class="pl-box">
             <div class="pl-f${PL.active === 'from' ? ' on' : ''}" data-f="from"><span class="pl-dot o"></span><input id="pl-from" placeholder="起點：站名、地圖點選或定位" value="${esc(PL.q && PL.active === 'from' ? PL.q : planEndLabel(f))}" autocomplete="off"><button class="pl-me" data-f="from" title="用我的位置">📍</button></div>
@@ -3405,7 +3559,7 @@ ${xf}
             <button class="pl-swap" id="pl-swap" title="交換起訖">⇅</button>
         </div>
         <div class="row"><select id="pl-when"><option value="now"${PL.at === null ? ' selected' : ''}>${isToday ? '現在出發' : '當日首班起'}</option><option value="at"${PL.at !== null ? ' selected' : ''}>指定出發時間</option></select>
-            <input type="time" id="pl-time" value="${atTxt}" style="display:${PL.at !== null ? 'inline-block' : 'none'}"><button class="btn" id="pl-go"${f && t ? '' : ' disabled'}>規劃</button></div>
+            <input type="time" id="pl-time" value="${atTxt}" style="display:${PL.at !== null ? 'inline-block' : 'none'}"><label class="pl-ybt" title="起訖兩端可用 YouBike 接駁 (臺中市政府開放資料，不耗 TDX 流量)"><input type="checkbox" id="pl-bike"${PL.bike ? ' checked' : ''}>🚲 YouBike</label><button class="btn" id="pl-go"${f && t ? '' : ' disabled'}>規劃</button></div>
         <div id="pl-sugg-box"></div>
         ${!f || !t ? '<div class="hint">點輸入框後搜尋站名，或直接在地圖上點選位置設定起點／終點。</div>' : ''}
         ${res}`;
@@ -3427,9 +3581,17 @@ ${xf}
     $('pl-when').onchange = e => { PL.at = e.target.value === 'at' ? (PL.at !== null ? PL.at : Math.round(nowMin())) : null; renderPlan(); };
     $('pl-time').onchange = e => { const [h, m] = e.target.value.split(':').map(Number); if (isFinite(h)) PL.at = h * 60 + m; };
     $('pl-go').onclick = runPlan;
+    $('pl-bike').onchange = e => { PL.bike = e.target.checked; try { localStorage.setItem('txg_pl_bike', PL.bike ? '1' : '0'); } catch (x) {} if (PL.from && PL.to) runPlan(); };
     panel.querySelectorAll('.pl-card').forEach(c => c.onclick = ev => { if (ev.target.closest('button')) return; const k = +c.dataset.k; if (k !== PL.sel) { PL.sel = k; renderPlan(); drawPlan(true); planCheckXfers(); } });
     panel.querySelectorAll('.pl-nav').forEach(b => b.onclick = () => navOpen(planToNav(PL.res[+b.dataset.k])));
     panel.querySelectorAll('.pl-rt').forEach(b => b.onclick = () => { const l = PL.res[+b.dataset.k].rides[0]; openRoute(l.R.r.sub, l.R.r.dir, ptName(l.b)); });
+}
+// YouBike 站點數量 (規劃時讀到的即時車位；未來時刻加註「目前」)
+function ybCnt(b, k, fut) {
+    const a = b.av;
+    if (!a) return '';
+    const n = a[k], w = k === 'rent' ? '可借' : '可還';
+    return `<span class="${n <= 2 ? 'dly late' : 'muted'}">${fut ? '目前' : ''}${w} ${n}${k === 'rent' && a.ebike ? ` (電輔 ${a.ebike})` : ''}${n <= 2 ? ' ⚠️' : ''}</span>`;
 }
 // 起訖輸入框的站名建議
 function planSugg() {
@@ -3466,9 +3628,19 @@ function drawPlan(fit) {
         let prev = PL.from ? (q => [q.lat, q.lng])(planPt(PL.from)) : null;
         p.legs.forEach(l => {
             if (l.type === 'walk') {
-                const a = l.from !== undefined ? P(l.from) : prev, b = l.end ? (q => [q.lat, q.lng])(planPt(PL.to)) : P(l.to);
+                const a = l.pa || (l.from !== undefined ? P(l.from) : prev), b = l.pb || (l.end ? (q => [q.lat, q.lng])(planPt(PL.to)) : P(l.to));
                 if (a && b) L.polyline([a, b], { color: '#0a84ff', weight: 4, dashArray: '2 8', lineCap: 'round' }).addTo(layerSel);
                 prev = b; return;
+            }
+            if (l.type === 'bike') {
+                const o = osmBikeGet(l.A, l.B), line = o ? o.line : [plLL(l.A), plLL(l.B)];
+                if (!o) osmBike(l.A, l.B).then(() => { if (mode === 'plan' && PL.res && PL.res[PL.sel] === p) { drawPlan(false); renderPlan(); } }).catch(() => {});
+                L.polyline(line, { color: '#fff', weight: 8, opacity: .85 }).addTo(layerSel);
+                L.polyline(line, o ? { color: '#ff9f0a', weight: 5, lineCap: 'round', lineJoin: 'round' } : { color: '#ff9f0a', weight: 5, dashArray: '10 7', lineCap: 'round' }).addTo(layerSel);
+                if (o) sets.push({ lines: [line], w: 5 });
+                [[l.A, '借'], [l.B, '還']].forEach(([b, t]) => L.marker(plLL(b), { icon: L.divIcon({ className: 'pl-pin', html: `<div style="background:#ff9f0a;font-size:11px;width:auto;padding:0 6px;border-radius:14px">🚲${t}</div>`, iconSize: [28, 28], iconAnchor: [14, 14] }), zIndexOffset: 2500 })
+                    .bindTooltip(`YouBike ${b.name}${b.av ? `：可借 ${b.av.rent} / 可還 ${b.av.ret}` : ''}`).addTo(layerSel));
+                pts.push(...line); prev = line[1]; return;
             }
             const c = legColor(l);
             let line;
@@ -3494,7 +3666,10 @@ function drawPlan(fit) {
 function planToNav(p) {
     const legs = p.rides.map(l => l.R.kind === 'mrt' ? { k: 'mrt', dirKey: l.R.dirKey, b: M.stations[l.b - planGraph().nS].name, a: M.stations[l.a - planGraph().nS].name }
         : { k: 'bus', sub: l.R.r.sub, dir: l.R.r.dir, b: STOPS[l.b].name, a: STOPS[l.a].name });
-    return { from: planPt(PL.from), to: planPt(PL.to), legs, ws: p.legs[0].type === 'walk', we: p.legs[p.legs.length - 1].type === 'walk' };
+    const i0 = p.legs.indexOf(p.rides[0]), i1 = p.legs.indexOf(p.rides[p.rides.length - 1]);
+    const bk = l => l ? { A: { name: 'YouBike ' + l.A.name, lat: l.A.lat, lng: l.A.lng }, B: { name: 'YouBike ' + l.B.name, lat: l.B.lat, lng: l.B.lng } } : undefined;
+    return { from: planPt(PL.from), to: planPt(PL.to), legs, ws: p.legs[0].type === 'walk', we: p.legs[p.legs.length - 1].type === 'walk',
+        bs: bk(p.legs.find((l, k) => l.type === 'bike' && k < i0)), be: bk(p.legs.find((l, k) => l.type === 'bike' && k > i1)) };
 }
 // 規劃模式下點地圖＝設定起點／終點
 map.on('click', e => {
