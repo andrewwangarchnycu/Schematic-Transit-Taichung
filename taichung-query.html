@@ -421,7 +421,8 @@
         #app.srch #map { grid-row: 3; }
         .map-btn.srch-btn { display: block; }
         /* 手機 Liquid Glass：地圖永遠滿版，標題列浮在上方、面板為可拖曳高度的底部抽屜 (上緣圓角小把手) */
-        html[data-theme] #app { display: block; position: relative; height: 100%; }
+        /* fixed＋inset 0：主畫面 App 模式下 height:100% 會少一個狀態列高度 (底部留白)，改貼齊整個螢幕 */
+        html[data-theme] #app { display: block; position: fixed; inset: 0; height: auto; }
         html[data-theme] #map { position: absolute; inset: 0; height: auto; }
         html[data-theme] header { position: absolute; top: 0; left: 0; right: 0; margin: max(8px, env(safe-area-inset-top)) 8px 0; border-radius: 22px; }
         html[data-theme] #panel { position: absolute; left: 0; right: 0; bottom: 0; height: var(--sheet-h, 45vh); margin: 0 8px max(8px, env(safe-area-inset-bottom));
@@ -1834,8 +1835,9 @@ function srchClick() {
 // 手機 Liquid Glass 底部抽屜：高度存在 --sheet-h；搜尋模式自動拉到最高 (鍵盤不擋清單)，其他頁面回到上次高度
 const Sheet = { h: null, user: null, mode: '' };
 const glassMobile = () => isMobile();
-const sheetMax = () => window.innerHeight - ($('app').querySelector('header').offsetHeight + 24);
-const sheetSnaps = () => [Math.round(window.innerHeight * 0.22), Math.round(window.innerHeight * 0.45), sheetMax()];
+const appH = () => $('app').clientHeight || window.innerHeight;   // 實際畫面高 (主畫面 App 模式含狀態列)
+const sheetMax = () => appH() - ($('app').querySelector('header').offsetHeight + 24);
+const sheetSnaps = () => [Math.round(appH() * 0.22), Math.round(appH() * 0.45), sheetMax()];
 function setSheet(h, remember = false) {
     const [lo] = sheetSnaps();
     h = Math.max(lo * 0.6, Math.min(sheetMax(), h));
