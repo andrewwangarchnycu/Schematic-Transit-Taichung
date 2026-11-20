@@ -22,6 +22,17 @@
         window.syncThemeColor = () => { const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = document.documentElement.dataset.theme === 'glass' ? '#ebe8e2' : '#16181b'; };
         syncThemeColor();
         try { if (navigator.standalone || matchMedia('(display-mode: standalone)').matches) document.documentElement.classList.add('standalone'); } catch (e) {}
+        // 主畫面 App：螢幕高 (直向 screen.height／橫向 screen.width) 比可視高多出不到 100px (＝狀態列) 時，用螢幕高填滿
+        window.fixAppH = () => {
+            const r = document.documentElement;
+            if (!r.classList.contains('standalone')) return;
+            const portrait = matchMedia('(orientation: portrait)').matches, sh = portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
+            const ih = window.innerHeight, h = sh > ih && sh - ih < 100 ? sh : ih;
+            r.style.setProperty('--app-h', h + 'px');
+        };
+        fixAppH();
+        addEventListener('resize', () => { fixAppH(); setTimeout(fixAppH, 300); });
+        addEventListener('orientationchange', () => setTimeout(fixAppH, 300));
     })();
 </script>
 <style>
@@ -32,6 +43,7 @@
         -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
         -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent); mask-image: linear-gradient(to bottom, #000 55%, transparent); }
     html[data-theme="glass"] #sbar { --sbar: rgba(60,60,67,.42); }
+    html.standalone, html.standalone body { background: var(--map-bg, var(--bg)); min-height: calc(100% + env(safe-area-inset-top)); }
     :root { --bg: #161719; --panel: #1f2124; --line: #34373c; --text: #ececec; --muted: #9aa0a6; --accent: #4caf50; --live: #00bcd4; }
     * { box-sizing: border-box; }
     html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif; }
@@ -423,6 +435,8 @@
         /* 手機 Liquid Glass：地圖永遠滿版，標題列浮在上方、面板為可拖曳高度的底部抽屜 (上緣圓角小把手) */
         /* fixed＋inset 0：主畫面 App 模式下 height:100% 會少一個狀態列高度 (底部留白)，改貼齊整個螢幕 */
         html[data-theme] #app { display: block; position: fixed; inset: 0; height: auto; }
+        /* 主畫面 App：iOS 的可視區域會少一個狀態列高 (連 fixed inset:0 也是)，改用 JS 量到的螢幕高度 */
+        html.standalone[data-theme] #app { bottom: auto; height: var(--app-h, calc(100% + env(safe-area-inset-top))); }
         html[data-theme] #map { position: absolute; inset: 0; height: auto; }
         html[data-theme] header { position: absolute; top: 0; left: 0; right: 0; margin: max(8px, env(safe-area-inset-top)) 8px 0; border-radius: 22px; }
         html[data-theme] #panel { position: absolute; left: 0; right: 0; bottom: 0; height: var(--sheet-h, 45vh); margin: 0 8px max(8px, env(safe-area-inset-bottom));
