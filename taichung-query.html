@@ -294,6 +294,9 @@
     .pl-legs { margin-top: 8px; border-top: 1px solid var(--hair, rgba(255,255,255,.1)); padding-top: 6px; }
     .pl-leg { display: grid; grid-template-columns: 50px 1fr; gap: 6px; padding: 5px 0; font-size: 13px; align-items: start; }
     .pl-leg.walk { color: var(--btn-text, #64d2ff); }
+    .pl-alt { margin: 2px 0 6px 56px; padding: 6px 8px; border-left: 3px solid #ff9f0a; background: rgba(255,159,10,.10); border-radius: 6px; font-size: 12px; }
+    .pl-alt-r { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 4px; }
+    .pl-alt-r .btn { padding: 2px 10px; font-size: 12px; margin-left: auto; }
     .pl-ic { text-align: center; }
     .pl-pin div { width: 28px; height: 28px; border-radius: 50%; border: 3px solid #fff; color: #fff; font-weight: 700; font-size: 13px; display: flex; align-items: center; justify-content: center; box-shadow: 0 3px 10px rgba(0,0,0,.4); }
     body[data-mode="plan"] .qwrap { display: none; }
@@ -1003,7 +1006,18 @@ function loadToday(route, high = false) {
                     const { ok, multi } = tripsOf(R.seq.map(si => STOPS[si].name));
                     if (multi && ok.size >= multi * 0.8) { ref = R; bySeq = ok; break; }   // 八成以上班次沿站序遞增才採用
                 }
-                if (!ref) return;
+                if (!ref) {
+                    // 兩端各自發車 (例 675)：有時刻的站都是某方向的起站 → 該站的時刻＝該方向今日發車班次 (中途站由 daySched 推算)
+                    const firsts = known.map(s => ROUTES.find(R => R.sub === sub && STOPS[R.seq[0]].name === s.StopName.Zh_tw && !(v.subs[sub] && v.subs[sub][R.dir])));
+                    if (!firsts.length || firsts.some(R => !R) || new Set(firsts.map(R => R.dir)).size !== firsts.length) return;
+                    known.forEach((s, k) => {
+                        const R = firsts[k], names = R.seq.map(si => STOPS[si].name);
+                        const tt = s.TimeTables.map(t => ({ q: t.Sequence, m: hm(t.DepartureTime || t.ArrivalTime) })).filter(x => isFinite(x.m)).sort((a, b) => a.m - b.m);
+                        if (!tt.length) return;
+                        put(sub, R.dir, 'dep', names, tt.map(x => { const row = new Array(names.length).fill(null); row[0] = x.m; return row; }), [0], tt.map(x => String(x.q)));
+                    });
+                    return;
+                }
                 const names = ref.seq.map(si => STOPS[si].name), d = distAlong(ref);
                 const seqs = [...bySeq.keys()].sort((a, b) => a - b);
                 const trips = seqs.map(k => { const pts = bySeq.get(k).sort((a, b) => a[0] - b[0]);
@@ -1057,6 +1071,11 @@ function pairTrips(deps, bases) {
     }
     return res;
 }
+// 每日營運時刻表各班 → 依 stops 對應 (oi＝alignStops 結果，null＝同站序)；起訖站時刻版本 (interp) 只留 TDX 有給時刻的站，中途內插值不用
+function dailyRows(o, oi) {
+    const known = o.kind === 'interp' && o.known ? new Set(o.known) : null;
+    return o.trips.map(row => (oi || row.map((_, j) => j)).map(j => j >= 0 && (!known || known.has(j)) && row[j] !== undefined ? row[j] : null));
+}
 function daySched(route, ds) {
     const S = schedGet(route), E = estGet(route), T = s2sGet(route), v3 = ttSrc() === 'v3', useV3 = v3 && !!E;
     if (!S && !E) return ds === todayKey() && todayOld(route) ? todayOld(route) : null;
@@ -1086,22 +1105,23 @@ function daySched(route, ds) {
             const row = stops.map((_, i) => eIdx[i] >= 0 && er[eIdx[i]] !== null && er[eIdx[i]] !== undefined ? er[eIdx[i]] : null);
             return row[0] === null ? null : { base: row[0], off: row.map(x => x === null ? null : x - row[0]) };
         }).filter(Boolean).sort((a, b) => a.base - b.base) : [];
+        // 都沒有 (站間旅行時間、V3)：中途站不推估 (顯示「本站無預估班表」)，只留起站發車與 TDX 本身給的各站時刻
         let rows, ids, kind, cancel = [], added = null;
         // 今日：與每日營運時刻表比對發車 (±1 分視為同一班)，路線班表有、每日沒有＝取消；每日有、路線班表沒有＝增調
-        //   (每日營運時刻表或其起訖站時刻內插版本皆可；取消班次不列入班次，所以早/遲配對、遲發判斷都不會把取消班次算成「尚未發車」)
+        //   (每日營運時刻表或其起訖站時刻版本皆可；取消班次不列入班次，所以早/遲配對、遲發判斷都不會把取消班次算成「尚未發車」)
         const TO = ds === todayKey() ? todayOld(route) : null, o = TO && TO.subs[sub] && TO.subs[sub][dir];
-        const oOK = o && (o.kind === 'table' || o.kind === 'interp');
+        const oOK = o && (o.kind === 'table' || o.kind === 'interp' || o.kind === 'dep');
         const oi = oOK && o.stops !== stops ? alignStops(stops, o.stops) : null;
-        const dRows = oOK ? (oi ? o.trips.map(row => oi.map(j => j >= 0 ? row[j] : null)) : o.trips) : [];
+        const dRows = oOK ? dailyRows(o, oi) : [];
         const dDep = dRows.map(row => row[0] !== null && row[0] !== undefined ? row[0] : null);
         let dailyBackbone = false;
         if (deps.length && oOK) {
             const used = new Set();
             deps.forEach(d => {
                 const j = dDep.findIndex((x, k) => !used.has(k) && x !== null && Math.abs(x - d.t) <= 1);
-                if (j >= 0) used.add(j); else d.cancel = true;
+                if (j >= 0) { used.add(j); d.dj = j; } else d.cancel = true;
             });
-            dDep.forEach((x, k) => { if (x !== null && !used.has(k)) deps.push({ t: x, id: (o.ids && o.ids[k]) || 'D' + (k + 1), st: [[stops[0], x]], add: true }); });
+            dDep.forEach((x, k) => { if (x !== null && !used.has(k)) deps.push({ t: x, id: (o.ids && o.ids[k]) || 'D' + (k + 1), st: [[stops[0], x]], add: true, dj: k }); });
             deps.sort((a, b) => a.t - b.t);
         } else if (!deps.length && oOK && (prof.length || s2sFn)) {
             // 路線班表今日沒有預排班次 (只有班距)：班次＝每日營運時刻表，各站時間同樣用站站班表的歷史行駛時間
@@ -1129,6 +1149,8 @@ function daySched(route, ds) {
                     });
                 }
                 if (off) off.forEach((o, i) => { if (i && o !== null) row[i] = d.t + o; });
+                // 沒有行駛時間來源：每日營運時刻表 (TDX 本身給的各站時刻) 同一班有的站照用
+                else if (d.dj !== undefined) dRows[d.dj].forEach((x, i) => { if (i && x !== null && x !== undefined) row[i] = x; });
                 // 路線班表本身有各站時刻者優先
                 if (d.st.length > 1) { const si = alignStops(stops, d.st.map(x => x[0])); si.forEach((j, i) => { if (j >= 0) row[i] = d.st[j][1]; }); }
                 return row;
@@ -1145,8 +1167,7 @@ function daySched(route, ds) {
             // 路線班表今日沒有預排班次 (只有班距) → 每日營運時刻表 (預排逐班逐站)
             const o = todayOld(route).subs[sub][dir];
             kind = 'daily';
-            const oi = o.stops === stops ? null : alignStops(stops, o.stops);
-            rows = oi ? o.trips.map(row => oi.map(j => j >= 0 ? row[j] : null)) : o.trips;
+            rows = dailyRows(o, o.stops === stops ? null : alignStops(stops, o.stops));
             ids = o.ids || rows.map((_, k) => String(k + 1));
         } else if (et) {
             kind = 'est';
@@ -1174,16 +1195,20 @@ function timesAt(r, pos, dateStr) {
     if (!e) return { times: [], kind: 'none', note: `${dayTxt}無此方向班次` };
     const i = e.stops[pos] === name ? pos : e.stops.indexOf(name);
     if (i < 0) return { times: [], kind: 'none', note: '班表無此站' };
-    const times = e.trips.map(x => x[i]).filter(x => x !== null && x !== undefined).sort((a, b) => a - b);
-    const cancel = (e.cancel || []).map(x => x[i]).filter(x => x !== null && x !== undefined).sort((a, b) => a - b);
-    const addSet = new Set(e.added ? [...e.added].map(k => e.trips[k][i]).filter(x => x !== null && x !== undefined).map(x => Math.round(x)) : []);
-    if (!times.length) return { times: [], kind: 'none', note: estErr.has(r.route) ? '只有起站發車時刻 (站站推估班表無法取得)' : '此站無推估時刻' };
     const old = v === todayOld(r.route);
-    const kind = old ? (e.kind === 'table' ? 'sched' : 'est') : e.kind === 'table' || e.kind === 'daily' ? 'sched' : 'est';
+    // 起訖站時刻版本 (interp)：TDX 沒給時刻的中途站不內插
+    const okAt = !old || e.kind !== 'interp' || !e.known || e.known.includes(i);
+    const times = okAt ? e.trips.map(x => x[i]).filter(x => x !== null && x !== undefined).sort((a, b) => a - b) : [];
+    const cancel = okAt ? (e.cancel || []).map(x => x[i]).filter(x => x !== null && x !== undefined).sort((a, b) => a - b) : [];
+    const addSet = new Set(okAt && e.added ? [...e.added].map(k => e.trips[k][i]).filter(x => x !== null && x !== undefined).map(x => Math.round(x)) : []);
+    // 沒有站間旅行時間、也沒有 V3 站站班表：中途站不推估
+    if (!times.length) return { times: [], kind: 'none', noEst: !!i, note: i ? '本站無預估班表' : '今日無發車班次' };
+    const kind = old ? (e.kind === 'table' ? 'sched' : 'est') : (e.kind === 'table' || e.kind === 'daily') ? 'sched' : 'est';
     const hwTxt = (e.hw || []).map(([s, en, a, b]) => `${fmt(s)}–${fmt(en)} 每 ${a === b || !b ? a : a + '–' + b} 分`).join('；');
+    const srcTxt = !i ? '' : e.src === 's2s' ? '，各站時間＝發車＋TDX 站間旅行時間 (含每站停靠 10 秒)' : e.src === 'v3' ? '，各站時間＝發車＋近 3 個月歷史行駛時間 (V3)' : '，各站時間＝TDX 時刻表本身的各站時刻';
     const note = old ? '每日營運時刻表 (站站推估班表無法取得)'
-        : e.kind === 'daily' ? `每日營運時刻表發車 (路線班表為班距發車${hwTxt ? ' ' + hwTxt : ''})${i ? '，各站時間＝發車＋近 3 個月歷史行駛時間' : ''}`
-        : kind === 'sched' ? `路線班表發車 (${dayTxt})${i ? (e.src === 's2s' ? '，各站時間＝發車＋TDX 站間旅行時間 (含每站停靠 10 秒)' : e.src === 'v3' ? '，各站時間＝發車＋近 3 個月歷史行駛時間 (V3)' : '') : ''}`
+        : e.kind === 'daily' ? `每日營運時刻表發車 (路線班表為班距發車${hwTxt ? ' ' + hwTxt : ''})${srcTxt}`
+        : kind === 'sched' ? `路線班表發車 (${dayTxt})${srcTxt}`
         : `站站推估班表 (${dayTxt}，近 3 個月歷史)`;
     const hwMin = (e.hw || []).length ? Math.min(...e.hw.map(h => h[2] || 99)) : null, hwMax = (e.hw || []).length ? Math.max(...e.hw.map(h => h[3] || h[2] || 0)) : null;
     return { times, kind, note, hw: hwMin !== null ? [hwMin, hwMax] : null, cancel, added: addSet };
@@ -1232,6 +1257,49 @@ function loadEta(key, path, params, label, force = false) {
         etaCache.set(key, v);
         return v;
     });
+}
+// ---- 用當下的預估到站 (N1)：只用已載入的路線即時 (etaCache 'rt:')，不另外呼叫 API ----
+//   某站的即時到站 (主預估＋Estimates 各車)；末班已過／今日未營運＝停駛
+const N1_MAX_AGE = 20 * 60000;
+function liveOfRows(rows, now = Date.now()) {
+    const e = { t: [], dead: false };
+    rows.forEach(x => {
+        [x.dl, ...(x.ests || []).map(q => q.dl)].forEach(ms => { if (ms !== null && ms !== undefined && ms > now - 60000 && !e.t.some(q => Math.abs(q.ms - ms) < 30000)) e.t.push({ ms, m: minOfMs(ms) }); });
+        if (x.dl === null && (x.status === 3 || x.status === 4)) e.dead = true;
+    });
+    if (e.t.length) e.dead = false;
+    e.t.sort((a, b) => a.ms - b.ms);
+    return e;
+}
+// 路線即時 → 每台車 (車牌) 在本方向各站的預估到站＝一個「即時班次」 { plate, t: [分|null], ms: [ms|null] }
+//   站序中重複出現的站名 (環狀) 位置不明不用；沿站序時間要遞增 (倒退的點捨棄)
+const liveTripMemo = new Map();
+function liveTrips(r) {
+    const c = etaCache.get('rt:' + r.route);
+    if (!c || Date.now() - c.at > N1_MAX_AGE) return null;
+    const mk = r.i + '|' + c.at;
+    if (liveTripMemo.has(mk)) return liveTripMemo.get(mk);
+    const names = r.seq.map(si => STOPS[si].name), cnt = new Map(), now = Date.now();
+    names.forEach(n => cnt.set(n, (cnt.get(n) || 0) + 1));
+    const byPlate = new Map(), add = (plate, i, dl) => {
+        if (!plate || plate === '-1' || dl === null || dl === undefined || dl < now - 60000) return;
+        if (!byPlate.has(plate)) byPlate.set(plate, new Map());
+        const m = byPlate.get(plate); if (!m.has(i) || dl < m.get(i)) m.set(i, dl);
+    };
+    c.rows.forEach(x => {
+        if (x.sub !== r.sub || x.dir !== r.dir || cnt.get(x.name) !== 1) return;
+        const i = names.indexOf(x.name);
+        add(x.plate, i, x.dl); (x.ests || []).forEach(q => add(q.plate, i, q.dl));
+    });
+    const out = [];
+    byPlate.forEach((m, plate) => {
+        const t = new Array(names.length).fill(null), ms = new Array(names.length).fill(null);
+        let last = -Infinity, n = 0;
+        [...m].sort((a, b) => a[0] - b[0]).forEach(([i, dl]) => { if (dl <= last) return; last = dl; ms[i] = dl; t[i] = minOfMs(dl); n++; });
+        if (n >= 2) out.push({ plate, t, ms });
+    });
+    liveTripMemo.set(mk, out);
+    return out;
 }
 const STATUS = { 1: '尚未發車', 2: '交管不停靠', 3: '末班已過', 4: '今日未營運' };
 function etaHtml(row) {
@@ -1337,7 +1405,7 @@ function cmpHtml(c) {
     if (!c) return '';
     return `<div class="cmp" title="${esc(c.tip)}">表定 <s>${fmt(c.sched)}</s> <span class="dly ${lateCls(c.diff)}">${lateWord(c.diff)}</span></div>`;
 }
-// ---------- 預估延遲發車 ----------
+// ---------- 預估延遲發車 (暫停顯示，PRED_DELAY) ----------
 //   班表沒有車牌，所以用「回到起站的車」推估：同路線另一方向 (或其他子路線) 終點在本方向起站 300 m 內的車，
 //   依即時預估到達終點的時刻 (ETA 的 Estimates 可含多台車)；起站待命的車 (A2 在起站、未配對班次) 視為現在可發車。
 //   起站 ETA 若已指定車牌 (尚未發車且有 PlateNumb) 就用那台車。依先到先發依序對應尚未發出的班次：
@@ -1379,13 +1447,21 @@ function predDepDelay(r) {
         return { k, dep, delay: Math.round(act - dep), plate: a.plate, back: a.idle ? null : a.t, at: where(a.plate), line: a.line };
     }).filter(Boolean);
 }
+// 未依時刻表發車：線上車輛 (A2) 已和班次配對過 (資料可信)，表定發車已過 NOT_DEP_MIN 分仍沒有車對應到這班
+const PRED_DELAY = false, NOT_DEP_MIN = 10;
+function notDepHtml(r) {
+    const mt = matchTrips(r.route, r.sub, r.dir);
+    if (!mt || !mt.running.length) return '';
+    const p = mt.pending.filter(q => q.late >= NOT_DEP_MIN).sort((a, b) => a.dep - b.dep)[0];
+    return p ? ` <span class="dly late" title="${esc(`${p.label}：表定 ${fmt(p.dep)} 發車，已過 ${p.late} 分仍無車輛發出`)}">未依時刻表發車</span>` : '';
+}
 function predHtml(p) {
     if (!p || p.delay < 1) return '';
     const tip = p.plate ? `${p.plate}${p.at ? ` 尚在 ${p.at}` : ''}${p.back ? `，約 ${fmt(minOfMs(p.back))} 回到起站` : '，在起站待命'}；表定 ${fmt(p.dep)} 發車`
         : `表定 ${fmt(p.dep)} 發車，尚無車輛回到起站`;
     return ` <span class="dly late" title="${esc(tip)}">預估延遲發車 ${p.atLeast ? '≥' : ''}${p.delay} 分</span>`;
 }
-// 站名下方：「表定 下下一班、下下下一班」(班距發車標「班距」)；末班紅字；尚未發車的下一班若車輛趕不回起站 → 預估延遲發車
+// 站名下方：「表定 下下一班、下下下一班」(班距發車標「班距」)；末班紅字；表定發車已過 10 分仍沒有車發出 → 未依時刻表發車
 function upcomingLine(r, pos, t, nm, row) {
     const times = t.times;
     // 目前這班 (即時預估有車就以它對應的表定為準)，之後的才列出
@@ -1403,11 +1479,12 @@ function upcomingLine(r, pos, t, nm, row) {
     const cxs = (t.cancel || []).filter(x => x > cur + 0.01 && x <= upto + 0.01).map(x => ({ x, c: true }));
     const seq = after.map(x => ({ x, c: false })).concat(cxs).sort((a, b) => a.x - b.x);
     const list = after.length ? seq.map(q => q.c ? `<s class="cx" title="取消班次">${fmt(q.x)}</s>` : tm(q.x)).join('、') : (Math.abs(cur - last) < 0.01 ? '<span class="last">末班</span>' : '');
-    // 下一班尚未發車 (ETA 狀態 1)：看回起站的車趕不趕得上
+    // 下一班尚未發車 (ETA 狀態 1)：表定發車已過 10 分仍沒有車發出 → 「未依時刻表發車」
+    //   (預估延遲發車暫停顯示：要等拿到發車班表對應的車牌才準，見 PRED_DELAY)
     let pred = '';
-    if (row ? row.dl === null && row.status === 1 : pos === 0) {
-        const ps = predDepDelay(r), p = ps && ps[0];
-        if (p) pred = predHtml(p);
+    if (row ? row.dl === null && row.status === 1 : true) {
+        if (PRED_DELAY) { const ps = predDepDelay(r), p = ps && ps[0]; if (p) pred = predHtml(p); }
+        else pred = notDepHtml(r);
     }
     return `${lab} ${list}${pred}`;
 }
@@ -3487,22 +3564,57 @@ function planDeps(R, ri, ds) {
     planDepMemo.set(k, deps);
     return deps;
 }
-const planOff = (R, pos) => R.kind === 'bus' ? (R.plan && R.plan.o[pos] !== undefined ? R.plan.o[pos] : null) : R.off[pos];
+// 各站相對發車的分鐘：捷運＝班表；公車只用 TDX 站間旅行時間 (plan.json s＝1)，沒有就 null (不用距離粗估)
+const planHasTT = R => R.kind !== 'bus' || !!(R.plan && R.plan.s);
+const planOff = (R, pos) => { if (R.kind !== 'bus') return R.off[pos]; if (!planHasTT(R)) return null; const o = R.plan.o[pos]; return o !== undefined && o !== null ? o : null; };
+// 班次 c (表定 {dep} 或即時 {lt}) 在 pos 站的上車／到站時刻 (分)；沒有＝null
+function planBoardAt(R, c, pos) { if (c.lt) return c.lt.t[pos]; const o = planOff(R, pos); return o === null ? null : c.dep + o; }
+function planArrAt(R, c, pos) { return R.kind === 'mrt' ? c.dep + R.arr[pos] : planBoardAt(R, c, pos); }
+// 顯示用的上下車時刻與標籤：有站間旅行時間＝表定；用即時預估 (N1) 上車的車＝即時
+function legTimes(l) {
+    const R = l.R;
+    if (R.kind !== 'bus') return { tb: l.tb, ta: l.ta, cls: 'sched', txt: '班距' };
+    if (l.lt || l.live) return { tb: l.tb, ta: l.ta, cls: 'api', txt: '即時' };
+    const freq = R.plan && R.plan.f.length && !R.plan.d.length;
+    return { tb: l.tb, ta: l.ta, cls: freq ? 'freq' : 'sched', txt: '表定' };
+}
+// 某站的即時到站 (已載入的路線即時)：規劃中每段都用，轉乘也反映誤點、早到、停駛
+const planStopLiveMemo = new Map();
+function planStopLive(R, pos) {
+    const c = etaCache.get('rt:' + R.r.route);
+    if (!c || Date.now() - c.at > N1_MAX_AGE) return null;
+    const mk = R.r.i + '|' + pos + '|' + c.at;
+    if (!planStopLiveMemo.has(mk)) {
+        const name = STOPS[R.stops[pos]].name, rows = c.rows.filter(x => x.name === name && x.sub === R.r.sub && x.dir === R.r.dir);
+        planStopLiveMemo.set(mk, rows.length ? liveOfRows(rows) : null);
+    }
+    return planStopLiveMemo.get(mk);
+}
 // 最早可搭的班次 (在 pos 站、t 之後)
 function planBoard(R, ri, pos, s, t, ds, first) {
+    if (R.kind === 'bus' && !planHasTT(R)) {
+        // 沒有站間旅行時間：只能搭即時預估 (N1) 有到站時刻的車，下車時刻也用同一台車的預估
+        if (ds !== todayKey()) return null;
+        let b = null;
+        (liveTrips(R.r) || []).forEach(q => { const x = q.t[pos]; if (x !== null && x >= t - 0.3 && x - t <= 90 && (!b || x < b.t[pos])) b = q; });
+        return b ? { dep: null, live: b.ms[pos], lt: b } : null;
+    }
     const off = planOff(R, pos);
     if (off === null) return null;
-    // 起點站牌的即時到站：末班已過／今日未營運＝不能搭；有預估就用預估 (含誤點、早到)
-    const lv = first && PL.live && PL.live.get(ri + '|' + s);
+    // 即時到站 (起點站牌另查的、或已載入的路線即時)：末班已過／今日未營運＝不能搭；有預估就用預估 (含誤點、早到)
+    const lv = (first && PL.live && PL.live.get(ri + '|' + s)) || (R.kind === 'bus' && ds === todayKey() ? planStopLive(R, pos) : null);
+    let floor = t;
     if (lv) {
         if (lv.dead) return null;
         const x = lv.t.find(q => q.m >= t - 0.3);
         if (x) return { dep: x.m - off, live: x.ms };
+        // 即時的車都在到達前就過站：表定只取最後一台之後的班次 (避免搭上其實已開走的那班)
+        if (lv.t.length) floor = Math.max(t, lv.t[lv.t.length - 1].m + 1);
     }
-    const deps = planDeps(R, ri, ds), need = t - off;
+    const deps = planDeps(R, ri, ds), need = floor - off;
     let lo = 0, hi = deps.length;
     while (lo < hi) { const m = (lo + hi) >> 1; if (deps[m] < need - 1e-6) lo = m + 1; else hi = m; }
-    return lo < deps.length && deps[lo] - need <= 90 ? { dep: deps[lo], live: null } : null;   // 最多等 90 分
+    return lo < deps.length && deps[lo] - (t - off) <= 90 ? { dep: deps[lo], live: null } : null;   // 最多等 90 分
 }
 // RAPTOR：src/dst＝[[站索引, 步行分]]；回傳各轉乘次數的最佳方案
 function raptor(src, dst, t0, ds) {
@@ -3523,16 +3635,16 @@ function raptor(src, dst, t0, ds) {
             const R = g.routes[ri];
             let cur = null, bStop = -1, bPos = -1;
             for (let pos = pos0; pos < R.stops.length; pos++) {
-                const s = R.stops[pos], off = planOff(R, pos);
-                if (cur && off !== null) {
-                    const ta = cur.dep + (R.kind === 'mrt' ? R.arr[pos] : off);
-                    if (ta < Math.min(best[s], bestDst) - 1e-6) { arr[k][s] = ta; best[s] = ta; lab[k][s] = { type: 'ride', ri, dep: cur.dep, live: cur.live, bStop, bPos, pos }; nm.add(s); }
+                const s = R.stops[pos];
+                if (cur) {
+                    const ta = planArrAt(R, cur, pos);
+                    if (ta !== null && ta < Math.min(best[s], bestDst) - 1e-6) { arr[k][s] = ta; best[s] = ta; lab[k][s] = { type: 'ride', ri, dep: cur.dep, live: cur.live, lt: cur.lt, bStop, bPos, pos }; nm.add(s); }
                 }
                 const prev = arr[k - 1][s];
-                if (prev < INF && pos < R.stops.length - 1 && off !== null) {
+                if (prev < INF && pos < R.stops.length - 1) {
                     const ready = prev + (k > 1 && lab[k - 1][s] && lab[k - 1][s].type === 'ride' ? PL_XFER : 0);
                     const b = planBoard(R, ri, pos, s, ready, ds, k === 1);
-                    if (b && (!cur || b.dep < cur.dep - 1e-6)) { cur = b; bStop = s; bPos = pos; }
+                    if (b) { const nb = planBoardAt(R, b, pos), oc = cur ? planBoardAt(R, cur, pos) : null; if (!cur || oc === null || nb < oc - 1e-6) { cur = b; bStop = s; bPos = pos; } }
                 }
             }
         });
@@ -3558,18 +3670,22 @@ function planTrace(lab, arr, k, s, end, ds) {
         if (L.type === 'start') { if (L.bk) legs.unshift(...planBikeLegs(L.bk, true, s)); else if (L.w > 0.2) legs.unshift({ type: 'walk', to: s, min: L.w, start: true }); break; }
         if (L.type === 'walk') { legs.unshift({ type: 'walk', from: L.from, to: s, min: L.w }); s = L.from; continue; }
         const R = g.routes[L.ri], dep = L.dep;
-        legs.unshift({ type: 'ride', ri: L.ri, R, b: L.bStop, a: s, bPos: L.bPos, aPos: L.pos, tb: dep + planOff(R, L.bPos), ta: dep + (R.kind === 'mrt' ? R.arr[L.pos] : planOff(R, L.pos)), dep, live: L.live });
+        legs.unshift({ type: 'ride', ri: L.ri, R, b: L.bStop, a: s, bPos: L.bPos, aPos: L.pos, tb: planBoardAt(R, L, L.bPos), ta: planArrAt(R, L, L.pos), dep, live: L.live, lt: L.lt });
         s = L.bStop; k--;
     }
     const last = legs[legs.length - 1];
     const tEnd = tStop + wEnd;
     if (end.bk) legs.push(...planBikeLegs(end.bk, false, sEnd)); else if (wEnd > 0.2) legs.push({ type: 'walk', end: true, min: wEnd });
-    let at = null;
-    legs.forEach(l => { if (l.type !== 'ride') { if (at !== null) at += l.min; return; } if (at !== null) { l.ready = at; l.slack = l.tb - at; } at = l.ta; });
+    planReady(legs);
     const rides = legs.filter(l => l.type === 'ride');
     if (!rides.length) return null;
     const pre = legs.slice(0, legs.indexOf(rides[0])).reduce((a, l) => a + l.min, 0);
     return planSum({ legs, rides, arrive: tEnd, depart: rides[0].tb - pre, xfers: rides.length - 1 });
+}
+// 各轉乘段：到達上車站的時刻 (ready) 與餘裕 (slack)
+function planReady(legs) {
+    let at = null;
+    legs.forEach(l => { if (l.type !== 'ride') { if (at !== null) at += l.min; return; } if (at !== null) { l.ready = at; l.slack = l.tb - at; } else { delete l.ready; delete l.slack; } at = l.ta; });
 }
 // 方案彙總：步行、騎車分鐘與騎車段數
 function planSum(p) {
@@ -3695,7 +3811,7 @@ async function runPlan() {
     }
     if ((!src.length || !dst.length) && !(srcB && srcB.length && dstB && dstB.length) && !bikeOnly) { PL.busy = false; PL.err = `${!src.length ? '起點' : '終點'}附近 ${PL_ORIGIN_R} 公尺內沒有站牌`; renderPlan(); return; }
     PL.live = null; PL.liveNote = '';
-    if (nowMode && src.length) await planLiveFetch(src);
+    if (nowMode && src.length) { await planLiveFetch(src); await planN1Fetch(); }
     // 依序找各轉乘次數最佳＋之後幾個出發時間的方案 (去除同樣路線組合)；含 YouBike 時另跑一次 (保留純公車方案)
     const seen = new Map();
     const runs = [[src, dst]]; if (srcB && dstB) runs.push([srcB, dstB]);
@@ -3729,39 +3845,104 @@ async function planLiveFetch(src) {
     try {
         const c = await Promise.race([loadEta(key, 'EstimatedTimeOfArrival/City/Taichung', { '$filter': uids.map(u => `StopUID eq '${u}'`).join(' or ') }, '規劃：起點即時到站'),
             new Promise((_, no) => setTimeout(() => no(new Error('逾時')), 8000))]);
-        const live = new Map(), now = Date.now();
+        const by = new Map(), now = Date.now();
         c.rows.forEach(x => {
             const s = PL_UID.get(x.uid), ri = PL_RIX.get(x.sub + '|' + x.dir);
             if (s === undefined || ri === undefined) return;
-            const k = ri + '|' + s, e = live.get(k) || { t: [], dead: false };
-            [x.dl, ...(x.ests || []).map(q => q.dl)].forEach(ms => { if (ms !== null && ms !== undefined && ms > now - 60000 && !e.t.some(q => Math.abs(q.ms - ms) < 30000)) e.t.push({ ms, m: minOfMs(ms) }); });
-            if (x.dl === null && (x.status === 3 || x.status === 4)) e.dead = true;
-            live.set(k, e);
+            const k = ri + '|' + s;
+            if (!by.has(k)) by.set(k, []);
+            by.get(k).push(x);
         });
-        live.forEach(e => { if (e.t.length) e.dead = false; e.t.sort((a, b) => a.ms - b.ms); });
+        const live = new Map();
+        by.forEach((rows, k) => live.set(k, liveOfRows(rows, now)));
         PL.live = live; PL.liveNote = `起點 ${uids.length} 支站牌即時到站 ${new Date(c.at).toLocaleTimeString('zh-TW', { hour12: false })}`;
     } catch (e) { PL.liveNote = '起點即時到站取得失敗，改用表定'; }
+}
+// 沒有站間旅行時間的路線：起點站牌有即時到站的，再查該路線即時 (最多 3 條，每條 1 次 API)，才能用同一台車的預估算下車時刻
+const PL_N1_ROUTES = 3;
+async function planN1Fetch() {
+    if (!PL.live) return;
+    const g = planGraph(), want = new Set();
+    PL.live.forEach((e, k) => {
+        const R = g.routes[+k.split('|')[0]];
+        if (e.t.length && R && R.kind === 'bus' && !planHasTT(R)) want.add(R.r.route);
+    });
+    const list = [...want].filter(rt => { const c = etaCache.get('rt:' + rt); return !c || Date.now() - c.at > FRESH_MS; }).slice(0, PL_N1_ROUTES);
+    if (!list.length) return;
+    await Promise.race([Promise.allSettled(list.map(rt => etaRoute(rt, `${rt} 即時 (規劃：無站間旅行時間)`))), new Promise(ok => setTimeout(ok, 8000))]);
 }
 // 轉乘段即時檢查 (只查選取的方案，每條轉乘路線 1 次 API)：會不會因誤點／早發／停駛接不上
 function planCheckXfers() {
     const p = PL.res && PL.res[PL.sel];
     if (!p || PL.ds !== todayKey() || PL.at !== null) return;
-    p.rides.slice(1).filter(l => l.R.kind === 'bus').forEach(l => etaRoute(l.R.r.route, `${l.R.r.route} 即時 (轉乘檢查)`).catch(() => {}));
+    const redraw = () => { if (mode === 'plan' && PL.res && PL.res[PL.sel] === p) renderPlan(); };
+    p.rides.slice(1).filter(l => l.R.kind === 'bus').forEach(l => etaRoute(l.R.r.route, `${l.R.r.route} 即時 (轉乘檢查)`).then(redraw, () => {}));
 }
-function planXferLive(l) {
-    if (l.R.kind !== 'bus' || l.ready === undefined || PL.ds !== todayKey() || PL.at !== null) return '';
+// 前面各段的誤點 (分)：第一段有即時上車時刻就以它晚於表定的分鐘數往後推
+function planShift(p) {
+    const f = p.rides[0], lv = f ? planLive(f) : null;
+    return lv ? Math.max(0, minOfMs(lv) - f.tb) : 0;
+}
+// 轉乘段即時檢查 → { html, fail }：fail＝停駛、車已過站下一班未發、或晚到 ≥ 5 分 → 給替代方案
+function planXferInfo(p, l) {
+    if (l.R.kind !== 'bus' || l.ready === undefined || PL.ds !== todayKey() || PL.at !== null) return { html: '' };
     const c = etaCache.get('rt:' + l.R.r.route);
-    if (!c) return loading.has('e:rt:' + l.R.r.route) ? ' <span class="muted">即時檢查中…</span>' : '';
+    if (!c) return { html: loading.has('e:rt:' + l.R.r.route) ? ' <span class="muted">即時檢查中…</span>' : '' };
+    const shift = planShift(p), ready = l.ready + shift;
+    const sh = shift >= 1 ? `前段晚 ${Math.round(shift)} 分，` : '';
     const rows = c.rows.filter(x => x.name === STOPS[l.b].name && x.sub === l.R.r.sub && x.dir === l.R.r.dir);
     const dls = rows.flatMap(x => [x.dl, ...(x.ests || []).map(q => q.dl)]).filter(v => v !== null && v !== undefined).map(minOfMs).sort((a, b) => a - b);
-    const nx = dls.find(m => m >= l.ready - 0.3);
+    const nx = dls.find(m => m >= ready - 0.3);
     if (nx !== undefined) {
         const d = Math.round(nx - l.tb);
-        return d > 2 ? ` <span class="dly late">⚠️ 即時 ${fmt(nx)} 才到 (晚 ${d} 分)</span>` : d < -2 ? ` <span class="dly early">即時 ${fmt(nx)} 到 (早 ${-d} 分)</span>` : ` <span class="dly ontime">即時 ${fmt(nx)} 接得上</span>`;
+        return d > 2 ? { html: ` <span class="dly late">⚠️ ${sh}即時 ${fmt(nx)} 才到 (晚 ${d} 分)</span>`, fail: d >= 5 }
+            : d < -2 ? { html: ` <span class="dly early">${sh}即時 ${fmt(nx)} 到 (早 ${-d} 分)</span>` }
+            : { html: ` <span class="dly ontime">${sh}即時 ${fmt(nx)} 接得上</span>` };
     }
-    if (rows.length && rows.every(x => x.dl === null && (x.status === 3 || x.status === 4))) return ` <span class="dly late">⚠️ ${STATUS[rows[0].status]}，可能接不上</span>`;
-    if (dls.length) return ` <span class="dly late">⚠️ 即時班次都在你到達前，下一班尚未發車</span>`;
-    return ' <span class="muted">尚未發車 (依表定)</span>';
+    if (rows.length && rows.every(x => x.dl === null && (x.status === 3 || x.status === 4))) return { html: ` <span class="dly late">⚠️ ${STATUS[rows[0].status]}，接不上</span>`, fail: true };
+    if (dls.length) return { html: ` <span class="dly late">⚠️ ${sh}即時班次都在你到達前，下一班尚未發車</span>`, fail: true };
+    // 沒有站間旅行時間的路線要靠即時的車，沒有就搭不到
+    if (l.lt) return { html: ` <span class="dly late">⚠️ 原預估的車已不在即時資料中</span>`, fail: true };
+    return { html: ' <span class="muted">尚未發車 (依表定)</span>' };
+}
+// 接不上時：從前一段下車站、(含前段誤點的) 到站時刻重新規劃到終點 → 當下可行的替代方案 (最多 2 個)
+function planAlt(p, l) {
+    const k = p.legs.indexOf(l), prev = p.legs.slice(0, k).reverse().find(x => x.type === 'ride');
+    if (!prev) return [];
+    const ca = etaCache.get('rt:' + l.R.r.route), key = `${ca ? ca.at : 0}|${Math.floor(nowMin())}`;
+    if (l._alt && l._alt.key === key) return l._alt.list;
+    const g = planGraph(), s = prev.a, t = prev.ta + planShift(p);
+    const src = [[s, PL_XFER]].concat(g.walk(s).map(([j, w]) => [j, w]));
+    const cost = q => q.arrive + q.xfers * 5 + q.walk * 0.5;
+    const seen = new Map();
+    raptor(src, planEnds(PL.to), t, PL.ds).forEach(q => {
+        const sig = q.rides.map(x => x.ri + '@' + x.b).join('>');
+        if (!seen.has(sig) || q.arrive < seen.get(sig).arrive) seen.set(sig, q);
+    });
+    const list = [...seen.values()].sort((a, b) => cost(a) - cost(b)).slice(0, 2).map(q => ({ q, from: s, t }));
+    Object.defineProperty(l, '_alt', { value: { key, list }, configurable: true, enumerable: false });
+    return list;
+}
+// 採用替代方案：原方案到前一段下車為止＋替代方案的各段
+function planUseAlt(p, l, alt) {
+    const k = p.legs.indexOf(l), prevK = k - 1 - p.legs.slice(0, k).reverse().findIndex(x => x.type === 'ride');
+    const head = p.legs.slice(0, prevK + 1).map(x => ({ ...x }));
+    const tail = alt.q.legs.map(x => x.type === 'walk' && x.start ? { type: 'walk', from: alt.from, to: x.to, min: x.min } : { ...x });
+    const legs = head.concat(tail);
+    planReady(legs);
+    const rides = legs.filter(x => x.type === 'ride');
+    return planSum({ legs, rides, arrive: alt.q.arrive, depart: p.depart, xfers: rides.length - 1, alt: true });
+}
+// 替代方案區塊 (接在接不上的那一段下面)
+function planAltHtml(p, l) {
+    const list = planAlt(p, l);
+    if (!list.length) return '<div class="pl-alt"><b>⚠️ 接不上</b>：目前找不到 90 分鐘內可行的替代方案</div>';
+    return `<div class="pl-alt"><b>⚠️ 接不上 → 當下可行替代方案</b> <small class="muted">(從 ${esc(ptName(list[0].from))} ${fmt(list[0].t)} 起)</small>${list.map(a => {
+        const i = PL.altUse.push({ p, l, a }) - 1, f = a.q.rides[0];
+        const chips = a.q.rides.map(x => `<span class="badge" style="background:${legColor(x)}">${esc(legName(x))}</span>`).join('<span class="pl-arrow">›</span>');
+        const T = f ? legTimes(f) : null;
+        return `<div class="pl-alt-r">${chips} <span>${T ? `${esc(ptName(f.b))} ${fmt(T.tb)} <span class="tag ${T.cls}">${T.txt}</span> 上車 · ` : ''}<b>${fmt(a.q.arrive)} 抵達</b>${a.q.xfers ? ` · 再轉乘 ${a.q.xfers} 次` : ''}</span> <button class="btn pl-alt-use" data-i="${i}">改用</button></div>`;
+    }).join('')}</div>`;
 }
 // 第一段的即時上車：同站同子路線同方向，最接近表定上車的預估
 function planLive(l) {
@@ -3790,7 +3971,7 @@ function renderPlan() {
     let res = '';
     if (PL.busy) res = '<div class="hint">規劃中…</div>';
     else if (PL.err) res = `<div class="hint">${esc(PL.err)}</div>`;
-    else if (PL.res) res = PL.res.map((p, k) => {
+    else if (PL.res) { PL.altUse = []; res = PL.res.map((p, k) => {
         const first = p.rides[0], live = first ? planLive(first) : null;
         const chips = p.legs.map(l => l.type === 'walk' ? `<span class="pl-walk">🚶${Math.max(1, Math.round(l.min))}</span>` : l.type === 'bike' ? `<span class="pl-bk">🚲${Math.round(l.min)}</span>` : `<span class="badge" style="background:${legColor(l)}">${esc(legName(l))}</span>`).join('<span class="pl-arrow">›</span>');
         const detail = k === PL.sel ? `<div class="pl-legs">${p.legs.map(l => {
@@ -3798,18 +3979,20 @@ function renderPlan() {
             if (l.type === 'bike') return `<div class="pl-leg bike"><span class="pl-ic"><span class="pl-bk">🚲</span></span><span><b>${esc(l.A.name)}</b> 借車 ${ybCnt(l.A, 'rent', l.fut)}
                 <br><small>騎約 ${Math.round(l.min)} 分 (含借還${(o => o ? `，OSM 路線 ${(o.dist / 1000).toFixed(1)} km` : '，直線估算')(osmBikeGet(l.A, l.B))}) 到 <b>${esc(l.B.name)}</b> 還車 ${ybCnt(l.B, 'ret', true)}</small>
                 <br>${gBikeBtn(l.A, l.B, 'pl-gl')}</span></div>`;
-            const lv = l === first ? live : null;
-            const xf = l !== first ? `${l.slack !== undefined && l.slack < 3 ? ` <span class="dly late">轉乘緊湊 (餘 ${Math.max(0, Math.round(l.slack))} 分)</span>` : ''}${planXferLive(l)}` : '';
+            const lv = l === first ? live : null, T = legTimes(l);
+            const xi = l !== first ? planXferInfo(p, l) : { html: '' };
+            const xf = l !== first ? `${l.slack !== undefined && l.slack < 3 ? ` <span class="dly late">轉乘緊湊 (餘 ${Math.max(0, Math.round(l.slack))} 分)</span>` : ''}${xi.html}` : '';
+            const alt = xi.fail ? planAltHtml(p, l) : '';
             return `<div class="pl-leg ride" style="--c:${legColor(l)}"><span class="pl-ic"><span class="badge" style="background:${legColor(l)}">${esc(legName(l))}</span></span>
-                <span><b>${esc(ptName(l.b))}</b> 上車 ${lv ? `<span data-dl="${lv}">${remain(lv)}</span> <span class="tag api">即時</span>` : `${fmt(l.tb)} <span class="tag ${l.R.kind === 'bus' && l.R.plan && l.R.plan.f.length && !l.R.plan.d.length ? 'freq' : 'sched'}">${l.R.kind === 'mrt' ? '班距' : '表定'}</span>`}
+                <span><b>${esc(ptName(l.b))}</b> 上車 ${lv ? `<span data-dl="${lv}">${remain(lv)}</span> <span class="tag api">即時</span>` : `${fmt(T.tb)} <span class="tag ${T.cls}">${T.txt}</span>`}
 ${xf}
-                <br><small>往 ${esc(legDest(l))} · 搭 ${l.aPos - l.bPos} 站 · 約 ${fmt(l.ta)} 到 <b>${esc(ptName(l.a))}</b></small></span></div>`;
+                <br><small>往 ${esc(legDest(l))} · 搭 ${l.aPos - l.bPos} 站 · 約 ${fmt(T.ta)} 到 <b>${esc(ptName(l.a))}</b></small></span></div>${alt}`;
         }).join('')}
             ${first ? `<div class="row"><button class="btn pl-nav" data-k="${k}">🧭 開始導航</button>${first.R.kind === 'bus' ? `<button class="btn pl-rt" data-k="${k}">查看 ${esc(legName(first))} 路線</button>` : ''}</div>` : ''}</div>` : '';
         return `<div class="pl-card${k === PL.sel ? ' sel' : ''}" data-k="${k}"><div class="pl-sum"><b>${fmt(p.arrive)} 抵達</b><span class="muted">${Math.round(p.arrive - PL.t0)} 分 · ${p.bikeOnly ? '全程 YouBike' : p.xfers ? `轉乘 ${p.xfers} 次` : '直達'}${p.bikes ? ` · 騎車 ${Math.round(p.bikeMin)} 分` : ''} · 步行 ${Math.round(p.walk)} 分</span></div>
             <div class="pl-chips">${chips}</div>
             <div class="muted pl-first">${!first ? `${fmt(p.depart)} 出發，到 ${esc(p.legs[1].A.name)} 借車` : live ? `<span data-dl="${live}">${remain(live)}</span> 後於 ${esc(ptName(first.b))} 上車 (即時)` : `${fmt(first.tb)} 於 ${esc(ptName(first.b))} 上車`}</div>${detail}</div>`;
-    }).join('') + `<div class="hint">${PL.ybNote ? esc(PL.ybNote) + '；' : ''}${PL.liveNote ? esc(PL.liveNote) + '；' : ''}${PL.bike ? `YouBike 騎車以直線距離 ×1.3、時速 13 km/h 估算，每段 ≤ ${PL_BK_MAX} 分，地圖路線依 OpenStreetMap (FOSSGIS 單車路線)；終點端的借車與還車為未來時刻，數量僅供參考；` : ''}第一段上車依起點即時到站 (末班已過／未營運的路線不列入)，其後各段依路線班表與 TDX 站間旅行時間推算 (轉乘預留 1 分、步行 ${PL_WALK_R} m 內)；選取方案時另查轉乘路線即時，標示是否接得上。</div>`;
+    }).join('') + `<div class="hint">${PL.ybNote ? esc(PL.ybNote) + '；' : ''}${PL.liveNote ? esc(PL.liveNote) + '；' : ''}${PL.bike ? `YouBike 騎車以直線距離 ×1.3、時速 13 km/h 估算，每段 ≤ ${PL_BK_MAX} 分，地圖路線依 OpenStreetMap (FOSSGIS 單車路線)；終點端的借車與還車為未來時刻，數量僅供參考；` : ''}上下車時刻只用：即時預估到站 (標「即時」) 或路線班表＋TDX 站間旅行時間 (標「表定」)；沒有站間旅行時間的路線只搭即時預估中有到站時刻的車 (同一台車的預估算下車)，不用距離粗估；第一段依起點即時到站 (末班已過／未營運不列入)，已載入路線即時的轉乘段也用即時 (轉乘預留 1 分、步行 ${PL_WALK_R} m 內)；選取方案時另查轉乘路線即時，接不上時立即給替代方案。</div>`; }
     panel.innerHTML = `<h2>路徑規劃</h2>
         <div class="pl-box">
             <div class="pl-f${PL.active === 'from' ? ' on' : ''}" data-f="from"><span class="pl-dot o"></span><input id="pl-from" placeholder="起點：站名、地圖點選或定位" value="${esc(PL.q && PL.active === 'from' ? PL.q : planEndLabel(f))}" autocomplete="off"><button class="pl-me" data-f="from" title="用我的位置">📍</button></div>
@@ -3842,6 +4025,7 @@ ${xf}
     $('pl-bike').onchange = e => { PL.bike = e.target.checked; try { localStorage.setItem('txg_pl_bike', PL.bike ? '1' : '0'); } catch (x) {} if (PL.from && PL.to) runPlan(); };
     panel.querySelectorAll('.pl-card').forEach(c => c.onclick = ev => { if (ev.target.closest('button')) return; const k = +c.dataset.k; if (k !== PL.sel) { PL.sel = k; renderPlan(); drawPlan(true); planCheckXfers(); } });
     panel.querySelectorAll('.pl-nav').forEach(b => b.onclick = () => navOpen(planToNav(PL.res[+b.dataset.k])));
+    panel.querySelectorAll('.pl-alt-use').forEach(b => b.onclick = () => { const u = PL.altUse[+b.dataset.i]; if (!u) return; PL.res[PL.sel] = planUseAlt(u.p, u.l, u.a); renderPlan(); drawPlan(true); planCheckXfers(); });
     panel.querySelectorAll('.pl-rt').forEach(b => b.onclick = () => { const l = PL.res[+b.dataset.k].rides[0]; openRoute(l.R.r.sub, l.R.r.dir, ptName(l.b)); });
 }
 // YouBike 站點數量 (規劃時讀到的即時車位；未來時刻加註「目前」)
