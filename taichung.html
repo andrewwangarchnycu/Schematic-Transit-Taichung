@@ -17,9 +17,21 @@
             const next = THEMES[(THEMES.findIndex(x => x[0] === cur) + 1) % THEMES.length];
             if (next[0] === 'dark') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = next[0];
             try { localStorage.setItem('txg_theme', next[0]); } catch (e) {}
-            const b = document.getElementById('btn-theme');
-            if (b) b.title = `外觀：${next[1]} (點擊切換 深色 / Liquid Glass)`;
+            themeIcon();
         }
+        // 外觀按鈕：圖示顯示目前外觀，深色＝月亮、Liquid Glass (淺色)＝太陽
+        const THEME_IC = {
+            dark: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M20 14.6A8.2 8.2 0 1 1 9.4 4a6.6 6.6 0 0 0 10.6 10.6Z"/></svg>',
+            glass: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg>'
+        };
+        function themeIcon() {
+            const b = document.getElementById('btn-theme');
+            if (!b) return;
+            const cur = document.documentElement.dataset.theme === 'glass' ? 'glass' : 'dark';
+            b.innerHTML = THEME_IC[cur];
+            b.title = `外觀：${THEMES.find(x => x[0] === cur)[1]} (點擊切換 深色 / Liquid Glass)`;
+        }
+        document.addEventListener('DOMContentLoaded', themeIcon);
     </script>
     <script src="https://unpkg.com/@panzoom/panzoom@4.5.1/dist/panzoom.min.js"></script>
 
@@ -369,7 +381,7 @@
 
     <button class="ctrl-btn" id="btn-center" onclick="toggleCenterMode()" title="放大中區交通節點" style="font-size: 13px; font-weight: bold;">中</button>
     <button class="ctrl-btn" onclick="location.href='taichung-query.html'" title="全市站位／路線時刻表查詢" style="font-size: 15px;">🔍</button>
-    <button class="ctrl-btn" id="btn-theme" onclick="cycleTheme()" title="外觀 (點擊切換 深色 / Liquid Glass)" style="font-size: 16px;">🎨</button>
+    <button class="ctrl-btn" id="btn-theme" onclick="cycleTheme()" title="外觀 (點擊切換 深色 / Liquid Glass)" style="font-size: 16px;"></button>
 
     <button class="ctrl-btn" id="btn-auto-refresh" onclick="toggleAutoRefresh()" title="自動更新">
         <span id="refresh-icon">▶</span>
