@@ -206,6 +206,9 @@
     #key-dlg a { color: #8ab4f8; }
     #key-dlg input { width: 100%; margin: 4px 0; padding: 8px; background: #2a2d31; color: var(--text); border: 1px solid #44484e; border-radius: 6px; font: inherit; }
     .bs-x { float: right; margin: -4px -4px 0 8px; width: 28px; height: 28px; border: 0; border-radius: 50%; background: rgba(127,127,127,.18); color: inherit; font-size: 18px; line-height: 28px; padding: 0; cursor: pointer; }
+    .yb-zero-rent, .yb-zero-rent b, .yb-zero-rent i { color: #ff9f0a !important; font-weight: 600; }
+    .yb-zero-ret, .yb-zero-ret b, .yb-zero-ret i { color: #c62828 !important; font-weight: 600; }
+    html[data-theme="dark"] .yb-zero-ret, html[data-theme="dark"] .yb-zero-ret b, html[data-theme="dark"] .yb-zero-ret i { color: #e0443a !important; }
     #base-set { position: absolute; z-index: 2000; right: 12px; top: 56px; width: min(360px, calc(100vw - 24px)); background: #26292d; border: 1px solid #44484e; border-radius: 10px; padding: 10px 12px; display: none; }
     .stn-icon { background: #fff; border: 2px solid #333; border-radius: 50%; color: #111; font-weight: bold; font-size: 11px; display: flex; align-items: center; justify-content: center; }
 
@@ -1301,11 +1304,12 @@ function liveTrips(r) {
     liveTripMemo.set(mk, out);
     return out;
 }
-const STATUS = { 1: '尚未發車', 2: '交管不停靠', 3: '末班已過', 4: '今日未營運' };
+const STATUS = { 1: '尚未發車', 2: '交管不停靠', 3: '末班車已過', 4: '今日未營運' };
+const etaSortKey = row => !row ? Infinity : row.dl !== null ? row.dl : row.status === 1 && row.next && !isNaN(Date.parse(row.next)) ? Date.parse(row.next) : Infinity;
 function etaHtml(row) {
     if (!row) return '<span class="muted">--</span>';
     if (row.dl !== null) return `<span data-dl="${row.dl}">${remain(row.dl)}</span>`;
-    if (row.status === 1 && row.next) { const d = new Date(row.next); return `<span class="tag nb">表定</span> <span class="muted">${pad(d.getHours())}:${pad(d.getMinutes())}</span>`; }
+    if (row.status === 1 && row.next) { const d = new Date(row.next); if (!isNaN(d)) return `<span class="muted">${pad(d.getHours())}:${pad(d.getMinutes())} 發車</span>`; }
     return `<span class="muted">${STATUS[row.status] || '--'}</span>`;
 }
 
@@ -1869,7 +1873,7 @@ function listStations(list, head, place = null, fit = true) {
             <div style="min-width:0"><div>${esc(s.name)}${s.dist !== undefined ? ` <small class="muted">${Math.round(s.dist)} m</small>` : ''} <small class="muted">· ${boardsOf(STATIONS.get(s.id)).length} 支站牌</small></div><div class="sub">${[...s.routes].slice(0, 14).map(esc).join('、')}${s.routes.size > 14 ? ` 等 ${s.routes.size} 條` : ''}</div></div>${navBtn(s.lat, s.lng, s.name)}</div>`; }
         const b = it.b, a = av && av.map[b.uid];
         const num = !a ? '<span class="muted">--</span>' : a.status !== 1 ? `<span class="muted">${STAT[a.status] || '狀態不明'}</span>`
-            : `可借 <b>${a.rent}</b>${a.ebike ? `<span class="muted">（電輔 ${a.ebike}）</span>` : ''} · 可還 <i>${a.ret}</i>`;
+            : ybNumHtml(a);
         return `<div class="list-item bike-item" data-bike="${esc(b.uid)}">${ICO_BIKE}<div style="min-width:0;flex:1"><div>${esc(b.name)} <small class="muted">${Math.round(b.dist)} m</small></div>
             <div class="num">${num}</div><div class="sub">${esc(b.addr)}</div></div>${navBtn(b.lat, b.lng, 'YouBike ' + b.name)}</div>`;
     }).join('');
@@ -2061,15 +2065,16 @@ function renderStation() {
     const boards = boardsOf(st);
     const cards = boards.map((b, k) => {
         const h = b.head;
-        const rows = b.items.slice().sort((a, c) => a.r.sub.localeCompare(c.r.sub, 'zh-Hant', { numeric: true }) || a.r.dir - c.r.dir);
+        const rowOf = ({ si, r }) => eta && eta.rows.filter(x => x.uid === STOPS[si].uid && x.sub === r.sub && x.dir === r.dir).sort((a, b) => (a.dl ?? Infinity) - (b.dl ?? Infinity))[0];
+        const byName = (a, c) => a.r.sub.localeCompare(c.r.sub, 'zh-Hant', { numeric: true }) || a.r.dir - c.r.dir;
+        // 今日：依到站時間排列 (即時預估 → 尚未發車的發車時刻 → 末班車已過／未營運等)；其他日期依路線號碼
+        const rows = b.items.map(it => ({ ...it, row: isToday ? rowOf(it) : null })).sort((a, c) => isToday ? (etaSortKey(a.row) - etaSortKey(c.row)) || byName(a, c) : byName(a, c));
         const names = [...new Set(b.stops.map(si => STOPS[si].name))];
         return `<div class="stop-card"><div class="stop-head"><span class="stop-no">${k + 1}</span><b>${esc(h.main)}</b>${h.label ? `<span class="tag">${h.label}行</span>` : ''}
                 <span class="muted">${h.dests.length ? '終點 ' + h.dests.slice(0, 3).map(esc).join('、') + (h.dests.length > 3 ? ' 等' : '') + ' · ' : ''}${h.nexts.length > 1 ? '也往 ' + h.nexts.slice(1, 3).map(esc).join('、') + ' · ' : ''}站位 ${b.sids.map(esc).join('、')}</span></div>` +
-            rows.map(({ si, r, pos }) => {
+            rows.map(({ si, r, pos, row }) => {
                 routeSet.add(r.route);
                 const last = pos === r.seq.length - 1;
-                const row = eta && eta.rows.filter(x => x.uid === STOPS[si].uid && x.sub === r.sub && x.dir === r.dir)
-                    .sort((a, b) => (a.dl ?? Infinity) - (b.dl ?? Infinity))[0];
                 const t = timesAt(r, pos, ds);
                 const nm = isToday ? nowMin() : -1;
                 let tt;
@@ -2163,6 +2168,8 @@ function loadBikes(st, force = false) {
     if (!force && c && Date.now() - c.at < 180000) return Promise.resolve();
     return loadOnce('bk:' + st.id, go);
 }
+// 可借／可還：0 車可借＝橘色、0 位可還＝深紅色
+const ybNumHtml = a => `<span class="${a.rent === 0 ? 'yb-zero-rent' : ''}">可借 <b>${a.rent}</b></span>${a.ebike ? `<span class="muted">（電輔 ${a.ebike}）</span>` : ''} · <span class="${a.ret === 0 ? 'yb-zero-ret' : ''}">可還 <i>${a.ret}</i></span>`;
 function bikeHtml(st) {
     const list = bikeList(st), av = bikeAvail.get(st.id), busy = loading.has('bk:' + st.id);
     drawBikes(st, list, av);
@@ -2174,7 +2181,7 @@ function bikeHtml(st) {
     return `<div class="bike-box">${head}${list.map(b => {
         const a = av && av.map[b.uid];
         const num = !a ? '<span class="muted">--</span>' : a.status !== 1 ? `<span class="muted">${STAT[a.status] || '狀態不明'}</span>`
-            : `可借 <b>${a.rent}</b>${a.ebike ? `<span class="muted">（電輔 ${a.ebike}）</span>` : ''} · 可還 <i>${a.ret}</i>`;
+            : ybNumHtml(a);
         return `<div class="bk"><div style="min-width:0"><div>${esc(b.name)} <small class="muted">${Math.round(b.dist)} m${b.type === 2 ? ' · 2.0' : b.type === 1 ? ' · 1.0' : ''}</small></div>
             <div class="muted" style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.addr)}</div></div><div class="num">${num}</div></div>`;
     }).join('')}</div>`;
