@@ -3526,6 +3526,8 @@ const PL = { from: null, to: null, active: 'from', res: null, sel: 0, at: null, 
 // YouBike 接駁：起點端「走→借車→騎→還車→走到公車站」、終點端反向，另有全程騎車方案
 //   騎車時間＝直線 × 1.3 ÷ 13 km/h；借、還各 1 分；每段騎車 ≤ 25 分 (含借還不超過 30 分)；站點到起訖 ≤ 300 m、到公車站 ≤ 250 m
 const PL_BK_MPM = 13000 / 60, PL_BK_DET = 1.3, PL_BK_FIX = 1, PL_BK_MAX = 25, PL_BK_MIN_M = 400, PL_BK_END = 300, PL_BK_STOP = 250;
+// 騎車總時長 ≤ 旅行時間 (出發到抵達) 的 1/5；每段騎車上限分別試 6、10、15、25 分 (只在最後篩選會漏掉「少騎一點」的方案)
+const PL_BK_RATIO = 1 / 5, PL_BK_CAPS = [6, 10, 15, PL_BK_MAX];
 const PL_WALK_R = 350, PL_WALK_MPM = 72, PL_XFER = 1, PL_ROUNDS = 3, PL_ORIGIN_R = 600;
 let PLG = null;   // 規劃用路網 (第一次規劃時建立)
 function planLoad() {
@@ -3714,7 +3716,7 @@ const plLL = b => [b.lat, b.lng];
 // 騎車接駁的三段：起點端 (起點→A 借→B 還→站牌 s)；終點端 (站牌 s→A 借→B 還→終點)
 function planBikeLegs(bk, start, s) {
     const g = planGraph(), O = plLL(planPt(start ? PL.from : PL.to)), S = [g.pts[s].lat, g.pts[s].lng];
-    const bike = { type: 'bike', A: bk.A, B: bk.B, min: bk.ride, fut: !start };
+    const bike = { type: 'bike', A: bk.A, B: bk.B, min: bk.ride, g: bk.g || 0, fut: !start };
     return start
         ? [{ type: 'walk', start: true, pa: O, pb: plLL(bk.A), min: bk.wa, txt: `到 YouBike ${bk.A.name}` }, bike, { type: 'walk', pa: plLL(bk.B), pb: S, to: s, min: bk.wb, txt: `到 ${g.pts[s].name}` }]
         : [{ type: 'walk', pa: S, pb: plLL(bk.A), min: bk.wa, txt: `到 YouBike ${bk.A.name}` }, bike, { type: 'walk', end: true, pa: plLL(bk.B), pb: O, min: bk.wb }];
@@ -3747,10 +3749,10 @@ function osmBike(A, B) {
 // Google 地圖單車路線
 const gBike = (A, B) => `https://www.google.com/maps/dir/?api=1&origin=${A.lat},${A.lng}&destination=${B.lat},${B.lng}&travelmode=bicycling`;
 const gBikeBtn = (A, B, cls) => `<a class="${cls}" href="${gBike(A, B)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Google 單車路線 ↗</a>`;
-// 起點端 (start)：回傳 [[站牌, 起點到站牌分, bk]]；終點端：[[站牌, 站牌到終點分, bk]]
+// 起點端 (start)：騎車接駁候選 [[站牌, 起點到站牌分, bk]]，bk.ride＝騎車分 (含借還)、bk.g＝沿自行車道／綠地／河道比例
 //   即時模式下：起點借車要有車、起點端還車要有位 (終點端為未來時刻，只作提示不排除)
-function planBikeEnds(p, start) {
-    const g = planGraph(), q = planPt(p), Y = PL.yb, out = new Map();
+function planBikeCands(p, start) {
+    const g = planGraph(), q = planPt(p), Y = PL.yb, out = [];
     const ends = Y.filter(b => ybOk(b) && mDist(b, q) <= PL_BK_END);
     const rideMax = (PL_BK_MAX - 2 * PL_BK_FIX) * PL_BK_MPM / PL_BK_DET;
     ends.forEach(E => {
@@ -3761,33 +3763,84 @@ function planBikeEnds(p, start) {
             if (start && PL.ybNow && F.av && F.av.ret === 0) return;
             const d = mDist(E, F);
             if (d < PL_BK_MIN_M || d > rideMax) return;
-            const ride = plBikeMin(d);
+            const ride = plBikeMin(d), gs = greenShare(E, F);
             g.near(F, PL_BK_STOP).forEach(([s, ds]) => {
-                const wf = plWalkMin(ds), w = we + ride + wf, o = out.get(s);
-                if (!o || w < o[1]) out.set(s, [s, w, start ? { A: E, B: F, wa: we, ride, wb: wf } : { A: F, B: E, wa: wf, ride, wb: we }]);
+                const wf = plWalkMin(ds);
+                out.push([s, we + ride + wf, start ? { A: E, B: F, wa: we, ride, wb: wf, g: gs } : { A: F, B: E, wa: wf, ride, wb: we, g: gs }]);
             });
         });
     });
-    return [...out.values()];
+    return out;
 }
-// 全程騎車 (起點附近借、終點附近還)
-function planBikeOnly(t0) {
-    const qa = planPt(PL.from), qb = planPt(PL.to), Y = PL.yb.filter(ybOk);
-    let best = null;
-    const As = Y.filter(b => mDist(b, qa) <= PL_BK_END && !(PL.ybNow && b.av && b.av.rent === 0)), Bs = Y.filter(b => mDist(b, qb) <= PL_BK_END);
-    As.forEach(A => Bs.forEach(B => {
-        const d = mDist(A, B); if (A === B || d < PL_BK_MIN_M) return;
-        const wa = plWalkMin(mDist(A, qa)), ride = plBikeMin(d), wb = plWalkMin(mDist(B, qb)), tot = wa + ride + wb;
-        if (ride <= PL_BK_MAX + 1e-6 && (!best || tot < best.tot)) best = { A, B, wa, ride, wb, tot };
-    }));
-    if (!best) return null;
-    const legs = [{ type: 'walk', start: true, pa: plLL(qa), pb: plLL(best.A), min: best.wa, txt: `到 YouBike ${best.A.name}` },
-        { type: 'bike', A: best.A, B: best.B, min: best.ride, fut: false }, { type: 'walk', end: true, pa: plLL(best.B), pb: plLL(qb), min: best.wb }];
-    return planSum({ legs, rides: [], arrive: t0 + best.tot, depart: t0, xfers: 0, bikeOnly: true });
+// 騎車感受時間：沿自行車道／綠地／河道的比例 g 越高越「快」(最多少算 PL_BK_GREEN)；只用來挑站對與排序，實際時間不變
+const PL_BK_GREEN = 0.3;
+const plBikeFeel = bk => (bk.ride - 2 * PL_BK_FIX) * (1 - PL_BK_GREEN * (bk.g || 0)) + 2 * PL_BK_FIX;
+// 每段騎車上限 cap 分 → 各站牌感受時間最短的候選
+function planBikeEnds(cands, cap) {
+    const best = new Map();
+    cands.forEach(c => { if (c[2].ride > cap + 1e-6) return; const f = c[1] - c[2].ride + plBikeFeel(c[2]), o = best.get(c[0]); if (!o || f < o.f) best.set(c[0], { c, f }); });
+    return [...best.values()].map(x => x.c);
+}
+// ---- 騎車環境 (data/green.json，tools/mk_green.js 由 OpenStreetMap 產生)：自行車道、公園綠地、河道 ----
+//   格網索引 (約 110 m)；兩站連線每 50 m 取一點，離自行車道 40 m、綠地 30 m (或在綠地內)、河道 60 m 內的點所占比例＝沿綠道比例
+const GREEN = { data: null, p: null, grid: null, memo: new Map() };
+const GR_CELL = 0.001, GR_NEAR = { bike: 40, park: 30, water: 60 };
+function greenLoad() {
+    if (GREEN.data) return Promise.resolve(GREEN.data);
+    return GREEN.p || (GREEN.p = fetch('data/green.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).catch(() => null).then(j => {
+        if (!j) return null;
+        const dec = a => { const o = []; let la = 0, ln = 0; for (let i = 0; i < a.length; i += 2) { la += a[i]; ln += a[i + 1]; o.push([la / 1e5, ln / 1e5]); } return o; };
+        const D = { bike: j.bike.map(dec), park: j.park.map(dec), water: j.water.map(dec) }, grid = new Map();
+        const put = (k, ref) => { if (!grid.has(k)) grid.set(k, []); grid.get(k).push(ref); };
+        ['bike', 'park', 'water'].forEach(t => {
+            const m = GR_NEAR[t] / 111000 * 1.2;
+            D[t].forEach((L, li) => {
+                if (t === 'park') {   // 綠地：外框覆蓋的格子都登記 (點在綠地內也算)
+                    let a = 90, b = 180, c = -90, d = -180; L.forEach(([la, ln]) => { a = Math.min(a, la); b = Math.min(b, ln); c = Math.max(c, la); d = Math.max(d, ln); });
+                    for (let y = Math.floor((a - m) / GR_CELL); y <= Math.floor((c + m) / GR_CELL); y++) for (let x = Math.floor((b - m) / GR_CELL); x <= Math.floor((d + m) / GR_CELL); x++) put(y + ',' + x, [t, li]);
+                    return;
+                }
+                for (let i = 1; i < L.length; i++) {
+                    const [a1, b1] = L[i - 1], [a2, b2] = L[i];
+                    for (let y = Math.floor((Math.min(a1, a2) - m) / GR_CELL); y <= Math.floor((Math.max(a1, a2) + m) / GR_CELL); y++)
+                        for (let x = Math.floor((Math.min(b1, b2) - m) / GR_CELL); x <= Math.floor((Math.max(b1, b2) + m) / GR_CELL); x++) put(y + ',' + x, [t, li, i]);
+                }
+            });
+        });
+        GREEN.grid = grid; GREEN.data = D; return D;
+    }).finally(() => { GREEN.p = null; }));
+}
+// 點到線段距離 (公尺，平面近似)
+function grSegDist(p, a, b) {
+    const k = Math.cos(p[0] * Math.PI / 180) * 111320, ax = (a[1] - p[1]) * k, ay = (a[0] - p[0]) * 110570, bx = (b[1] - p[1]) * k, by = (b[0] - p[0]) * 110570;
+    const dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy, t = L ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L)) : 0;
+    return Math.hypot(ax + t * dx, ay + t * dy);
+}
+function grInPoly(p, L) { let c = false; for (let i = 0, j = L.length - 1; i < L.length; j = i++) { const [yi, xi] = L[i], [yj, xj] = L[j]; if ((yi > p[0]) !== (yj > p[0]) && p[1] < (xj - xi) * (p[0] - yi) / (yj - yi) + xi) c = !c; } return c; }
+function greenAt(p) {
+    const refs = GREEN.grid.get(Math.floor(p[0] / GR_CELL) + ',' + Math.floor(p[1] / GR_CELL));
+    if (!refs) return false;
+    for (const [t, li, i] of refs) {
+        const L = GREEN.data[t][li];
+        if (t === 'park') { if (grInPoly(p, L)) return true; for (let k = 1; k < L.length; k++) if (grSegDist(p, L[k - 1], L[k]) <= GR_NEAR.park) return true; }
+        else if (grSegDist(p, L[i - 1], L[i]) <= GR_NEAR[t]) return true;
+    }
+    return false;
+}
+function greenShare(A, B) {
+    if (!GREEN.grid) return 0;
+    const k = A.uid + '>' + B.uid;
+    if (GREEN.memo.has(k)) return GREEN.memo.get(k);
+    const n = Math.max(2, Math.round(mDist(A, B) / 50));
+    let hit = 0;
+    for (let i = 0; i <= n; i++) if (greenAt([A.lat + (B.lat - A.lat) * i / n, A.lng + (B.lng - A.lng) * i / n])) hit++;
+    const v = hit / (n + 1);
+    GREEN.memo.set(k, v);
+    return v;
 }
 // 載入站點＋(今日現在出發時) 即時車位
 async function planYB(now) {
-    const list = await ybStations();
+    const [list] = await Promise.all([ybStations(), greenLoad()]);
     let live = null;
     if (now) { try { live = await ybLive(); } catch (e) { live = null; } }
     PL.ybNow = !!live;
@@ -3815,32 +3868,36 @@ async function runPlan() {
     const nowMode = ds === todayKey() && PL.at === null;
     const src = planEnds(PL.from), dst = planEnds(PL.to);
     PL.ybNote = '';
-    let srcB = null, dstB = null, bikeOnly = null;
+    let srcB = null, dstB = null;
     if (PL.bike) {
         try {
             await planYB(nowMode);
-            srcB = src.concat(planBikeEnds(PL.from, true)); dstB = dst.concat(planBikeEnds(PL.to, false));
-            bikeOnly = planBikeOnly(t0);
+            srcB = planBikeCands(PL.from, true); dstB = planBikeCands(PL.to, false);
         } catch (e) { PL.ybNote = 'YouBike 站點載入失敗'; }
     }
-    if ((!src.length || !dst.length) && !(srcB && srcB.length && dstB && dstB.length) && !bikeOnly) { PL.busy = false; PL.err = `${!src.length ? '起點' : '終點'}附近 ${PL_ORIGIN_R} 公尺內沒有站牌`; renderPlan(); return; }
+    if ((!src.length || !dst.length) && !(srcB && srcB.length && dstB && dstB.length)) { PL.busy = false; PL.err = `${!src.length ? '起點' : '終點'}附近 ${PL_ORIGIN_R} 公尺內沒有站牌`; renderPlan(); return; }
     PL.live = null; PL.liveNote = '';
     if (nowMode && src.length) { await planLiveFetch(src); await planN1Fetch(); }
-    // 依序找各轉乘次數最佳＋之後幾個出發時間的方案 (去除同樣路線組合)；含 YouBike 時另跑一次 (保留純公車方案)
+    // 依序找各轉乘次數最佳＋之後幾個出發時間的方案 (去除同樣路線組合)；含 YouBike 時另跑幾次 (保留純公車方案)：
+    //   每段騎車上限 PL_BK_CAPS 各跑一次，騎車總時長超過旅行時間 1/5 的方案不列入
     const seen = new Map();
-    const runs = [[src, dst]]; if (srcB && dstB) runs.push([srcB, dstB]);
-    runs.forEach(([S, D]) => {
+    const runs = [[src, dst, 4]];
+    if (srcB && dstB) PL_BK_CAPS.forEach(cap => runs.push([src.concat(planBikeEnds(srcB, cap)), dst.concat(planBikeEnds(dstB, cap)), 2]));
+    runs.forEach(([S, D, N]) => {
         if (!S.length || !D.length) return;
         let t = t0;
-        for (let n = 0; n < 4; n++) {
+        for (let n = 0; n < N; n++) {
             const rs = raptor(S, D, t, ds);
             if (!rs.length) break;
-            rs.forEach(p => { const key = p.legs.map(l => l.type === 'ride' ? l.ri : l.type === 'bike' ? 'b' : '').filter(x => x !== '').join('>'); const o = seen.get(key); if (!o || p.arrive < o.arrive) seen.set(key, p); });
+            rs.forEach(p => {
+                if (p.bikes && p.bikeMin > (p.arrive - t0) * PL_BK_RATIO + 1e-6) return;
+                const key = p.legs.map(l => l.type === 'ride' ? l.ri : l.type === 'bike' ? 'b' : '').filter(x => x !== '').join('>'); const o = seen.get(key); if (!o || p.arrive < o.arrive) seen.set(key, p);
+            });
             t = Math.min(...rs.map(p => p.depart)) + 1;
         }
     });
-    if (bikeOnly) seen.set('bike-only', bikeOnly);
-    const cost = p => p.arrive + p.xfers * 5 + p.walk * 0.5 + p.bikes * 3;
+    // 排序：騎車沿自行車道／綠地／河道的部分少算時間 (同 plBikeFeel)
+    const cost = p => p.arrive + p.xfers * 5 + p.walk * 0.5 + p.bikes * 3 - p.legs.filter(l => l.type === 'bike').reduce((a, l) => a + l.min - plBikeFeel({ ride: l.min, g: l.g }), 0);
     // 去掉被其他方案全面勝過的 (更晚到、轉乘更多、步行更多；騎車段較多的方案不能淘汰騎車較少的)
     const all = [...seen.values()];
     PL.res = all.filter(p => !all.some(q => q !== p && q.arrive <= p.arrive && q.xfers <= p.xfers && q.walk <= p.walk + 3 && q.bikes <= p.bikes && (q.arrive < p.arrive || q.xfers < p.xfers)))
@@ -3991,7 +4048,7 @@ function renderPlan() {
         const detail = k === PL.sel ? `<div class="pl-legs">${p.legs.map(l => {
             if (l.type === 'walk') return `<div class="pl-leg walk"><span class="pl-ic">🚶</span><span>步行約 ${Math.max(1, Math.round(l.min))} 分${l.end ? ` 到 ${esc(planEndLabel(PL.to))}` : l.txt ? ' ' + esc(l.txt) : l.start ? ` 到 ${esc(ptName(l.to))}` : ` 轉乘到 ${esc(ptName(l.to))}`}</span></div>`;
             if (l.type === 'bike') return `<div class="pl-leg bike"><span class="pl-ic"><span class="pl-bk">🚲</span></span><span><b>${esc(l.A.name)}</b> 借車 ${ybCnt(l.A, 'rent', l.fut)}
-                <br><small>騎約 ${Math.round(l.min)} 分 (含借還${(o => o ? `，OSM 路線 ${(o.dist / 1000).toFixed(1)} km` : '，直線估算')(osmBikeGet(l.A, l.B))}) 到 <b>${esc(l.B.name)}</b> 還車 ${ybCnt(l.B, 'ret', true)}</small>
+                <br><small>騎約 ${Math.round(l.min)} 分 (含借還${(o => o ? `，OSM 路線 ${(o.dist / 1000).toFixed(1)} km` : '，直線估算')(osmBikeGet(l.A, l.B))}) 到 <b>${esc(l.B.name)}</b> 還車 ${ybCnt(l.B, 'ret', true)}${l.g >= 0.05 ? `<br>🌳 沿自行車道／綠地／河道約 ${Math.round(l.g * 100)}%` : ''}</small>
                 <br>${gBikeBtn(l.A, l.B, 'pl-gl')}</span></div>`;
             const lv = l === first ? live : null, T = legTimes(l);
             const xi = l !== first ? planXferInfo(p, l) : { html: '' };
@@ -4003,10 +4060,10 @@ ${xf}
                 <br><small>往 ${esc(legDest(l))} · 搭 ${l.aPos - l.bPos} 站 · 約 ${fmt(T.ta)} 到 <b>${esc(ptName(l.a))}</b></small></span></div>${alt}`;
         }).join('')}
             ${first ? `<div class="row"><button class="btn pl-nav" data-k="${k}">🧭 開始導航</button>${first.R.kind === 'bus' ? `<button class="btn pl-rt" data-k="${k}">查看 ${esc(legName(first))} 路線</button>` : ''}</div>` : ''}</div>` : '';
-        return `<div class="pl-card${k === PL.sel ? ' sel' : ''}" data-k="${k}"><div class="pl-sum"><b>${fmt(p.arrive)} 抵達</b><span class="muted">${Math.round(p.arrive - PL.t0)} 分 · ${p.bikeOnly ? '全程 YouBike' : p.xfers ? `轉乘 ${p.xfers} 次` : '直達'}${p.bikes ? ` · 騎車 ${Math.round(p.bikeMin)} 分` : ''} · 步行 ${Math.round(p.walk)} 分</span></div>
+        return `<div class="pl-card${k === PL.sel ? ' sel' : ''}" data-k="${k}"><div class="pl-sum"><b>${fmt(p.arrive)} 抵達</b><span class="muted">${Math.round(p.arrive - PL.t0)} 分 · ${p.xfers ? `轉乘 ${p.xfers} 次` : '直達'}${p.bikes ? ` · 騎車 ${Math.round(p.bikeMin)} 分` : ''} · 步行 ${Math.round(p.walk)} 分</span></div>
             <div class="pl-chips">${chips}</div>
             <div class="muted pl-first">${!first ? `${fmt(p.depart)} 出發，到 ${esc(p.legs[1].A.name)} 借車` : live ? `<span data-dl="${live}">${remain(live)}</span> 後於 ${esc(ptName(first.b))} 上車 (即時)` : `${fmt(first.tb)} 於 ${esc(ptName(first.b))} 上車`}</div>${detail}</div>`;
-    }).join('') + `<div class="hint">${PL.ybNote ? esc(PL.ybNote) + '；' : ''}${PL.liveNote ? esc(PL.liveNote) + '；' : ''}${PL.bike ? `YouBike 騎車以直線距離 ×1.3、時速 13 km/h 估算，每段 ≤ ${PL_BK_MAX} 分，地圖路線依 OpenStreetMap (FOSSGIS 單車路線)；終點端的借車與還車為未來時刻，數量僅供參考；` : ''}上下車時刻只用：即時預估到站 (標「即時」) 或路線班表＋TDX 站間旅行時間 (標「表定」)；沒有站間旅行時間的路線只搭即時預估中有到站時刻的車 (同一台車的預估算下車)，不用距離粗估；第一段依起點即時到站 (末班已過／未營運不列入)，已載入路線即時的轉乘段也用即時 (轉乘預留 1 分、步行 ${PL_WALK_R} m 內)；選取方案時另查轉乘路線即時，接不上時立即給替代方案。</div>`; }
+    }).join('') + `<div class="hint">${PL.ybNote ? esc(PL.ybNote) + '；' : ''}${PL.liveNote ? esc(PL.liveNote) + '；' : ''}${PL.bike ? `YouBike 騎車以直線距離 ×1.3、時速 13 km/h 估算，每段 ≤ ${PL_BK_MAX} 分、騎車合計不超過旅行時間的 1/5，沿自行車道／公園綠地／河道比例高的騎法優先 (OpenStreetMap 資料，地圖綠線＝自行車道)，地圖路線依 OpenStreetMap (FOSSGIS 單車路線)；終點端的借車與還車為未來時刻，數量僅供參考；` : ''}上下車時刻只用：即時預估到站 (標「即時」) 或路線班表＋TDX 站間旅行時間 (標「表定」)；沒有站間旅行時間的路線只搭即時預估中有到站時刻的車 (同一台車的預估算下車)，不用距離粗估；第一段依起點即時到站 (末班已過／未營運不列入)，已載入路線即時的轉乘段也用即時 (轉乘預留 1 分、步行 ${PL_WALK_R} m 內)；選取方案時另查轉乘路線即時，接不上時立即給替代方案。</div>`; }
     panel.innerHTML = `<h2>路徑規劃</h2>
         <div class="pl-box">
             <div class="pl-f${PL.active === 'from' ? ' on' : ''}" data-f="from"><span class="pl-dot o"></span><input id="pl-from" placeholder="起點：站名、地圖點選或定位" value="${esc(PL.q && PL.active === 'from' ? PL.q : planEndLabel(f))}" autocomplete="off"><button class="pl-me" data-f="from" title="用我的位置">📍</button></div>
@@ -4072,6 +4129,19 @@ function planMe(which) {
     navigator.geolocation.getCurrentPosition(p => use({ lat: p.coords.latitude, lng: p.coords.longitude }), () => alert('無法取得定位'), { enableHighAccuracy: true, timeout: 8000 });
 }
 // 地圖：選取方案的各段 (公車沿道路線形、捷運線形、步行虛線) 與起訖
+// 自行車道圖層 (data/green.json)：方案有騎車段時，畫騎車段周邊約 1 km 內的自行車道 (畫在方案線下面)
+const BL_PAD = 0.009;
+function drawBikeLanes(p) {
+    const bk = p.legs.filter(l => l.type === 'bike');
+    if (!bk.length) return;
+    if (!GREEN.data) { greenLoad().then(d => { if (d && mode === 'plan' && PL.res && PL.res[PL.sel] === p) drawPlan(false); }); return; }
+    const boxes = bk.map(l => { const o = osmBikeGet(l.A, l.B), pts = o ? o.line : [plLL(l.A), plLL(l.B)];
+        return [Math.min(...pts.map(x => x[0])) - BL_PAD, Math.min(...pts.map(x => x[1])) - BL_PAD, Math.max(...pts.map(x => x[0])) + BL_PAD, Math.max(...pts.map(x => x[1])) + BL_PAD]; });
+    const inBox = L => boxes.some(([a, b, c, d]) => L.some(([la, ln]) => la >= a && la <= c && ln >= b && ln <= d));
+    const lines = GREEN.data.bike.filter(inBox);
+    if (!lines.length) return;
+    L.polyline(lines, { color: '#30d158', weight: 3, opacity: .85, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(layerSel);
+}
 function drawPlan(fit) {
     if (mode !== 'plan') return;
     layerSel.clearLayers(); setArrows([]);
@@ -4082,6 +4152,7 @@ function drawPlan(fit) {
     if (p) {
         const g = planGraph(), P = s => [g.pts[s].lat, g.pts[s].lng];
         let prev = PL.from ? (q => [q.lat, q.lng])(planPt(PL.from)) : null;
+        drawBikeLanes(p);
         p.legs.forEach(l => {
             if (l.type === 'walk') {
                 const a = l.pa || (l.from !== undefined ? P(l.from) : prev), b = l.pb || (l.end ? (q => [q.lat, q.lng])(planPt(PL.to)) : P(l.to));
