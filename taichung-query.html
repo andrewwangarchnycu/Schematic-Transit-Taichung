@@ -1550,7 +1550,50 @@ function upcomingLine(r, pos, t, nm, row) {
 
 // ---------- 地圖 ----------
 // 縮放鈕放右上；leaflet-rotate：羅盤視角時旋轉地圖 (不開放手勢旋轉，避免誤觸)
-const map = L.map('map', { zoomControl: false, preferCanvas: true, rotate: true, bearing: 0, rotateControl: false, touchRotate: false, shiftKeyRotate: false, compassBearing: false }).setView([24.15, 120.67], 13);
+// 縮放比照 Google 地圖：zoomSnap 0＝兩指開合、觸控板、滾輪都是連續縮放 (放開不跳回整數級)；滾輪每格較細
+const map = L.map('map', { zoomControl: false, preferCanvas: true, rotate: true, bearing: 0, rotateControl: false, touchRotate: false, shiftKeyRotate: false, compassBearing: false,
+    zoomSnap: 0, zoomDelta: 1, wheelPxPerZoomLevel: 100, wheelDebounceTime: 20 }).setView([24.15, 120.67], 13);
+// 觸控手勢補齊 Google 地圖的兩種 (Leaflet 沒有)：
+//   單指點兩下不放開上下拖＝連續縮放 (往下拖放大、往上縮小，以點的位置為中心)；點兩下放開＝放大 (Leaflet 原有)
+//   兩指同時點一下 (不移動)＝縮小一級，以兩指中點為中心
+(function mapGestures() {
+    const el = map.getContainer();
+    const pt = t => { const r = el.getBoundingClientRect(); return L.point(t.clientX - r.left, t.clientY - r.top); };
+    let tap = null, lastTap = null, qz = null, two = null;
+    el.addEventListener('touchstart', e => {
+        if (e.touches.length === 2) {
+            if (qz) { map.dragging.enable(); qz = null; }
+            two = { t: Date.now(), a: pt(e.touches[0]), b: pt(e.touches[1]), z: map.getZoom(), moved: false };
+            tap = null; return;
+        }
+        if (e.touches.length !== 1) { two = null; tap = null; return; }
+        const p = pt(e.touches[0]), now = Date.now();
+        tap = { t: now, p, moved: false };
+        if (lastTap && now - lastTap.t < 300 && p.distanceTo(lastTap.p) < 40) { qz = { y0: p.y, z0: map.getZoom(), at: p, moved: false }; map.dragging.disable(); }
+    }, { passive: true });
+    el.addEventListener('touchmove', e => {
+        if (two && e.touches.length === 2 && (pt(e.touches[0]).distanceTo(two.a) > 10 || pt(e.touches[1]).distanceTo(two.b) > 10)) two.moved = true;
+        if (tap && e.touches.length === 1 && pt(e.touches[0]).distanceTo(tap.p) > 10) tap.moved = true;
+        if (!qz || e.touches.length !== 1) return;
+        const dy = pt(e.touches[0]).y - qz.y0;
+        if (Math.abs(dy) > 6) qz.moved = true;
+        if (!qz.moved) return;
+        e.preventDefault();
+        const z = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), qz.z0 + dy / 110));
+        map.setZoomAround(map.containerPointToLatLng(qz.at), z, { animate: false });
+    }, { passive: false });
+    el.addEventListener('touchend', e => {
+        const now = Date.now();
+        if (qz) { map.dragging.enable(); lastTap = null; tap = null; if (qz.moved) e.preventDefault(); qz = null; return; }   // 拖曳過就不再觸發點兩下放大
+        if (two && e.touches.length === 0) {
+            if (!two.moved && now - two.t < 300 && Math.abs(map.getZoom() - two.z) < 0.05)
+                map.setZoomAround(map.containerPointToLatLng(two.a.add(two.b).divideBy(2)), map.getZoom() - 1);
+            two = null; tap = null; lastTap = null; return;
+        }
+        if (tap && e.touches.length === 0) { lastTap = !tap.moved && now - tap.t < 250 ? { t: now, p: tap.p } : null; tap = null; }
+    }, { passive: false });
+    el.addEventListener('touchcancel', () => { if (qz) map.dragging.enable(); qz = two = tap = lastTap = null; }, { passive: true });
+})();
 // 底圖 (可自選)：OSM / OSM 大眾運輸 (ÖPNVKarte) / Mapbox (需 access token) / 內政部國土測繪電子地圖
 //   非 Mapbox 底圖可加深色濾鏡 (反相)，配合深色介面；Mapbox 沒有 token 時暫用內政部
 const MAPBOX_TOKEN = '';   // 例：'pk.eyJ1Ijo...'，建議在 Mapbox 帳號設定網址限制
@@ -2561,7 +2604,10 @@ function openGroup(id, fit = true, gdir) {
 }
 function drawGroupLine(g, dim) {
     if (dim) {
-        L.polyline(g.line, { color: '#9aa4ae', weight: 9, opacity: .3, interactive: false, lineCap: 'round' }).addTo(layerSel);
+        // 淡色參考線：點擊回到路廊檢視 (保留原方向)
+        L.polyline(g.line, { color: '#9aa4ae', weight: 9, opacity: .3, lineCap: 'round' })
+            .bindTooltip(`回 ${g.name}路廊`, { sticky: true })
+            .on('click', () => openGroup(g.id, true, view && view.back ? view.back.gdir : 1)).addTo(layerSel);
         (g.stations || []).forEach(st => L.circleMarker([st[1], st[2]], { radius: 3, color: "#9aa4ae", weight: 1.5, opacity: .5, fillColor: '#fff', fillOpacity: .5, interactive: false }).addTo(layerSel));
         return;
     }
@@ -3066,7 +3112,7 @@ function renderRoute() {
     }).join('');
     const busy = autoBusy([r.route]), nVeh = vc ? vc.rows.filter(v => v.sub === r.sub && v.dir === r.dir).length : null;
     const bk = view.back && grpOf(view.back.grp);
-    panel.innerHTML = `${bk ? `<div class="row"><button class="btn" id="b-back">← 回 ${esc(bk.name)}</button><span class="muted">其他路廊公車以淡色顯示</span></div>` : ''}<div class="rt-head"><h2>${badge(r.sub)} 往 ${esc(destOf(r))}</h2>
+    panel.innerHTML = `${bk ? `<div class="hint">點地圖上淡色的${esc(bk.name)}回到路廊；其他路廊公車以淡色顯示</div>` : ''}<div class="rt-head"><h2>${badge(r.sub)} 往 ${esc(destOf(r))}</h2>
         ${other ? `<button class="rev" id="b-rev" title="切換方向">⇄ 往 ${esc(destOf(other))}</button>` : ''}
         ${isToday ? autoBtn(busy, '即時到站＋班次配對＋公車位置，每次 3 次 API') : ''}</div>
         <div class="muted">${r.seq.length} 站 · ${isToday ? (eta ? `即時 ${new Date(eta.at).toLocaleTimeString('zh-TW', { hour12: false })}` : '即時資料載入中…') + (nVeh !== null ? ` · 本路線公車 ${nVeh} 輛` : '') + (vehAuto ? ' · 每分鐘自動更新' : '') : `${ds} 時刻表`}${t0.note ? ' · ' + esc(t0.note) : ''}</div>
@@ -3081,9 +3127,7 @@ function renderRoute() {
         <div class="hint">點站名展開該站全日時刻表；地圖上點站牌可查該站位。${hasShape ? '地圖小箭頭為行駛方向。' : SHAPES ? '此路線無道路線形資料，地圖虛線為站牌連線。' : '道路線形載入中…'}</div>
         <div class="seq" style="--rc:${c}">${rows}</div>`;
     if (!view.scrolled && view.here) { const h = panel.querySelector('.seq-row.here'); if (h) { panel.scrollTop = h.offsetTop - panel.clientHeight / 3; view.scrolled = true; } } else panel.scrollTop = keep;
-    if ($('b-rev')) $('b-rev').onclick = () => openRoute(r.sub, other.dir, view.here, view.back);
-    if ($('b-back')) $('b-back').onclick = () => openGroup(view.back.grp, true, view.back.gdir);
-    if ($('b-auto')) $('b-auto').onclick = () => setVehAuto(!vehAuto);
+    if ($('b-rev')) $('b-rev').onclick = () => openRoute(r.sub, other.dir, view.here, view.back);    if ($('b-auto')) $('b-auto').onclick = () => setVehAuto(!vehAuto);
     $('tt-src').onchange = e => {
         try { localStorage.setItem(TT_KEY, e.target.value); } catch (er) {}
         dayMemo.clear(); matchCache.clear();
