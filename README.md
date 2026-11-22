@@ -33,6 +33,8 @@
 - 地圖可持續顯示自己的位置
 - 即時到站在 15 分鐘內顯示倒數（分秒），超過 15 分鐘改顯示預估到站時刻 HH:MM
 - 下一班過了表定發車時間 10 分鐘仍沒有車發出（要先按「比對準點／遲發」載入車輛班次），標示「未依時刻表發車」；依回站車輛推估的「預估延遲發車」在能把班次對應到車牌前暫停顯示
+- 路線清單「藍線」群組：一鍵把規劃捷運藍線沿線的公車路線載入多選（藍線兩側 300 公尺內、沿線重疊 3 公里以上的子路線，依路線號碼排序），地圖同時畫出藍線
+- 多選路線的公車位置合併查詢：2～25 條一次查詢（以 RouteUID 串接），超過 25 條改抓全市一次，每次更新只用 1 次 API
 - 標題列右側：捷運風格路線圖、外觀切換（月亮＝深色、太陽＝淺色）、地圖圖層；手機上圖層卡片與標題列同寬，右上 × 關閉
 
 ### 站站時刻表的來源
@@ -71,6 +73,11 @@
 | `taichung-query.html` | 站位／路線查詢頁 |
 | `taichung-routes.js` | 停靠路廊站牌的路線站序與累積距離（路線圖用） |
 | `taichung-network.js` | 全市站牌、站位、路線站序與捷運資料（查詢頁用） |
+| `taichung-shapes.js` | 子路線道路線形（TDX Shape；`node tools/mk_shapes.js` 產生） |
+| `taichung-ids.js` | 子路線 RouteUID／SubRouteUID 與中英文名稱（`node tools/mk_ids.js` 產生；公車位置合併查詢與日後多語言用） |
+| `data/index.json`、`data/r*.json` | 各路線班表與站間旅行時間（`node tools/mk_static.js` 產生） |
+| `data/groups.json` | 路線群組（藍線沿線路線與藍線線形；`node tools/mk_groups.js` 產生，參考線讀 `../metro route/BlueLine.geojson`） |
+| `data/stops_en.json` | 站牌英文名稱（`node tools/mk_ids.js` 產生；目前前端未載入，供日後英文版） |
 | `bus3d.js` | 導航 3D 公車共用車身與塗裝比對 |
 | `data/livery.json` | 3D 公車塗裝與比對規則（路線／車牌／業者） |
 | `data/poi.json` | 臺中市地標、學校、醫院、商場、景點、店家名稱與座標（OpenStreetMap；`node tools/mk_poi.js` 產生，約每季重產） |
@@ -78,6 +85,19 @@
 | `tools/livery.html` | 3D 公車塗裝編輯器（由照片取色） |
 
 靜態檔由 TDX 資料於 2026-11-10 產生，路線改道或增減站牌時需重新產生。
+
+### 路網更新後的重產流程
+
+`taichung-network.js`（全市站牌與路線站序）更新後，在 repo 根目錄依序執行。後面的步驟會讀前面步驟的輸出，順序不能對調：
+
+1. **道路線形**：`OUT=tools/shape_all.json node tools/probe.js '/v2/Bus/Shape/City/Taichung?$format=JSON'`，再執行 `node tools/mk_shapes.js 3`，輸出 `taichung-shapes.js`。
+2. **班表與站間時間**：`node tools/mk_static.js`，輸出 `data/index.json`、`data/r*.json`。站間時間逐條路線查詢，約 390 次，可中斷續跑。要重抓班表時加 `--sched-api`。
+3. **站站推估班表**（約每月一次）：`node tools/mk_est.js`，輸出 `est/*.json`。
+4. **路線 UID 與英文名稱**：`node tools/mk_ids.js --api`，輸出 `taichung-ids.js`、`data/stops_en.json`。先讀排程快取，缺的才向 TDX 抓 Route／Stop 各 1 次（快取 30 天）。輸出訊息若列出「缺」的子路線，這些路線的公車位置會改用路線名稱查詢。
+5. **路線群組（藍線）**：`node tools/mk_groups.js`，輸出 `data/groups.json`。需要第 1 步的線形；藍線 GeoJSON 改了也要重跑。
+6. **捷運風格路線圖**（有新增路線或站序變動時）：`node tools/mk_plan.js`，更新 `taichung.html`、`taichung-routes.js`。
+
+需要 TDX 金鑰的步驟（1～4）讀環境變數 `TDX_CLIENT_ID`／`TDX_CLIENT_SECRET`，或 `tdx-key.local.js`。完成後一併上傳產生的檔案。
 
 ## 新增 3D 公車塗裝
 

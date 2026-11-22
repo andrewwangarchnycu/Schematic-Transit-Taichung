@@ -499,6 +499,7 @@
 <div id="key-dlg"></div>
 <div id="nav"><div id="nav-map"></div><div id="nav-top" class="nav-top"></div><div id="nav-sheet" class="nav-sheet"></div></div>
 <script src="taichung-network.js"></script>
+<script src="taichung-ids.js"></script>
 <script src="bus3d.js"></script>
 <!-- 本機開發用金鑰 (gitignore)；公開網站沒有此檔，訪客自行輸入金鑰 -->
 <script src="tdx-key.local.js"></script>
@@ -1893,6 +1894,7 @@ function renderSearch() {
             : '<div class="hint">勾選右側方框可多選路線，同時顯示在地圖上。</div>';
         const keep = panel.scrollTop;
         panel.innerHTML = bar + (showMrt ? `<div class="list-item" data-mrt="1"><span class="badge" style="background:${NET.mrt.color || '#8cc540'}">綠線</span><div><div>臺中捷運綠線</div><div class="sub">北屯總站 ↔ 高鐵臺中站 · 18 站</div></div></div>` : '') +
+            grpItems(q) +
             subs.slice(0, 200).map(s => { const ds = routeDirs(s); return `<div class="list-item" data-sub="${esc(s)}">${badge(s)}<div style="min-width:0;flex:1"><div class="sub">${ds.map(r => '往 ' + esc(destOf(r))).join(' ／ ')}</div></div><label class="msel" title="多選"><input type="checkbox" data-msub="${esc(s)}"${inMulti(s) ? ' checked' : ''}></label></div>`; }).join('') +
             (subs.length > 200 ? `<div class="hint">還有 ${subs.length - 200} 條，請輸入更多字</div>` : '');
         if (q === lastQ) panel.scrollTop = keep;
@@ -1900,8 +1902,9 @@ function renderSearch() {
         panel.querySelectorAll('[data-sub]').forEach(e => e.onclick = ev => { if (ev.target.closest('.msel')) return; openRoute(e.dataset.sub, routeDirs(e.dataset.sub)[0].dir); });
         panel.querySelectorAll('[data-msub]').forEach(e => e.onchange = () => { toggleMulti(e.dataset.msub); renderSearch(); });
         if ($('b-multi')) $('b-multi').onclick = openMulti;
-        if ($('b-mclr')) $('b-mclr').onclick = () => { multi = []; saveMulti(); renderSearch(); };
+        if ($('b-mclr')) $('b-mclr').onclick = () => { multi = []; GRP.on = null; saveMulti(); renderSearch(); };
         const m = panel.querySelector('[data-mrt]'); if (m) m.onclick = openMrt;
+        panel.querySelectorAll('[data-grp]').forEach(e => e.onclick = () => openGroup(e.dataset.grp));
     }
 }
 // 前往：Google 地圖步行導航 (起點＝目前位置)
@@ -2484,14 +2487,42 @@ function openMulti() {
     if (mode !== 'route') { mode = 'route'; $('tab-route').classList.add('on'); $('tab-station').classList.remove('on'); }
     view = { type: 'multi' };
     open.clear();
-    [...new Set(multiRoutes().map(r => r.route))].forEach(rt => loadVehicles(rt).catch(() => {}));
+    loadVehiclesMany(multiRoutes().map(r => r.route)).catch(() => {});
     drawMultiMap();
     renderMulti();
+}
+// ---------- 路線群組 (data/groups.json，由 tools/mk_groups.js 預先算好)：例「藍線」＝規劃捷運藍線兩側 300 m 內重疊 ≥ 3 km 的子路線 ----------
+const GRP = { data: null, p: null, on: null };
+function loadGroups() {
+    return GRP.p || (GRP.p = fetch('data/groups.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).catch(() => null)
+        .then(j => (GRP.data = j && j.groups || [])));
+}
+const grpOf = id => (GRP.data || []).find(g => g.id === id);
+// 路線清單上方的群組按鈕；群組資料未載入時先載入再重畫清單
+function grpItems(q) {
+    if (!GRP.data) { loadGroups().then(() => { if (mode === 'route' && !view) renderSearch(); }); return ''; }
+    return GRP.data.filter(g => !q || g.name.includes(q) || (g.id === 'blue' && /藍|blue/i.test(q))).map(g => {
+        const n = g.routes.filter(([sub, dir]) => ROUTES.some(x => x.sub === sub && x.dir === dir)).length;
+        return `<div class="list-item" data-grp="${esc(g.id)}"><span class="badge" style="background:${g.color}">${esc(g.name)}</span><div><div>${esc(g.desc || g.name)}公車</div><div class="sub">兩側 ${g.buf} m 內、沿線重疊 ≥ ${g.min / 1000} km · ${n} 條子路線 · 點選載入多選</div></div></div>`;
+    }).join('');
+}
+// 點群組：以群組路線取代目前多選，並在地圖畫出參考線
+function openGroup(id) {
+    const g = grpOf(id); if (!g) return;
+    multi = g.routes.filter(([sub, dir]) => ROUTES.some(x => x.sub === sub && x.dir === dir)).map(([sub, dir]) => ({ sub, dir }));
+    if (!multi.length) return;
+    GRP.on = id; saveMulti(); openMulti();
 }
 const multiLines = new Map();
 function drawMultiMap(fit = true) {
     layerSel.clearLayers(); multiLines.clear();
     const all = [], sets = [];
+    const g = GRP.on && grpOf(GRP.on);
+    if (g) {   // 群組參考線畫在公車路線底下
+        L.polyline(g.line, { color: g.color, weight: 16, opacity: .22, interactive: false, lineCap: 'round' }).addTo(layerSel);
+        L.polyline(g.line, { color: g.color, weight: 3, opacity: .9, dashArray: '10 8', interactive: false }).addTo(layerSel);
+        all.push(...g.line);
+    }
     multiRoutes().forEach(r => {
         const c = colorOf(r.sub), pts = r.seq.map(si => [STOPS[si].lat, STOPS[si].lng]);
         const sh = shapeOf(r), lines = sh || [pts];
@@ -2596,14 +2627,15 @@ function renderMulti() {
             ${other ? `<button class="btn" data-rev="${r.i}" title="改看往 ${esc(destOf(other))}">⇄</button>` : ''}<button class="btn" data-del="${r.i}" title="移出多選">✕</button></div>`;
     }).join('');
     const vt = Math.max(0, ...routes.map(rt => (vehCache.get(rt) || {}).at || 0));
-    panel.innerHTML = `<h2>多選路線 · ${rs.length} 條</h2>
+    const grp = GRP.on && grpOf(GRP.on);
+    panel.innerHTML = `<h2>${grp ? `<span class="badge" style="background:${grp.color}">${esc(grp.name)}</span> 沿線` : '多選路線'} · ${rs.length} 條</h2>
         <div class="row"><button class="btn" id="b-add">＋ 加入路線</button><button class="btn" id="b-clr">清除多選</button></div>
-        <div class="row">${autoBtn(autoBusy(routes), `公車位置，每次 ${routes.length} 次 API`)}<span class="muted">${vehAuto ? '每分鐘自動更新' : '自動更新已關'}</span>
+        <div class="row">${autoBtn(autoBusy(routes), `公車位置，每次 ${vehCalls(routes.length)} 次 API${routes.length > VEH_BATCH ? ' (全市一次查詢)' : routes.length > 1 ? ' (合併查詢)' : ''}`)}<span class="muted">${vehAuto ? '每分鐘自動更新' : '自動更新已關'}</span>
             ${vt ? `<span class="muted">${Math.round((Date.now() - vt) / 1000)} 秒前查詢</span>` : ''}</div>
         <div class="hint">地圖只顯示所選路線方向的公車；點路線看完整站序與時刻，⇄ 切換方向。按「📍 附近」標出各路線離你最近的一站，點地圖上任一站可看該站本班／下一班。</div>${rows}`;
     $('b-add').onclick = () => { view = null; layerSel.clearLayers(); setArrows([]); drawVehicles(); $('q').value = ''; renderSearch(); };
     if (MultiNear.on || MultiPick.si !== null) drawMultiNear();
-    $('b-clr').onclick = () => { multi = []; saveMulti(); renderMulti(); };
+    $('b-clr').onclick = () => { multi = []; GRP.on = null; saveMulti(); renderMulti(); };
     $('b-auto').onclick = () => setVehAuto(!vehAuto);
     panel.querySelectorAll('[data-open]').forEach(e => {
         const r = ROUTES[+e.dataset.open];
@@ -2634,22 +2666,59 @@ function loadOperators() {
         return map;
     });
 }
+// TDX 公車動態 → 依路線分組 (同一車牌只留最新一筆)
+const VEH_SELECT = 'PlateNumb,OperatorID,SubRouteName,RouteName,Direction,BusPosition,Speed,Azimuth,GPSTime,DutyStatus,BusStatus';
+function vehGroup(js) {
+    const byRoute = new Map();
+    js.forEach(x => {
+        if (!x.BusPosition || !x.RouteName) return;
+        vehHistPush(x);
+        const rt = x.RouteName.Zh_tw;
+        if (!byRoute.has(rt)) byRoute.set(rt, new Map());
+        const m = byRoute.get(rt), p = m.get(x.PlateNumb);
+        if (!p || Date.parse(x.GPSTime) > Date.parse(p.GPSTime)) m.set(x.PlateNumb, x);
+    });
+    const at = Date.now(), out = new Map();
+    byRoute.forEach((m, rt) => out.set(rt, { at, rows: [...m.values()].map(x => ({
+        plate: x.PlateNumb, op: x.OperatorID, sub: (x.SubRouteName && x.SubRouteName.Zh_tw) || x.RouteName.Zh_tw, dir: x.Direction,
+        lat: x.BusPosition.PositionLat, lng: x.BusPosition.PositionLon, az: x.Azimuth, speed: x.Speed, gps: Date.parse(x.GPSTime), status: x.BusStatus })) }));
+    return out;
+}
+const vehFresh = route => { const c = vehCache.get(route); return c && Date.now() - c.at < FRESH_MS; };
 function loadVehicles(route, force = false) {
-    const c = vehCache.get(route);
-    if (!force && c && Date.now() - c.at < FRESH_MS) return Promise.resolve(c);
+    if (!force && vehFresh(route)) return Promise.resolve(vehCache.get(route));
+    if (loading.has('v:' + route)) return loading.get('v:' + route);
     return loadOnce('v:' + route, async () => {
-        const js = await Api.run('RealTimeByFrequency/City/Taichung',
-            { ...routeEq(route), '$select': 'PlateNumb,OperatorID,SubRouteName,RouteName,Direction,BusPosition,Speed,Azimuth,GPSTime,DutyStatus,BusStatus' },
-            { high: true, label: `${route} 公車位置` });
-        // 同一車牌只留最新一筆
-        const byPlate = new Map();
-        js.forEach(x => { if (!x.BusPosition) return; vehHistPush(x); const p = byPlate.get(x.PlateNumb); if (!p || Date.parse(x.GPSTime) > Date.parse(p.GPSTime)) byPlate.set(x.PlateNumb, x); });
-        const v = { at: Date.now(), rows: [...byPlate.values()].map(x => ({
-            plate: x.PlateNumb, op: x.OperatorID, sub: (x.SubRouteName && x.SubRouteName.Zh_tw) || x.RouteName.Zh_tw, dir: x.Direction,
-            lat: x.BusPosition.PositionLat, lng: x.BusPosition.PositionLon, az: x.Azimuth, speed: x.Speed, gps: Date.parse(x.GPSTime), status: x.BusStatus })) };
+        const js = await Api.run('RealTimeByFrequency/City/Taichung', { ...routeEq(route), '$select': VEH_SELECT }, { high: true, label: `${route} 公車位置` });
+        const v = vehGroup(js).get(route) || { at: Date.now(), rows: [] };
         vehCache.set(route, v);
         return v;
     });
+}
+// 多條路線的公車位置合併查詢 (省 API 次數)：
+//   1 條＝原本的單路線查詢；2～VEH_BATCH 條＝一次查詢，以 RouteUID (taichung-ids.js) 串 or；超過＝一次抓全市，所有路線都更新快取
+//   查詢中的路線各掛 'v:路線' 載入標記，與單路線查詢共用 (轉圈、避免重複查詢)
+const VEH_BATCH = 25;
+const IDS = (window.TXG_IDS && window.TXG_IDS.r) || {};
+const ALL_ROUTE_NAMES = [...new Set(ROUTES.map(r => r.route))];
+const vehCalls = n => n <= 1 ? n : 1;
+function loadVehiclesMany(routes, force = false) {
+    const need = [...new Set(routes)].filter(rt => (force || !vehFresh(rt)) && !loading.has('v:' + rt));
+    if (need.length <= 1) return Promise.all(need.map(rt => loadVehicles(rt, force)));
+    const city = need.length > VEH_BATCH;
+    const term = rt => IDS[rt] ? `RouteUID eq '${IDS[rt][0]}'` : routeEq(rt)['$filter'];
+    const params = city ? { '$select': VEH_SELECT } : { '$filter': need.map(term).join(' or '), '$select': VEH_SELECT };
+    const label = city ? `全市公車位置 (${need.length} 條路線)` : `${need.length} 條路線公車位置`;
+    let p;
+    const clear = () => need.forEach(rt => { if (loading.get('v:' + rt) === p) loading.delete('v:' + rt); });
+    p = loadOnce('vb:' + need.join(','), async () => {
+        try {
+            const g = vehGroup(await Api.run('RealTimeByFrequency/City/Taichung', params, { high: true, label })), at = Date.now();
+            (city ? ALL_ROUTE_NAMES : need).forEach(rt => vehCache.set(rt, g.get(rt) || { at, rows: [] }));
+        } finally { clear(); }
+    });
+    need.forEach(rt => loading.set('v:' + rt, p));
+    return p;
 }
 const agoText = ms => { const s = Math.max(0, Math.round((Date.now() - ms) / 1000)); return s >= 60 ? `${Math.floor(s / 60)} 分 ${s % 60} 秒前` : `${s} 秒前`; };
 // 公車圖示 HTML：白底正圓內放路線色公車，az 有值時外加路線色方向箭頭 (0＝北，順時針)
@@ -2780,7 +2849,7 @@ function refreshLive() {
         etaRoute(r.route, `${r.route} 即時`, true).catch(() => {});
         loadA2(r.route, true, true).catch(() => {});
     }
-    [...new Set(selRoutes().filter(Boolean).map(r => r.route))].forEach(rt => loadVehicles(rt, true).then(drawVehicles).catch(() => {}));
+    loadVehiclesMany(selRoutes().filter(Boolean).map(r => r.route), true).then(drawVehicles).catch(() => {});
     rerender();
 }
 function setVehAuto(on) {
@@ -3007,7 +3076,7 @@ function navOpen(p) {
     $('nav').classList.add('on');
     document.body.style.overflow = 'hidden';
     // 預先載入：各段路線即時、時刻表 (早/遲比對)、線上班次、公車位置
-    navRoutes().forEach(rt => { navEta(rt); loadDay(rt, true).catch(() => {}); loadA2(rt, false, true).catch(() => {}); loadVehicles(rt, true).catch(() => {}); });
+    navRoutes().forEach(rt => { navEta(rt); loadDay(rt, true).catch(() => {}); loadA2(rt, false, true).catch(() => {}); }); loadVehiclesMany(navRoutes(), true).catch(() => {});
     // 3D 公車塗裝；有依業者比對的規則才載入業者名稱 (每 30 天一次)
     if (window.Bus3D) Bus3D.load().then(() => { if (Bus3D.needsOp()) loadOperators().catch(() => {}); });
     navRender();
