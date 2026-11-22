@@ -3,19 +3,26 @@
 //     - 公車線形用 taichung-shapes.js (TDX Bus Shape 預先產生)；沒有線形的子路線改用站牌連線；不呼叫任何 API
 //     - 子路線任一方向符合即納入；多選放重疊較長的方向
 //     - 依子路線名稱 (數字) 由小到大排序
+//     - 行駛方向：各方向在路廊內第一點與最後一點投影到參考線的里程差，> +500 m＝往參考線終點 (藍線：臺中車站)、< -500 m＝往起點 (臺中港)，其餘 0 (環狀等，前端改用公車方位角判斷)
+//   輸出 routes：[子路線, 多選方向, 重疊 m, { 方向: +1 | -1 | 0 }]
+//   車站 (參考線本身沒有車站點位，以沿線公車站位代替)：參考線 STA_BUF m 內、有群組路線停靠的站牌；
+//     同名且相距 250 m 內合併為一站；沿線所有站都列入 (不篩站距、停靠路線數)
+//     輸出 stations：[站名, lat, lng, 里程 m, 停靠子路線數, [StopUID (去 TXG)…]]，依里程排序
 //   用法：node tools/mk_groups.js   (路網或線形更新後重跑)
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const ROOT = path.join(__dirname, '..');
 const OUT = path.join(ROOT, 'data', 'groups.json');
 const GROUPS = [
     { id: 'blue', name: '藍線', desc: '臺中捷運藍線 (規劃) 沿線', color: '#1f6fd1',
-      src: path.join(ROOT, '..', 'metro route', 'BlueLine.geojson'), feature: '藍線', buf: 300, min: 3000 }
+      src: path.join(ROOT, '..', 'metro route', 'BlueLine.geojson'), feature: '藍線', buf: 300, min: 3000,
+      ends: ['臺中港', '臺中車站'] }   // 參考線 [起點, 終點] 方向名稱
 ];
 
 const win = {};
 vm.runInNewContext(fs.readFileSync(path.join(ROOT, 'taichung-network.js'), 'utf8') + ';' + fs.readFileSync(path.join(ROOT, 'taichung-shapes.js'), 'utf8'), { window: win });
 const NET = win.TXG_NET, SHAPES = win.TXG_SHAPES || {};
 const STOPS = NET.stops.map(([, , lat, lng]) => [lat, lng]);
+const STA_BUF = 100;   // 車站：離參考線 m
 const ROUTES = NET.routes.map(([sub, route, dir, seq]) => ({ sub, route, dir, seq }));
 
 function decPoly(str) {
@@ -62,6 +69,24 @@ function covered(samples, segs, buf) {
     return len;
 }
 
+// 點投影到參考線的里程 (m)；離線超過 buf 回 null
+function chainage(p, line, cum, buf) {
+    let best = null;
+    for (let i = 1; i < line.length; i++) {
+        const a = line[i - 1], b = line[i];
+        const ax = (a[1] - p[1]) * KX, ay = (a[0] - p[0]) * KY, dx = (b[1] - a[1]) * KX, dy = (b[0] - a[0]) * KY, L = dx * dx + dy * dy;
+        const t = L ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L)) : 0, d = Math.hypot(ax + t * dx, ay + t * dy);
+        if (d <= buf && (!best || d < best.d)) best = { d, s: cum[i - 1] + t * (cum[i] - cum[i - 1]) };
+    }
+    return best && best.s;
+}
+// 公車沿行駛順序在路廊內的里程變化 → +1 / -1 / 0
+function sense(polys, line, cum, buf) {
+    const ch = polys.flat().map(p => chainage(p, line, cum, buf)).filter(v => v !== null);
+    if (ch.length < 2) return 0;
+    const d = ch[ch.length - 1] - ch[0];
+    return d > 500 ? 1 : d < -500 ? -1 : 0;
+}
 const r5 = v => Math.round(v * 1e5) / 1e5;
 const out = { at: new Date().toISOString(), net: NET.gen, groups: [] };
 for (const G of GROUPS) {
@@ -70,21 +95,41 @@ for (const G of GROUPS) {
     if (!f) throw new Error(`${G.src} 找不到名稱為「${G.feature}」的 LineString`);
     const line = f.geometry.coordinates.map(c => [c[1], c[0]]);
     const samples = densify(line), total = samples.reduce((s, x) => s + x.w, 0);
+    const cum = [0]; for (let i = 1; i < line.length; i++) cum.push(cum[i - 1] + meters(line[i - 1], line[i]));
     const best = new Map();   // sub → { dir, cov }
+    const polysOf = new Map();
     let noShape = 0;
     for (const r of ROUTES) {
         const e = SHAPES[r.sub + '|' + r.dir] || SHAPES[r.sub + '|any'];
         if (!e) noShape++;
         const polys = e ? e.map(decPoly) : [r.seq.map(si => STOPS[si])];
+        polysOf.set(r.sub + '|' + r.dir, polys);
         const cov = covered(samples, segsOf(polys, G.buf), G.buf);
         if (cov >= G.min && (!best.has(r.sub) || best.get(r.sub).cov < cov)) best.set(r.sub, { dir: r.dir, cov });
     }
     const routes = [...best].sort((a, b) => a[0].localeCompare(b[0], 'zh-Hant', { numeric: true }))
-        .map(([sub, x]) => [sub, x.dir, Math.round(x.cov)]);
+        .map(([sub, x]) => [sub, x.dir, Math.round(x.cov),
+            Object.fromEntries(ROUTES.filter(r => r.sub === sub).map(r => [r.dir, sense(polysOf.get(r.sub + '|' + r.dir), line, cum, G.buf)]))]);
+    // ---- 車站 ----
+    const subsAt = new Map();   // 站牌索引 → Set(子路線)
+    for (const [sub] of routes) ROUTES.filter(r => r.sub === sub).forEach(r => r.seq.forEach(si => { if (!subsAt.has(si)) subsAt.set(si, new Set()); subsAt.get(si).add(sub); }));
+    const cands = [];
+    for (const [si, subs] of subsAt) {
+        const ch = chainage(STOPS[si], line, cum, STA_BUF);
+        if (ch === null) continue;
+        const nm = NET.stops[si][1];
+        let c = cands.find(x => x.name === nm && meters(x.pts[0], STOPS[si]) < 250);
+        if (!c) cands.push(c = { name: nm, pts: [], uids: [], subs: new Set(), ch: [] });
+        c.pts.push(STOPS[si]); c.uids.push(NET.stops[si][0]); c.ch.push(ch); subs.forEach(x => c.subs.add(x));
+    }
+    cands.forEach(c => { c.lat = c.pts.reduce((a, p) => a + p[0], 0) / c.pts.length; c.lng = c.pts.reduce((a, p) => a + p[1], 0) / c.pts.length; c.s = c.ch.reduce((a, b) => a + b, 0) / c.ch.length; });
+    const picked = cands.slice().sort((a, b) => a.s - b.s);
+    const stations = picked.map(c => [c.name, r5(c.lat), r5(c.lng), Math.round(c.s), c.subs.size, c.uids]);
+    console.log(`  車站 ${stations.length} 站 (候選 ${cands.length})：${stations.map(x => `${x[0]}(${x[4]})`).join('、')}`);
     out.groups.push({ id: G.id, name: G.name, desc: G.desc, color: G.color, buf: G.buf, min: G.min, len: Math.round(total),
-        line: line.map(p => [r5(p[0]), r5(p[1])]), routes });
+        ends: G.ends, line: line.map(p => [r5(p[0]), r5(p[1])]), routes, stations });
     console.log(`${G.name}：參考線 ${(total / 1000).toFixed(1)} km，兩側 ${G.buf} m、重疊 ≥ ${G.min / 1000} km → ${routes.length} 條子路線 (無線形改用站牌連線 ${noShape} 個方向)`);
-    console.log(routes.map(([s, , c]) => `${s}(${(c / 1000).toFixed(1)})`).join(' '));
+    console.log(routes.map(([s, , c, d]) => `${s}(${(c / 1000).toFixed(1)} ${Object.values(d).map(v => v > 0 ? '→' : v < 0 ? '←' : '?').join('')})`).join(' '));
 }
 fs.writeFileSync(OUT, JSON.stringify(out));
 console.log('寫入', path.relative(ROOT, OUT), fs.statSync(OUT).size, 'bytes');
