@@ -84,6 +84,8 @@
     .rt-head button:hover { color: var(--text); background: #26292d; }
     .rt-head .rev { font-size: 12px; max-width: 42%; overflow: hidden; text-overflow: ellipsis; }
     /* 🔄 自動更新開關：開＝立即更新並每分鐘更新即時到站、班次配對、公車位置 */
+    .live-row { align-items: center; gap: 8px; }
+    .live-pill { background: #2e9d4a; color: #fff; border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 700; }
     button.auto { display: inline-flex; align-items: center; gap: 6px; background: none; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; padding: 3px 8px; white-space: nowrap; }
     button.auto .ic { font-size: 15px; line-height: 1; display: inline-block; }
     button.auto.spin .ic { animation: spin 1s linear infinite; }
@@ -1938,7 +1940,7 @@ function renderSearch() {
     } else {
         const subs = SUBS.filter(s => !q || s.includes(q)).sort((a, b) => a.localeCompare(b, 'zh-Hant', { numeric: true }));
         const showMrt = !q || '捷運綠線'.includes(q) || /綠|捷運|mrt/i.test(q);
-        const bar = multiCount() ? `<div class="row multi-bar">已選 ${multiCount()} 條：${multiMrt ? mrtBadge() : ''}${multi.map(m => badge(m.sub)).join('')}<button class="btn" id="b-multi">在地圖顯示</button><button class="btn" id="b-mclr">清除</button></div>`
+        const bar = multiCount() ? `<div class="row multi-bar">已選 ${multiCount()} 條：${multiMrt ? mrtBadge() : ''}${multiGrp ? grpBadge(multiGrp) : ''}${multi.map(m => badge(m.sub)).join('')}<button class="btn" id="b-multi">在地圖顯示</button><button class="btn" id="b-mclr">清除</button></div>`
             : '<div class="hint">勾選右側方框可多選路線，同時顯示在地圖上。</div>';
         const keep = panel.scrollTop;
         panel.innerHTML = bar + (showMrt ? `<div class="list-item" data-mrt="1">${mrtBadge()}<div style="min-width:0;flex:1"><div>臺中捷運綠線</div><div class="sub">北屯總站 ↔ 高鐵臺中站 · 18 站</div></div><label class="msel" title="多選"><input type="checkbox" data-mmrt="1"${multiMrt ? ' checked' : ''}></label></div>` : '') +
@@ -1950,10 +1952,11 @@ function renderSearch() {
         panel.querySelectorAll('[data-sub]').forEach(e => e.onclick = ev => { if (ev.target.closest('.msel')) return; openRoute(e.dataset.sub, routeDirs(e.dataset.sub)[0].dir); });
         panel.querySelectorAll('[data-msub]').forEach(e => e.onchange = () => { toggleMulti(e.dataset.msub); renderSearch(); });
         if ($('b-multi')) $('b-multi').onclick = openMulti;
-        if ($('b-mclr')) $('b-mclr').onclick = () => { multi = []; multiMrt = false; GRP.on = null; saveMulti(); renderSearch(); };
+        if ($('b-mclr')) $('b-mclr').onclick = () => { multi = []; multiMrt = false; multiGrp = null; GRP.on = null; saveMulti(); renderSearch(); };
         const m = panel.querySelector('[data-mrt]'); if (m) m.onclick = ev => { if (ev.target.closest('.msel')) return; openMrt(); };
         const mm = panel.querySelector('[data-mmrt]'); if (mm) mm.onchange = () => { multiMrt = mm.checked; saveMulti(); renderSearch(); };
-        panel.querySelectorAll('[data-grp]').forEach(e => e.onclick = () => openGroup(e.dataset.grp));
+        panel.querySelectorAll('[data-grp]').forEach(e => e.onclick = ev => { if (ev.target.closest('.msel')) return; openGroup(e.dataset.grp); });
+        panel.querySelectorAll('[data-mgrp]').forEach(e => e.onchange = () => { multiGrp = e.checked ? e.dataset.mgrp : null; saveMulti(); renderSearch(); });
     }
 }
 // 前往：Google 地圖步行導航 (起點＝目前位置)
@@ -2076,7 +2079,7 @@ function drawCenterPin(lat, lng, r, layer) {
     L.circle([lat, lng], { radius: r, color: '#1a73e8', weight: 2, fill: true, fillOpacity: .06, dashArray: '4 4', interactive: false }).addTo(layer);
 }
 const isMobile = () => matchMedia('(max-width: 760px)').matches;
-let listOpen = false;
+let listOpen = true;   // 開頁就顯示清單 (抽屜中間高度，同規劃模式)；按「🗺 地圖」才收成全地圖
 // 「搜尋」＝點輸入框：進入搜尋模式並叫出鍵盤 (路線＝數字鍵盤)；清單已開時再按＝回到全地圖
 function srchClick() {
     if (!view && listOpen) { listOpen = false; $('q').blur(); updLayout(); return; }
@@ -2086,12 +2089,14 @@ function srchClick() {
     $('q').focus();   // 需在點擊事件內同步呼叫，手機才會跳出鍵盤
 }
 // 手機版：沒有開啟任何頁面且沒按搜尋＝全地圖
-// 手機 Liquid Glass 底部抽屜：高度存在 --sheet-h；搜尋模式自動拉到最高 (鍵盤不擋清單)，其他頁面回到上次高度
+// 手機 Liquid Glass 底部抽屜：高度存在 --sheet-h
+//   輸入框聚焦 (打字中)＝搜尋高度：上方留一段地圖 (約畫面 18%)；其他 (初始、切換分頁、各頁面)＝中間高度或上次拖曳的高度，與規劃模式相同
 const Sheet = { h: null, user: null, mode: '' };
 const glassMobile = () => isMobile();
 const appH = () => $('app').clientHeight || window.innerHeight;   // 實際畫面高 (主畫面 App 模式含狀態列)
 const sheetMax = () => appH() - ($('app').querySelector('header').offsetHeight + 24);
 const sheetSnaps = () => [Math.round(appH() * 0.22), Math.round(appH() * 0.45), sheetMax()];
+const sheetSrch = () => Math.max(sheetSnaps()[1], sheetMax() - Math.round(appH() * 0.18));
 function setSheet(h, remember = false) {
     const [lo] = sheetSnaps();
     h = Math.max(lo * 0.6, Math.min(sheetMax(), h));
@@ -2106,7 +2111,7 @@ function sheetForMode(mode) {
     else if (Sheet.h !== null) $('app').classList.toggle('sheet-max', Sheet.h >= sheetMax() - 12);
     if (mode === Sheet.mode && Sheet.h !== null) return;
     Sheet.mode = mode;
-    if (mode === 'srch') setSheet(sheetMax());
+    if (mode === 'srch') setSheet(sheetSrch());
     else if (mode === 'norm') setSheet(Sheet.user || sheetSnaps()[1]);
 }
 (function () {
@@ -2138,7 +2143,8 @@ function updLayout() {
     const full = isMobile() && !view && !listOpen && mode !== 'plan', srch = isMobile() && !view && listOpen && mode !== 'plan', app = $('app');
     const b = document.querySelector('.srch-btn');
     if (b) b.innerHTML = !view && listOpen ? '🗺 地圖' : '🔍 搜尋';
-    sheetForMode(full ? 'full' : srch ? 'srch' : 'norm');
+    const typing = document.activeElement === $('q');
+    sheetForMode(full ? 'full' : srch && typing ? 'srch' : 'norm');
     if (document.body.dataset.mode !== mode) syncTabs();
     if ((MultiNear.on || MultiPick.si !== null) && (!view || view.type !== 'multi')) { MultiPick.si = null; multiNearOff(); }
     if (app.classList.contains('full') === full && app.classList.contains('srch') === srch) return;
@@ -2529,8 +2535,11 @@ const MULTI_KEY = 'txg_multi_v1';
 let multi = (store.get(MULTI_KEY) || []).filter(m => m && ROUTES.some(x => x.sub === m.sub && x.dir === m.dir));
 const MULTI_MRT_KEY = 'txg_multi_mrt_v1';
 let multiMrt = !!store.get(MULTI_MRT_KEY);   // 綠線是否在多選中 (與公車路線分開存)
-const saveMulti = () => { store.set(MULTI_KEY, multi); store.set(MULTI_MRT_KEY, multiMrt); };
-const multiCount = () => multi.length + (multiMrt ? 1 : 0);
+const MULTI_GRP_KEY = 'txg_multi_grp_v1';
+let multiGrp = store.get(MULTI_GRP_KEY) || null;   // 多選中的路廊 (群組 id，例 'blue')：地圖畫參考線與車站
+const saveMulti = () => { store.set(MULTI_KEY, multi); store.set(MULTI_MRT_KEY, multiMrt); store.set(MULTI_GRP_KEY, multiGrp); };
+const multiCount = () => multi.length + (multiMrt ? 1 : 0) + (multiGrp ? 1 : 0);
+const grpBadge = id => { const g = grpOf(id); return `<span class="badge" style="background:${g ? g.color : '#1f6fd1'}">${esc(g ? g.name : '藍線')}</span>`; };
 const mrtBadge = () => `<span class="badge" style="background:${NET.mrt.color || '#8cc540'}">綠線</span>`;
 const inMulti = sub => multi.some(m => m.sub === sub);
 function toggleMulti(sub, dir) {
@@ -2541,6 +2550,7 @@ function toggleMulti(sub, dir) {
 const multiRoutes = () => multi.map(m => ROUTES.find(x => x.sub === m.sub && x.dir === m.dir)).filter(Boolean);
 function openMulti() {
     if (!multiCount()) return;
+    if (multiGrp && !GRP.data) { loadGroups().then(() => { if (view && view.type === 'multi') { drawMultiMap(false); renderMulti(); } }); }
     clearBikes(); layerAll.clearLayers();
     if (mode !== 'route') { mode = 'route'; $('tab-route').classList.add('on'); $('tab-station').classList.remove('on'); }
     view = { type: 'multi' };
@@ -2562,7 +2572,7 @@ function grpItems(q) {
     if (!GRP.data) { loadGroups().then(() => { if (mode === 'route' && !view) renderSearch(); }); return ''; }
     return GRP.data.filter(g => !q || g.name.includes(q) || (g.id === 'blue' && /藍|blue/i.test(q))).map(g => {
         const n = g.routes.filter(([sub, dir]) => ROUTES.some(x => x.sub === sub && x.dir === dir)).length;
-        return `<div class="list-item" data-grp="${esc(g.id)}"><span class="badge" style="background:${g.color}">${esc(g.name)}</span><div style="min-width:0;flex:1"><div>捷運${esc(g.name)} 路廊公車</div><div class="sub">${n} 條路線 · ${esc(g.name)}兩側 ${g.buf} m、重疊 ≥ ${g.min / 1000} km</div></div></div>`;
+        return `<div class="list-item" data-grp="${esc(g.id)}"><span class="badge" style="background:${g.color}">${esc(g.name)}</span><div style="min-width:0;flex:1"><div>捷運${esc(g.name)} 路廊公車</div><div class="sub">${n} 條路線 · ${esc(g.name)}兩側 ${g.buf} m、重疊 ≥ ${g.min / 1000} km</div></div><label class="msel" title="多選"><input type="checkbox" data-mgrp="${esc(g.id)}"${multiGrp === g.id ? ' checked' : ''}></label></div>`;
     }).join('');
 }
 // 群組路線全部載入多選 (取代目前多選)，多選地圖同時畫出參考線
@@ -2615,10 +2625,7 @@ function drawGroupLine(g, dim) {
     setArrows([{ lines: [view.gdir > 0 ? g.line : g.line.slice().reverse()], w: 7 }]);   // 目前方向的箭頭
     // 車站 (沿線公車站位)：點擊顯示目前方向最近兩班
     (g.stations || []).forEach(st => {
-        const mk = L.circleMarker([st[1], st[2]], { radius: 5, color: g.color, weight: 2.5, fillColor: '#fff', fillOpacity: 1 }).bindTooltip(st[0]);
-        mk.bindPopup(() => grpStaHtml(g, st, view.gdir), { maxWidth: 300 });
-        mk.on('popupopen', () => grpStaLoad(g, st, mk));
-        mk.addTo(layerSel);
+        grpStaMarker(g, st, () => [view.gdir]).addTo(layerSel);
     });
 }
 // ---- 路廊車站：最近兩班 (即時預估優先，該路線沒有即時就用時刻表) ----
@@ -2662,11 +2669,19 @@ function grpStaHtml(g, st, gd) {
         <div class="muted" style="font-size:11px;margin-top:4px">${x.serv.length} 條路廊路線停靠 · 有即時預估用即時，沒有則用時刻表</div></div>`;
 }
 // 開啟車站視窗：1 次即時到站 (站牌 StopUID 串 or)＋各路線靜態時刻表 (data/r*.json，不耗 API)
-function grpStaLoad(g, st, mk) {
+//   gds()：要顯示的方向清單 (路廊檢視＝[目前方向]；多選＝[1, -1] 兩個方向)
+const grpStaPopup = (g, st, gds) => gds().map(gd => grpStaHtml(g, st, gd)).join('<hr style="border:0;border-top:1px solid #8885;margin:7px 0">');
+function grpStaMarker(g, st, gds) {
+    const mk = L.circleMarker([st[1], st[2]], { radius: 5, color: g.color, weight: 2.5, fillColor: '#fff', fillOpacity: 1 }).bindTooltip(st[0]);
+    mk.bindPopup(() => grpStaPopup(g, st, gds), { maxWidth: 300 });
+    mk.on('popupopen', () => grpStaLoad(g, st, mk, gds));
+    return mk;
+}
+function grpStaLoad(g, st, mk, gds) {
     if (selDate() !== todayKey()) return;
-    const upd = () => { if (mk.isPopupOpen()) mk.setPopupContent(grpStaHtml(g, st, view.gdir)); };
+    const upd = () => { if (mk.isPopupOpen()) mk.setPopupContent(grpStaPopup(g, st, gds)); };
     loadEta(grpStaKey(st), 'EstimatedTimeOfArrival/City/Taichung', { '$filter': st[5].map(u => `StopUID eq 'TXG${u}'`).join(' or ') }, `${st[0]} 即時`).then(upd, upd);
-    [...new Set(grpStaServ(g, st, view.gdir).map(x => x.r.route))].forEach(rt =>
+    [...new Set(gds().flatMap(gd => grpStaServ(g, st, gd)).map(x => x.r.route))].forEach(rt =>
         Promise.all([loadSchedule(rt).catch(() => null), loadS2S(rt).catch(() => null)]).then(() => { dayMemo.clear(); upd(); }));
     upd();
 }
@@ -2710,6 +2725,12 @@ const multiLines = new Map();
 function drawMultiMap(fit = true) {
     layerSel.clearLayers(); multiLines.clear();
     const all = [], sets = [];
+    const mg = multiGrp && grpOf(multiGrp);
+    if (mg) {   // 路廊 (藍線)：參考線＋車站 (車站視窗顯示兩個方向)；點線＝路廊檢視
+        L.polyline(mg.line, { color: mg.color, weight: 6, opacity: .85 }).bindTooltip(`捷運${mg.name} 路廊`, { sticky: true }).on('click', () => openGroup(mg.id)).addTo(layerSel);
+        (mg.stations || []).forEach(st => grpStaMarker(mg, st, () => [1, -1]).addTo(layerSel));
+        all.push(...mg.line);
+    }
     if (multiMrt) {   // 綠線：實際線形與車站 (推估列車另由 drawMrtTrains 畫)
         const mc = NET.mrt.color || '#8cc540';
         L.polyline(NET.mrt.shape, { color: mc, weight: 6, opacity: .85 }).bindTooltip('臺中捷運綠線', { sticky: true }).on('click', openMrt).addTo(layerSel);
@@ -2815,7 +2836,7 @@ function multiNearOff() {
 function nearBtnLabel() { const b = document.querySelector('.near-btn'); if (b && !Track.on) b.innerHTML = MultiNear.on ? '📍 清除附近' : '📍 附近'; }
 function renderMulti() {
     const rs = multiRoutes();
-    if (!rs.length && !multiMrt) { view = null; layerSel.clearLayers(); drawVehicles(); MrtTrain.clear(); renderSearch(); return; }
+    if (!rs.length && !multiMrt && !multiGrp) { view = null; layerSel.clearLayers(); drawVehicles(); MrtTrain.clear(); renderSearch(); return; }
     const routes = [...new Set(rs.map(r => r.route))];
     const rows = rs.map(r => {
         const vc = vehCache.get(r.route), other = ROUTES.find(x => x.sub === r.sub && x.dir !== r.dir);
@@ -2827,15 +2848,19 @@ function renderMulti() {
     }).join('');
     const vt = Math.max(0, ...routes.map(rt => (vehCache.get(rt) || {}).at || 0));
     const grp = GRP.on && grpOf(GRP.on);
+    const mg = multiGrp && grpOf(multiGrp);
+    const grpRow = multiGrp ? `<div class="list-item" data-mgo="1">${grpBadge(multiGrp)}<div style="min-width:0;flex:1"><div>捷運${esc(mg ? mg.name : '藍線')} 路廊</div><div class="sub">${mg ? `${(mg.stations || []).length} 站 · 點地圖上的站看兩個方向最近兩班` : '載入中…'}</div></div><button class="btn" id="b-delgrp" title="移出多選">✕</button></div>` : '';
     const mrtRow = multiMrt ? `<div class="list-item" data-mrt="1">${mrtBadge()}<div style="min-width:0;flex:1"><div>臺中捷運綠線</div><div class="sub">北屯總站 ↔ 高鐵臺中站 · ${selDate() === todayKey() ? `推估列車 ${mrtTrains().length} 列 (依班距)` : '非今日'}</div></div><button class="btn" id="b-delmrt" title="移出多選">✕</button></div>` : '';
     panel.innerHTML = `<h2>${grp ? `<span class="badge" style="background:${grp.color}">${esc(grp.name)}</span> 沿線` : '多選路線'} · ${multiCount()} 條</h2>
         <div class="row"><button class="btn" id="b-add">＋ 加入路線</button><button class="btn" id="b-clr">清除多選</button></div>
         <div class="row">${autoBtn(autoBusy(routes), `公車位置，每次 ${vehCalls(routes.length)} 次 API${routes.length > VEH_BATCH ? ' (全市一次查詢)' : routes.length > 1 ? ' (合併查詢)' : ''}`)}<span class="muted">${vehAuto ? '每分鐘自動更新' : '自動更新已關'}</span>
             ${vt ? `<span class="muted">${Math.round((Date.now() - vt) / 1000)} 秒前查詢</span>` : ''}</div>
-        <div class="hint">地圖只顯示所選路線方向的公車；點路線看完整站序與時刻，⇄ 切換方向。按「📍 附近」標出各路線離你最近的一站，點地圖上任一站可看該站本班／下一班。${multiMrt ? '綠線列車位置依班距推估。' : ''}</div>${mrtRow}${rows}`;
+        <div class="hint">地圖只顯示所選路線方向的公車；點路線看完整站序與時刻，⇄ 切換方向。按「📍 附近」標出各路線離你最近的一站，點地圖上任一站可看該站本班／下一班。${multiMrt ? '綠線列車位置依班距推估。' : ''}</div>${grpRow}${mrtRow}${rows}`;
     $('b-add').onclick = () => { view = null; layerSel.clearLayers(); setArrows([]); drawVehicles(); $('q').value = ''; renderSearch(); };
     if (MultiNear.on || MultiPick.si !== null) drawMultiNear();
-    $('b-clr').onclick = () => { multi = []; multiMrt = false; GRP.on = null; saveMulti(); renderMulti(); };
+    $('b-clr').onclick = () => { multi = []; multiMrt = false; multiGrp = null; GRP.on = null; saveMulti(); renderMulti(); };
+    if ($('b-delgrp')) $('b-delgrp').onclick = ev => { ev.stopPropagation(); multiGrp = null; saveMulti(); drawMultiMap(false); renderMulti(); };
+    { const go = panel.querySelector('[data-mgo]'); if (go) go.onclick = ev => { if (ev.target.closest('button')) return; openGroup(multiGrp); }; }
     if ($('b-delmrt')) $('b-delmrt').onclick = ev => { ev.stopPropagation(); multiMrt = false; saveMulti(); drawMultiMap(false); renderMulti(); drawMrtTrains(); };
     { const mr = panel.querySelector('[data-mrt]'); if (mr) mr.onclick = ev => { if (ev.target.closest('button')) return; openMrt(); }; }
     $('b-auto').onclick = () => setVehAuto(!vehAuto);
@@ -3092,7 +3117,6 @@ function renderRoute() {
     const keep = panel.scrollTop;
     const hasShape = !!shapeOf(r);
     const vc = vehCache.get(r.route);
-    const t0 = timesAt(r, 0, ds);
     const trk = trackInfo(r);
     const rows = r.seq.map((si, pos) => {
         const s = STOPS[si];
@@ -3110,24 +3134,27 @@ function renderRoute() {
         return `<div class="seq-row${view.here === s.name ? ' here' : ''}${tk ? ' track' : ''}" data-key="${key}" data-sid="${esc(s.sid)}"><div class="seq-dot" style="border-color:${c}"></div>
             <div class="seq-name">${esc(s.name)}${tk ? ` <small class="trk-d">📍 距你 ${Math.round(trk.d)} m</small>` : ''}<br><small>${tt}</small></div><div class="seq-eta">${isToday ? etaHtml(row) + cmpHtml(compareEta(r, s.name, row)) : ''}</div>${full}</div>`;
     }).join('');
-    const busy = autoBusy([r.route]), nVeh = vc ? vc.rows.filter(v => v.sub === r.sub && v.dir === r.dir).length : null;
+    const busy = autoBusy([r.route]);
     const bk = view.back && grpOf(view.back.grp);
-    panel.innerHTML = `${bk ? `<div class="hint">點地圖上淡色的${esc(bk.name)}回到路廊；其他路廊公車以淡色顯示</div>` : ''}<div class="rt-head"><h2>${badge(r.sub)} 往 ${esc(destOf(r))}</h2>
-        ${other ? `<button class="rev" id="b-rev" title="切換方向">⇄ 往 ${esc(destOf(other))}</button>` : ''}
-        ${isToday ? autoBtn(busy, '即時到站＋班次配對＋公車位置，每次 3 次 API') : ''}</div>
-        <div class="muted">${r.seq.length} 站 · ${isToday ? (eta ? `即時 ${new Date(eta.at).toLocaleTimeString('zh-TW', { hour12: false })}` : '即時資料載入中…') + (nVeh !== null ? ` · 本路線公車 ${nVeh} 輛` : '') + (vehAuto ? ' · 每分鐘自動更新' : '') : `${ds} 時刻表`}${t0.note ? ' · ' + esc(t0.note) : ''}</div>
+    panel.innerHTML = `<div class="rt-head"><h2>${badge(r.sub)} 往 ${esc(destOf(r))}</h2>
+        ${other ? `<button class="rev" id="b-rev" title="切換方向">⇄ 往 ${esc(destOf(other))}</button>` : ''}</div>
+        ${isToday ? `<div class="row live-row"><span class="live-pill">即時</span><span class="muted">${eta ? new Date(eta.at).toLocaleTimeString('zh-TW', { hour12: false }) : '載入中…'}</span>${autoBtn(busy, '即時到站＋班次配對＋公車位置，每次 3 次 API')}</div>`
+            : `<div class="muted">${ds} 時刻表</div>`}
         ${(() => { const v3 = ttSrc() === 'v3', E = estGet(r.route);
             return `<div class="row tt-row"><label class="muted">時刻依據 <select id="tt-src"><option value="s2s"${v3 ? '' : ' selected'}>站間旅行時間 (TDX)</option><option value="v3"${v3 ? ' selected' : ''}>站站班表 V3 ⚠️大流量</option></select></label>
             ${E ? `<span class="muted">此裝置已有 V3${v3 ? '' : '（未使用）'}</span>` : v3 ? (loading.has('esapi:' + r.route) ? '<span class="muted">V3 下載中…</span>'
                 : `<button class="btn v3-btn" id="b-v3" title="本月 V3 已用約 ${mbTxt(v3Usage().bytes)}／上限 ${mbTxt(v3Cap())}">⚠️ 下載此路線 V3（約 ${mbTxt(v3Estimate(r.route))}）</button><span class="muted">未下載前使用站間旅行時間</span>`) : ''}</div>`; })()}
         <div class="row">        <button class="btn" id="b-madd">${multi.some(m => m.sub === r.sub && m.dir === r.dir) ? '✓ 已在多選' : '＋ 加入多選'}</button>
+        ${bk ? `<button class="btn" id="b-gback" style="background:${bk.color};color:#fff">← 返回 ${esc(bk.name)}</button>` : ''}
         ${multi.length ? `<button class="btn" id="b-mopen">多選 (${multi.length})</button>` : ''}</div>
         ${(() => { const e = daySched(r.route, ds); const x = e && e.subs[r.sub] && e.subs[r.sub][r.dir];
             return x && ((x.cancel && x.cancel.length) || (x.added && x.added.size)) ? `<div class="mk-legend">今日比對每日營運時刻表：<s class="cx">HH:MM</s> 紅字劃掉＝取消班次${x.cancel.length ? ` ${x.cancel.length} 班` : ''}　<span class="ad">HH:MM</span> 橘字＝增調班次${x.added && x.added.size ? ` ${x.added.size} 班` : ''}</div>` : ''; })()}
         <div class="hint">點站名展開該站全日時刻表；地圖上點站牌可查該站位。${hasShape ? '地圖小箭頭為行駛方向。' : SHAPES ? '此路線無道路線形資料，地圖虛線為站牌連線。' : '道路線形載入中…'}</div>
         <div class="seq" style="--rc:${c}">${rows}</div>`;
     if (!view.scrolled && view.here) { const h = panel.querySelector('.seq-row.here'); if (h) { panel.scrollTop = h.offsetTop - panel.clientHeight / 3; view.scrolled = true; } } else panel.scrollTop = keep;
-    if ($('b-rev')) $('b-rev').onclick = () => openRoute(r.sub, other.dir, view.here, view.back);    if ($('b-auto')) $('b-auto').onclick = () => setVehAuto(!vehAuto);
+    if ($('b-rev')) $('b-rev').onclick = () => openRoute(r.sub, other.dir, view.here, view.back);
+    if ($('b-gback')) $('b-gback').onclick = () => openGroup(view.back.grp, true, view.back.gdir);
+    if ($('b-auto')) $('b-auto').onclick = () => setVehAuto(!vehAuto);
     $('tt-src').onchange = e => {
         try { localStorage.setItem(TT_KEY, e.target.value); } catch (er) {}
         dayMemo.clear(); matchCache.clear();
