@@ -248,6 +248,14 @@
     .nav-vlab { position: relative; padding: 7px 30px 8px 11px; white-space: normal; min-width: 180px; max-width: 260px; cursor: default; }
     .nav-vlab .badge { font-size: 12px; }
     .nav-vlab .vh { font-size: 13px; }
+    .nav-vlab.nav-vmini { padding: 5px 10px 6px; min-width: 0; max-width: 240px; cursor: pointer; }   /* 候車中的車：常駐小標籤 */
+    .nav-warn { border: 1.5px solid #ff9f0a; background: rgba(255,159,10,.12); border-radius: 14px; padding: 8px 10px; margin: 0 0 10px; font-size: 13px; }
+    .nav-warn .small { margin-top: 4px; }
+    .nav-alt { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; padding: 6px 0; border-top: 1px solid var(--hair, rgba(255,255,255,.12)); margin-top: 6px; }
+    .nav-alt .small { flex: 1; min-width: 120px; margin: 0; }
+    .nav-alt-use { border: 0; border-radius: 999px; padding: 5px 12px; background: #0a84ff; color: #fff; font: 600 12px/1 inherit; cursor: pointer; }
+    .nav-pin .t { display: block; font-size: 11px; font-weight: 600; opacity: .95; }
+    .nav-up { font-weight: 700; } .nav-up.late { color: #ff453a; } .nav-up.early { color: #0a84ff; } .nav-up.ontime { color: #30d158; }   /* hh:mm上車 */
     .nav-vlab .vx { position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; border: 0; border-radius: 50%; background: var(--soft, rgba(118,118,128,.24)); color: var(--text, #fff); font-size: 16px; line-height: 1; cursor: pointer; }
     .nav-vlab .vr { margin-top: 6px; border: 0; border-radius: 999px; padding: 5px 10px; background: #0a84ff; color: #fff; font: 600 12px/1 inherit; cursor: pointer; }
     .nav-jamw { pointer-events: auto; }
@@ -267,17 +275,27 @@
     .tl + .tl { margin-top: 2px; }
     .tl.cur { background: rgba(10,132,255,.18); box-shadow: inset 0 0 0 1px rgba(10,132,255,.45); }
     .tl.done { opacity: .45; }
-    .tl-ic { display: flex; justify-content: center; align-items: flex-start; font-size: 18px; }
+    .tl-ic { display: flex; justify-content: center; align-items: flex-start; font-size: 18px; position: relative; }
     .tl-s { color: var(--muted, #c7c7cc); font-size: 13px; }
-    .tl-dot { width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 4px solid; margin-top: 2px; }
-    .tl.ride .tl-ic { align-items: stretch; }
-    .tl-bar { width: 8px; border-radius: 4px; background: var(--c); min-height: 40px; }
+    /* 左側路線軸：上車站圓圈 → 搭乘線 → 下車站圓圈連成一條 (顏色＝路線色) */
+    .tl-dot { width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 4px solid var(--c, #8e8e93); margin-top: 2px; position: relative; z-index: 2; box-sizing: border-box; }
+    .tl-dot.dual { border-width: 3px; background: radial-gradient(circle, #fff 0 1.6px, var(--cp) 2.2px); }   /* 同站轉乘：內圈前段車、外圈下段車 */
+    .tl-dot.end { position: absolute; left: 50%; bottom: 11px; margin: 0; transform: translate(-50%, 50%); }
+    .tl.stop .tl-ic::after { content: ''; position: absolute; left: 50%; width: 6px; margin-left: -3px; top: 10px; bottom: -18px; background: var(--c); z-index: 1; }
+    .tl-bar { position: absolute; left: 50%; width: 6px; margin-left: -3px; top: -2px; bottom: 11px; background: var(--c); z-index: 1; }
+    .tl.ride.joined .tl-bar { bottom: -28px; }
+    .tl-x { font-size: 20px; font-weight: 700; color: var(--btn-text, #64d2ff); }
+    .tsrc { display: inline-block; font-size: 10px; font-weight: 700; line-height: 1; padding: 2px 4px; margin-right: 4px; border-radius: 5px; border: 1px solid currentColor; vertical-align: 2px; font-family: system-ui, sans-serif; }
+    .tsrc.live { color: #30d158; } .tsrc.est { color: #ff9f0a; } .tsrc.sch { color: #aeaeb2; }
     .tl.walk .tl-s { color: var(--btn-text, #64d2ff); }
     .nav-callout { background: var(--pop, rgba(36,36,38,.86)); color: var(--text, #fff); border: 1px solid var(--glass-edge, rgba(255,255,255,.14)); border-radius: 14px; padding: 7px 11px; font-size: 13px;
         white-space: nowrap; box-shadow: 0 6px 20px rgba(0,0,0,.35); position: relative; margin-bottom: 10px; -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
     .nav-callout::after { content: ''; position: absolute; left: 50%; bottom: -7px; margin-left: -7px; border: 7px solid transparent; border-bottom: 0; border-top-color: var(--pop, rgba(36,36,38,.86)); }
     .nav-callout.next { border: 2px solid #0a84ff; }
+    .nav-callout.warn { border: 2px solid #ff9f0a; }
     .nav-callout .nc-s { color: var(--muted, #c7c7cc); font-size: 12px; }
+    .nav-callout .nc-x { color: var(--btn-text, #64d2ff); font-size: 12px; font-weight: 700; margin: 2px 0 3px 6px; }
+    .nav-rt { cursor: pointer; }
     .nav-callout .nc-t { font-size: 18px; font-weight: 700; font-family: ui-monospace, monospace; }
     .nav-pin { background: var(--c, #333); color: #fff; border: 2px solid #fff; border-radius: 12px; padding: 3px 9px; font-size: 12px; font-weight: 700; white-space: nowrap; margin-bottom: 6px; text-align: center; box-shadow: 0 3px 10px rgba(0,0,0,.4); }
     .nav-pin small { display: block; font-weight: normal; }
@@ -640,17 +658,18 @@ const todayKey = () => dateKey(new Date());
 const nowMin = () => { const d = new Date(); return d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60; };
 const WD = ['日', '一', '二', '三', '四', '五', '六'];
 const WD_KEY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-function remain(dl) {
+function remain(dl, sfx) {
     const s = Math.floor((dl - Date.now()) / 1000);
     if (s <= 30) return '<span class="now">進站中</span>';
-    if (s > 15 * 60) { const d = new Date(dl); return `<span class="clk">${pad(d.getHours())}:${pad(d.getMinutes())}</span>`; }   // 15 分以上改顯示到站時刻 HH:MM
+    const tail = sfx ? ' ' + sfx : '';   // 後綴 (例：到站)；進站中不加
+    if (s > 15 * 60) { const d = new Date(dl); return `<span class="clk">${pad(d.getHours())}:${pad(d.getMinutes())}</span>${tail}`; }   // 15 分以上改顯示到站時刻 HH:MM
     const txt = `${Math.floor(s / 60)}分${pad(s % 60)}秒`;
-    return s < 180 ? `<span class="soon">${txt}</span>` : txt;
+    return (s < 180 ? `<span class="soon">${txt}</span>` : txt) + tail;
 }
 // 表定時刻 (今日分鐘數) → 「?分鐘後」
 const inMinTxt = m => { const d = Math.round(m - nowMin()); return d <= 0 ? '即將' : `${d}分鐘後`; };
 function tickLive() {
-    document.querySelectorAll('[data-dl]').forEach(e => { e.innerHTML = remain(+e.dataset.dl); });
+    document.querySelectorAll('[data-dl]').forEach(e => { e.innerHTML = e.dataset.cd ? navCd(+e.dataset.dl) : remain(+e.dataset.dl, e.dataset.sfx); });
     document.querySelectorAll('[data-in]').forEach(e => { e.textContent = inMinTxt(+e.dataset.in); });
 }
 
@@ -2537,7 +2556,11 @@ const MULTI_MRT_KEY = 'txg_multi_mrt_v1';
 let multiMrt = !!store.get(MULTI_MRT_KEY);   // 綠線是否在多選中 (與公車路線分開存)
 const MULTI_GRP_KEY = 'txg_multi_grp_v1';
 let multiGrp = store.get(MULTI_GRP_KEY) || null;   // 多選中的路廊 (群組 id，例 'blue')：地圖畫參考線與車站
-const saveMulti = () => { store.set(MULTI_KEY, multi); store.set(MULTI_MRT_KEY, multiMrt); store.set(MULTI_GRP_KEY, multiGrp); };
+// 路廊、綠線在多選中的方向 (同多選公車，⇄ 切換)：路廊 1＝往參考線終點 (藍線＝臺中車站)、-1＝往起點 (臺中港)；綠線 south＝往高鐵臺中站、north＝往北屯總站
+let multiGrpDir = store.get('txg_multi_grpdir_v1') === -1 ? -1 : 1;
+let multiMrtDir = store.get('txg_multi_mrtdir_v1') === 'north' ? 'north' : 'south';
+const mrtDest = dk => dk === 'south' ? '高鐵臺中站' : '北屯總站';
+const saveMulti = () => { store.set(MULTI_KEY, multi); store.set(MULTI_MRT_KEY, multiMrt); store.set(MULTI_GRP_KEY, multiGrp); store.set('txg_multi_grpdir_v1', multiGrpDir); store.set('txg_multi_mrtdir_v1', multiMrtDir); };
 const multiCount = () => multi.length + (multiMrt ? 1 : 0) + (multiGrp ? 1 : 0);
 const grpBadge = id => { const g = grpOf(id); return `<span class="badge" style="background:${g ? g.color : '#1f6fd1'}">${esc(g ? g.name : '藍線')}</span>`; };
 const mrtBadge = () => `<span class="badge" style="background:${NET.mrt.color || '#8cc540'}">綠線</span>`;
@@ -2555,7 +2578,7 @@ function openMulti() {
     if (mode !== 'route') { mode = 'route'; $('tab-route').classList.add('on'); $('tab-station').classList.remove('on'); }
     view = { type: 'multi' };
     open.clear();
-    loadVehiclesMany(multiRoutes().map(r => r.route)).catch(() => {});
+    loadVehiclesMany([...new Set(multiSelRoutes().map(r => r.route))]).then(drawVehicles).catch(() => {});
     drawMultiMap();
     renderMulti();
     drawMrtTrains();
@@ -2727,14 +2750,19 @@ function drawMultiMap(fit = true) {
     const all = [], sets = [];
     const mg = multiGrp && grpOf(multiGrp);
     if (mg) {   // 路廊 (藍線)：參考線＋車站 (車站視窗顯示兩個方向)；點線＝路廊檢視
-        L.polyline(mg.line, { color: mg.color, weight: 6, opacity: .85 }).bindTooltip(`捷運${mg.name} 路廊`, { sticky: true }).on('click', () => openGroup(mg.id)).addTo(layerSel);
-        (mg.stations || []).forEach(st => grpStaMarker(mg, st, () => [1, -1]).addTo(layerSel));
+        L.polyline(mg.line, { color: mg.color, weight: 6, opacity: .85 }).bindTooltip(`捷運${mg.name} 路廊 往 ${grpEnd(mg, multiGrpDir)}`, { sticky: true }).on('click', () => openGroup(mg.id, true, multiGrpDir)).addTo(layerSel);
+        (mg.stations || []).forEach(st => grpStaMarker(mg, st, () => [multiGrpDir]).addTo(layerSel));
+        sets.push({ lines: [multiGrpDir > 0 ? mg.line : mg.line.slice().reverse()], w: 6 });   // 目前方向的箭頭
         all.push(...mg.line);
     }
     if (multiMrt) {   // 綠線：實際線形與車站 (推估列車另由 drawMrtTrains 畫)
         const mc = NET.mrt.color || '#8cc540';
         L.polyline(NET.mrt.shape, { color: mc, weight: 6, opacity: .85 }).bindTooltip('臺中捷運綠線', { sticky: true }).on('click', openMrt).addTo(layerSel);
         NET.mrt.stations.forEach(s => L.circleMarker([s.lat, s.lng], { radius: 4.5, color: '#2e7d32', weight: 2, fillColor: '#fff', fillOpacity: 1 }).bindTooltip('綠線 ' + s.name).addTo(layerSel));
+        // 目前方向的箭頭：線形起點離北屯總站較近＝線形方向為往高鐵臺中站 (south)
+        const sh = NET.mrt.shape, st0 = NET.mrt.stations[0], d0 = p => Math.hypot(p[0] - st0.lat, p[1] - st0.lng);
+        const fwdSouth = d0(sh[0]) < d0(sh[sh.length - 1]);
+        sets.push({ lines: [(multiMrtDir === 'south') === fwdSouth ? sh : sh.slice().reverse()], w: 6 });
         all.push(...NET.mrt.shape);
     }
     const g = GRP.on && grpOf(GRP.on);
@@ -2837,7 +2865,11 @@ function nearBtnLabel() { const b = document.querySelector('.near-btn'); if (b &
 function renderMulti() {
     const rs = multiRoutes();
     if (!rs.length && !multiMrt && !multiGrp) { view = null; layerSel.clearLayers(); drawVehicles(); MrtTrain.clear(); renderSearch(); return; }
-    const routes = [...new Set(rs.map(r => r.route))];
+    const routes = [...new Set(multiSelRoutes().map(r => r.route))];
+    // 路廊剛加入多選或群組資料剛載入：補載路廊路線的公車位置
+    const mgo = multiGrpObj();
+    if (mgo && selDate() === todayKey() && Date.now() - (renderMulti.mgTry || 0) > 60000) { const miss = [...new Set(grpRoutes(mgo).map(r => r.route))].filter(rt => !vehCache.has(rt) && !loading.has('v:' + rt)); if (miss.length) { renderMulti.mgTry = Date.now(); loadVehiclesMany(miss).then(() => { vehDrawn = ''; drawVehicles(); if (view && view.type === 'multi') renderMulti(); }).catch(() => {}); } }
+    const mgN = mgo ? grpRoutes(mgo).filter(r => !rs.includes(r)).reduce((n, r) => { const vc = vehCache.get(r.route); return n + (vc ? vc.rows.filter(v => v.sub === r.sub && v.dir === r.dir && grpSense(mgo, r, v) === multiGrpDir && lineProject(grpLine(mgo), v).d <= mgo.buf).length : 0); }, 0) : 0;
     const rows = rs.map(r => {
         const vc = vehCache.get(r.route), other = ROUTES.find(x => x.sub === r.sub && x.dir !== r.dir);
         const n = vc ? vc.rows.filter(v => v.sub === r.sub && v.dir === r.dir).length : null;
@@ -2849,8 +2881,8 @@ function renderMulti() {
     const vt = Math.max(0, ...routes.map(rt => (vehCache.get(rt) || {}).at || 0));
     const grp = GRP.on && grpOf(GRP.on);
     const mg = multiGrp && grpOf(multiGrp);
-    const grpRow = multiGrp ? `<div class="list-item" data-mgo="1">${grpBadge(multiGrp)}<div style="min-width:0;flex:1"><div>捷運${esc(mg ? mg.name : '藍線')} 路廊</div><div class="sub">${mg ? `${(mg.stations || []).length} 站 · 點地圖上的站看兩個方向最近兩班` : '載入中…'}</div></div><button class="btn" id="b-delgrp" title="移出多選">✕</button></div>` : '';
-    const mrtRow = multiMrt ? `<div class="list-item" data-mrt="1">${mrtBadge()}<div style="min-width:0;flex:1"><div>臺中捷運綠線</div><div class="sub">北屯總站 ↔ 高鐵臺中站 · ${selDate() === todayKey() ? `推估列車 ${mrtTrains().length} 列 (依班距)` : '非今日'}</div></div><button class="btn" id="b-delmrt" title="移出多選">✕</button></div>` : '';
+    const grpRow = multiGrp ? `<div class="list-item" data-mgo="1">${grpBadge(multiGrp)}<div style="min-width:0;flex:1"><div>捷運${esc(mg ? mg.name : '藍線')} 路廊 往 ${esc(mg ? grpEnd(mg, multiGrpDir) : '')}</div><div class="sub">${mg ? `${(mg.stations || []).length} 站 · 路廊上公車 ${mgN} 輛 (只顯示位置) · 點地圖上的站看這個方向最近兩班` : '載入中…'}</div></div>${mg ? `<button class="btn" id="b-revgrp" title="改看往 ${esc(grpEnd(mg, -multiGrpDir))}">⇄</button>` : ''}<button class="btn" id="b-delgrp" title="移出多選">✕</button></div>` : '';
+    const mrtRow = multiMrt ? `<div class="list-item" data-mrt="1">${mrtBadge()}<div style="min-width:0;flex:1"><div>綠線 往 ${mrtDest(multiMrtDir)}</div><div class="sub">${M.stations.length} 站 · ${selDate() === todayKey() ? `推估列車 ${mrtTrains().filter(t => t.dk === multiMrtDir).length} 列 (依班距)` : '非今日'}</div></div><button class="btn" id="b-revmrt" title="改看往 ${mrtDest(multiMrtDir === 'south' ? 'north' : 'south')}">⇄</button><button class="btn" id="b-delmrt" title="移出多選">✕</button></div>` : '';
     panel.innerHTML = `<h2>${grp ? `<span class="badge" style="background:${grp.color}">${esc(grp.name)}</span> 沿線` : '多選路線'} · ${multiCount()} 條</h2>
         <div class="row"><button class="btn" id="b-add">＋ 加入路線</button><button class="btn" id="b-clr">清除多選</button></div>
         <div class="row">${autoBtn(autoBusy(routes), `公車位置，每次 ${vehCalls(routes.length)} 次 API${routes.length > VEH_BATCH ? ' (全市一次查詢)' : routes.length > 1 ? ' (合併查詢)' : ''}`)}<span class="muted">${vehAuto ? '每分鐘自動更新' : '自動更新已關'}</span>
@@ -2860,7 +2892,9 @@ function renderMulti() {
     if (MultiNear.on || MultiPick.si !== null) drawMultiNear();
     $('b-clr').onclick = () => { multi = []; multiMrt = false; multiGrp = null; GRP.on = null; saveMulti(); renderMulti(); };
     if ($('b-delgrp')) $('b-delgrp').onclick = ev => { ev.stopPropagation(); multiGrp = null; saveMulti(); drawMultiMap(false); renderMulti(); };
-    { const go = panel.querySelector('[data-mgo]'); if (go) go.onclick = ev => { if (ev.target.closest('button')) return; openGroup(multiGrp); }; }
+    { const go = panel.querySelector('[data-mgo]'); if (go) go.onclick = ev => { if (ev.target.closest('button')) return; openGroup(multiGrp, true, multiGrpDir); }; }
+    if ($('b-revgrp')) $('b-revgrp').onclick = ev => { ev.stopPropagation(); multiGrpDir = -multiGrpDir; saveMulti(); vehDrawn = ''; drawMultiMap(false); renderMulti(); };
+    if ($('b-revmrt')) $('b-revmrt').onclick = ev => { ev.stopPropagation(); multiMrtDir = multiMrtDir === 'south' ? 'north' : 'south'; saveMulti(); drawMultiMap(false); renderMulti(); drawMrtTrains(); };
     if ($('b-delmrt')) $('b-delmrt').onclick = ev => { ev.stopPropagation(); multiMrt = false; saveMulti(); drawMultiMap(false); renderMulti(); drawMrtTrains(); };
     { const mr = panel.querySelector('[data-mrt]'); if (mr) mr.onclick = ev => { if (ev.target.closest('button')) return; openMrt(); }; }
     $('b-auto').onclick = () => setVehAuto(!vehAuto);
@@ -3054,15 +3088,25 @@ const selRoutes = () => {
         return g ? [r, ...grpRoutes(g).filter(x => x !== r)] : [r];
     }
     if (view.type === 'grp') { const g = grpOf(view.id); return g ? grpRoutes(g) : []; }
-    return view.type === 'multi' ? multiRoutes() : [];
+    return view.type === 'multi' ? multiSelRoutes() : [];
 };
+// 多選含路廊 (藍線) 時：路廊路線也載入公車位置 (只畫在路廊上的車，不畫路線線形)
+const multiGrpObj = () => multiGrp && grpOf(multiGrp);
+function multiSelRoutes() {
+    const own = multiRoutes(), g = multiGrpObj();
+    if (!g) return own;
+    const S = new Set(own);
+    return own.concat(grpRoutes(g).filter(r => !S.has(r)));
+}
 function drawVehicles() {
     const rs = selRoutes().filter(Boolean);
     // 資料沒變就不重畫 (避免關掉已打開的車牌視窗)
     // 路廊：'grp' 檢視的公車點了進路線；由路廊進入的路線檢視 (back)，第一條以外淡化
     const gid = view && (view.type === 'grp' ? view.id : view.type === 'route' && view.back ? view.back.grp : null), g = gid && grpOf(gid);
     const gd = g ? (view.type === 'grp' ? view.gdir : view.back.gdir) : 0, focus = !!(g && view.type === 'route');
-    const key = (g ? `${gid}${gd}${view.type}|` : '') + rs.map(r => `${r.sub}|${r.dir}|${(vehCache.get(r.route) || {}).at || 0}`).join(',');
+    // 多選中的路廊：不在多選裡的路廊路線只畫路廊範圍內的車
+    const mg = view && view.type === 'multi' && multiGrpObj(), own = mg ? new Set(multiRoutes()) : null;
+    const key = (g ? `${gid}${gd}${view.type}|` : '') + (mg ? `mg:${mg.id}${multiGrpDir}|` : '') + rs.map(r => `${r.sub}|${r.dir}|${(vehCache.get(r.route) || {}).at || 0}`).join(',');
     if (key === vehDrawn) return;
     vehDrawn = key;
     layerVeh.clearLayers();
@@ -3070,7 +3114,8 @@ function drawVehicles() {
         const c = vehCache.get(r.route);
         if (!c) return;
         const dimR = focus && k > 0;
-        c.rows.filter(v => v.sub === r.sub && v.dir === r.dir && (!g || (focus && k === 0) || grpSense(g, r, v) === gd)).forEach(v => {
+        const corr = mg && !own.has(r);
+        c.rows.filter(v => v.sub === r.sub && v.dir === r.dir && (!g || (focus && k === 0) || grpSense(g, r, v) === gd) && (!corr || (grpSense(mg, r, v) === multiGrpDir && lineProject(grpLine(mg), v).d <= mg.buf))).forEach(v => {
             // 路廊檢視：已離開路廊 (距參考線超過 buf) 的公車也淡化
             const dim = dimR || (g && !focus && lineProject(grpLine(g), v).d > g.buf);
             const st = dim ? null : vehState(r, v);
@@ -3263,7 +3308,7 @@ const trainIcon = html => L.divIcon({ className: 'bus-ico', iconSize: [26, 26], 
 function drawMrtTrains() {
     if (!mrtShown() || selDate() !== todayKey()) { MrtTrain.clear(); return; }
     if (!MrtTrain.line) { MrtTrain.line = navLine(M.shape); MrtTrain.sAt = M.stations.map(s => lineProject(MrtTrain.line, s).s); }
-    const n = M.stations.length, c = M.color || '#8cc540', seen = new Set(), trs = mrtTrains();
+    const n = M.stations.length, c = M.color || '#8cc540', seen = new Set(), trs = mrtTrains().filter(t => view.type !== 'multi' || t.dk === multiMrtDir);   // 多選：只畫所選方向
     const idxOf = (dk, k) => dk === 'south' ? k : n - 1 - k;
     trs.forEach(t => {
         const k0 = Math.floor(t.pos), f = t.pos - k0, a = idxOf(t.dk, k0), b = idxOf(t.dk, Math.min(n - 1, k0 + 1));
@@ -3334,7 +3379,7 @@ function navResolve(p) {
             const line = navLine(M.shape), sB = lineProject(line, st[ib]).s, sA = lineProject(line, st[ia]).s;
             const fw = sA >= sB, path = fw ? lineSlice(line, sB, sA) : lineSlice(line, sA, sB).reverse();
             return { k: 'mrt', dirKey: l.dirKey, ib, ia, b: st[ib], a: st[ia], line: navLine(path), color: M.color || '#8cc540', label: '綠線', dest: l.dirKey === 'south' ? '高鐵臺中站' : '北屯總站',
-                     path, nStops: Math.abs(ia - ib) };
+                     path, nStops: Math.abs(ia - ib), rm: l.rm, pb: l.pb, pa: l.pa, plive: l.plive };
         }
         const r = ROUTES.find(x => x.sub === l.sub && x.dir === l.dir);
         if (!r) return null;
@@ -3345,7 +3390,7 @@ function navResolve(p) {
         const sh = shapeOf(r), raw = sh ? sh.reduce((a, b) => b.length > a.length ? b : a, sh[0]) : r.seq.map(si => [STOPS[si].lat, STOPS[si].lng]);
         const line = navLine(raw), B = STOPS[r.seq[bp]], A = STOPS[r.seq[ap]];
         const sB = lineProject(line, B).s, sA = lineProject(line, A, sB).s;
-        return { k: 'bus', r, bp, ap, b: B, a: A, line, sB, sA, color: colorOf(r.sub), label: r.sub, dest: destOf(r), path: lineSlice(line, sB, Math.max(sA, sB + 1)), nStops: ap - bp };
+        return { k: 'bus', r, bp, ap, b: B, a: A, line, sB, sA, color: colorOf(r.sub), label: r.sub, dest: destOf(r), path: lineSlice(line, sB, Math.max(sA, sB + 1)), nStops: ap - bp, rm: l.rm, pb: l.pb, pa: l.pa, plive: l.plive };
     });
     if (legs.some(x => !x)) return null;
     const steps = [];
@@ -3374,7 +3419,7 @@ function navLoadGL() {
 function navOpen(p) {
     const R = navResolve(p);
     if (!R) { alert('無法在站牌資料中找到這個行程的上下車站，請改用路線查詢。'); return; }
-    Object.assign(Nav, { on: true, started: false, plan: p, legs: R.legs, steps: R.steps, dest: R.dest, cur: 0, plate: null, warned: -1, free: false, busS: null, brg: null });
+    Object.assign(Nav, { on: true, started: false, plan: p, legs: R.legs, steps: R.steps, dest: R.dest, cur: 0, plate: null, warned: -1, free: false, busS: null, brg: null, xfer: {}, alt: null, issue: null });
     $('nav').classList.add('on');
     document.body.style.overflow = 'hidden';
     // 預先載入：各段路線即時、時刻表 (早/遲比對)、線上班次、公車位置
@@ -3451,8 +3496,16 @@ function navPollPlan(st, g) {
 function navPoll() {
     if (!Nav.on || !Nav.started || document.visibilityState !== 'visible') return;
     const st = Nav.steps[Nav.cur], g = navLeg();
+    // YouBike 借還站即時 (開放資料，不耗 TDX)：還沒騎完前每 2 分鐘
+    if ((Nav.plan.bs || Nav.plan.be) && (!Nav.pt.yb || Date.now() - Nav.pt.yb >= 120000)) { Nav.pt.yb = Date.now(); ybLive().then(() => navRender()).catch(() => {}); }
     if (!g || g.k !== 'bus') return;
     const iv = navPollPlan(st, g), now = Date.now(), due = k => iv[k] && now - Nav.pt[k] >= iv[k];
+    // 每日營運時刻表 (取消／增調班次) 沒載到時每 2 分鐘重試：沒有它，早/遲會配對到路線班表上已取消的班次 (例：遲 21 分其實準點)
+    navRoutes().forEach(rt => {
+        if (todayOld(rt) || loading.has('t:' + rt)) return;
+        const k = 'day:' + rt;
+        if (!Nav.pt[k] || now - Nav.pt[k] >= 120000) { Nav.pt[k] = now; loadDay(rt, true).catch(() => {}); }
+    });
     if (due('eta')) { Nav.pt.eta = now; navEta(g.r.route); }
     if (due('veh')) { Nav.pt.veh = now; loadVehicles(g.r.route, true).catch(() => {}); }
     if (due('a2')) { Nav.pt.a2 = now; loadA2(g.r.route, true, true).catch(() => {}); }
@@ -3515,8 +3568,121 @@ function navWaitInfo(g) {
     const row = navEtaRow(g, g.b.name);
     if (!row) return { txt: etaCache.has('rt:' + g.r.route) ? '暫無到站資訊' : '即時資料載入中…' };
     if (row.plate && row.plate !== '-1' && !Nav.plate) Nav.plate = row.plate;
-    if (row.dl === null) return { txt: row.status === 1 && row.next ? `表定 ${new Date(row.next).toTimeString().slice(0, 5)} 發車` : (STATUS[row.status] || '--'), row };
-    return { dl: row.dl, cmp: compareEta(g.r, g.b.name, row), row, plate: row.plate };
+    if (row.dl === null) return { txt: row.status === 1 && row.next ? `表定 ${new Date(row.next).toTimeString().slice(0, 5)} 發車` : (STATUS[row.status] || '--'), sch: row.status === 1 && row.next ? Date.parse(row.next) : null, nx: row.status === 1 || row.status === 2 ? navSchedNext(g) : null, row };
+    return { dl: row.dl, cmp: navSchedOk(g) ? compareEta(g.r, g.b.name, row) : null, row, plate: row.plate };
+}
+// 早/遲要等每日營運時刻表載入後才比 (只有路線班表時，取消／改點的班次會被配錯)
+const navSchedOk = g => g.k === 'bus' && !!todayOld(g.r.route);
+// 車在哪：最近經過 (或停靠) 的站、到上車站還有幾站
+function navApproach(g, v) {
+    const st = vehState(g.r, v);
+    if (!st) return null;
+    const Mv = alongOf(g.r);
+    let k = 0;
+    while (k + 1 < Mv.length && Mv[k + 1] <= st.mNow + 20) k++;
+    return { k, at: Math.abs(st.mNow - Mv[k]) <= 40, name: STOPS[g.r.seq[k]].name, left: g.bp - k, jam: st.jam };
+}
+// ---- 導航時刻：每個時間標來源 表定 (時刻表)／推估 (班距、上車時刻＋規劃車程)／即時 (動態 API) ----
+//   起點站＝HH:MM 發車；中間站＝mm分ss秒 到站／進站中
+const NAV_SRC_CLS = { 表定: 'sch', 推估: 'est', 即時: 'live' };
+const tsrc = s => `<span class="tsrc ${NAV_SRC_CLS[s] || ''}">${s}</span>`;
+// 這段的上車站是路線起點 (公車未發車前以發車時刻表示)
+const navAtOrigin = g => g.k === 'bus' ? g.bp === 0 : g.dirKey === 'south' ? g.ib === 0 : g.ib === M.stations.length - 1;
+// 本站沒有即時到站時：依今日班表找下一班 (到本站時刻還沒過的第一班)，並看它是否已發車
+//   已發車＝A2 配對到這一班 (到站時刻＝表定＋發車早遲)；未依時刻表發車＝表定發車已過仍未配對到車 (到站時刻＝表定＋已延誤分)
+//   表定發車已過很久且沒配對 (取消／漏報) 的班次跳過；沒有車輛資料時照表定
+// → { ms, src, st: '已發車'|'未依時刻表發車'|'', plate, late } | null
+function navSchedNext(g, afterMs = 0) {
+    if (g.k !== 'bus') return null;
+    const v = todaySched(g.r.route), e = v && v.subs[g.r.sub] && v.subs[g.r.sub][g.r.dir];
+    if (!e) return null;
+    const i = e.stops[g.bp] === g.b.name ? g.bp : e.stops.indexOf(g.b.name);
+    if (i < 0) return null;
+    const nm = nowMin(), info = tripInfo(e), mt = navSchedOk(g) ? matchTrips(g.r.route, g.r.sub, g.r.dir) : null, today0 = new Date().setHours(0, 0, 0, 0);
+    const base = i === 0 || !e.src ? '表定' : '推估';
+    const ks = e.trips.map((t, k) => k).filter(k => e.trips[k][i] !== null && e.trips[k][i] !== undefined && info.dep[k] !== null).sort((a, b) => e.trips[a][i] - e.trips[b][i]);
+    for (const k of ks) {
+        const dep = info.dep[k], hit = mt && mt.byTrip.get(k), pend = mt && mt.pendingOf.get(k);
+        let at = e.trips[k][i], st = '', src = base, late = 0;
+        if (hit) { st = '已發車'; late = hit.late; at += late; src = '推估'; }
+        else if (pend) {
+            st = '未依時刻表發車'; late = Math.max(0, nm - dep);
+            if (i === 0) {   // 起點站：仍標表定發車時刻 (要接得上：之後才到的轉乘不算這班)
+                if (afterMs && today0 + (nm + 0.5) * 60000 < afterMs) continue;
+                return { ms: today0 + at * 60000, src: '表定', st, plate: null, late: Math.round(late) };
+            }
+            at += late; src = '推估';
+        }
+        else if (mt && dep < nm - 1) continue;   // 該發車而沒有配對、也不在待發清單：視為未行駛
+        if (at < nm - 0.5 || today0 + at * 60000 < afterMs - 20000) continue;
+        return { ms: today0 + at * 60000, src, st, plate: hit ? hit.v.plate : null, late: Math.round(late) };
+    }
+    return null;
+}
+// 倒數 (不重複上車時刻)：15 分內 mm分ss秒 到站／進站中，超過不顯示
+const navCd = ms => ms - Date.now() > 15 * 60000 ? '' : remain(ms, '到站');
+// 候車第二行：發車狀態、早遲、倒數 (中間站)；沒有時刻才顯示文字 (載入中、末班已過…)
+function navLeftHtml(g, w) {
+    const ms = w.dl || (w.nx && w.nx.ms), out = [];
+    if (!w.dl && w.nx && w.nx.st) out.push(navStTag(w.nx).trim());
+    if (w.dl && w.cmp) out.push(`<span class="dly ${lateCls(w.cmp.diff)}">${lateWord(w.cmp.diff)}</span>`);
+    if (ms && !navAtOrigin(g)) out.push(`<span data-dl="${ms}" data-cd="1">${navCd(ms)}</span>`);
+    if (!ms && w.txt) out.push(esc(w.txt));
+    return out.join(' ');
+}
+const navStTag = x =>x && x.st ? `<span class="dly ${x.st === '已發車' ? 'ontime' : 'late'}">${x.st}${x.late >= 1 ? ` 遲${x.late}分` : x.late <= -1 ? ` 早${-x.late}分` : ''}</span> ` : '';
+// 候車倒數／發車文字 (起點站＝HH:MM 發車；中間站＝mm分ss秒 到站，15 分以上 HH:MM)
+function navWhen(g, w) {
+    const at = (src, ms) => navAtOrigin(g) ? `${tsrc(src)}${hmOf(ms)} 發車` : `${tsrc(src)}<span data-dl="${ms}" data-sfx="到站">${remain(ms, '到站')}</span>`;
+    if (w.dl) return at(w.src ? '推估' : '即時', w.dl);
+    // 沒有即時：已發車／未依時刻表發車＋下一班
+    if (w.nx) return `${navStTag(w.nx)}下一班 ${at(w.nx.src, w.nx.ms)}`;
+    if (w.sch) return `${tsrc('表定')}${hmOf(w.sch)} 發車`;
+    return esc(w.txt || '');
+}
+// 某段上車時刻 { ms, src, cmp }：目前這段＝即時到站 (起點＝表定發車)；之後的轉乘段＝依前段下車接得上的那一班
+function navUpAt(g) {
+    if (g === navLeg()) {
+        const w = navWaitInfo(g);
+        if (w.dl) return { ms: w.dl, src: w.src ? '推估' : '即時', cmp: w.cmp };
+        if (w.nx) return { ms: w.nx.ms, src: w.nx.src };
+        if (w.sch && navAtOrigin(g)) return { ms: w.sch, src: '表定' };
+        return navPlanT(g, 'pb');
+    }
+    const xf = Nav.xfer && Nav.xfer[Nav.legs.indexOf(g)];
+    return xf && xf.dl ? { ms: xf.dl, src: xf.src || '即時' } : navPlanT(g, 'pb');
+}
+// 路徑規劃查到的時刻 (導航一開始、即時資料還沒回來時用)：pb 上車、pa 下車 (今日分鐘)；已過 1 分以上不用
+function navPlanT(g, key) {
+    if (g[key] === undefined || g[key] === null) return null;
+    const ms = new Date().setHours(0, 0, 0, 0) + g[key] * 60000;
+    if (ms < Date.now() - 60000) return null;
+    return { ms, src: key === 'pb' ? (g.plive ? '即時' : navAtOrigin(g) ? '表定' : '推估') : '推估' };
+}
+// 某段下車時刻：即時＝該車在下車站的到站預估；推估＝上車時刻＋規劃車程；都沒有＝規劃時刻
+function navDnAt(g) {
+    const live = navArrAt(g);
+    if (live) return { ms: live, src: '即時' };
+    const st = Nav.steps[Nav.cur], riding = st && st.t === 'ride' && st.g === g;
+    const u = !riding && g.rm !== undefined && g.rm !== null ? navUpAt(g) : null;
+    return u ? { ms: u.ms + g.rm * 60000, src: '推估' } : navPlanT(g, 'pa');
+}
+const navTm = (u, word, cls = '') => u ? `<span class="nav-up ${cls}">${tsrc(u.src)}${hmOf(u.ms)}${word}</span>` : '';
+// 上車時刻文字 (hh:mm上車)：遲紅、早藍、準點綠
+function navBoardTxt(g, word = '上車') {
+    const u = navUpAt(g);
+    return navTm(u, word, u && u.cmp ? lateCls(u.cmp.diff) : '');
+}
+// 轉乘型式 (第 i 段上車)：same＝同站同側 (≤ 30 m)、opp＝同站名對向 (兩段在站上的行進方向相反)、walk＝步行轉乘
+function navXKind(i) {
+    const p = Nav.legs[i - 1], g = Nav.legs[i];
+    if (!p || !g) return '';
+    const d = gDist(p.a, g.b);
+    if (p.k === 'bus' && g.k === 'bus' && p.a.name === g.b.name && d < 120) {
+        const b1 = brgOf(lineAt(p.line, Math.max(0, p.sA - 30)), lineAt(p.line, p.sA)), b2 = brgOf(lineAt(g.line, g.sB), lineAt(g.line, g.sB + 30));
+        if (Math.abs(((b1 - b2) + 540) % 360 - 180) > 120) return 'opp';   // 站牌座標相同但行進方向相反也算對向
+    }
+    return d <= 30 ? 'same' : 'walk';
 }
 // ---- 導航車隊：要搭／要轉乘的公車 (主車) ＋靠近各上車站的同路線其他公車 (半透明) ----
 //   位置：GPS 投影到路線線形 → 依 API 回傳車速從 GPS 時間往前推 (API 沒給車速時才用「到下一站距離 ÷ 預估到站」推算)
@@ -3619,12 +3785,176 @@ function bus3dFeatures(p, brg, livery, k, plate) {
 // 車輛資訊卡 (點公車才出現；同路線查詢的資訊：路線、車牌、往哪、到站倒數、早/遲、車速)
 function navBusLabel(x) {
     const { g, v, T } = x, st = Nav.steps[Nav.cur], riding = st && st.t === 'ride' && st.g === g;
-    const mt = matchTrips(g.r.route, v.sub, v.dir), h = mt && mt.byPlate.get(v.plate);
+    const mt = navSchedOk(g) ? matchTrips(g.r.route, v.sub, v.dir) : null, h = mt && mt.byPlate.get(v.plate);
     const tgt = riding ? g.a.name : g.b.name, dl = navEtaOf(g, v.plate, tgt);
     return `<div class="nav-vlab"><button class="vx" title="關閉">×</button><div class="vh"><span class="badge" style="background:${g.color}">${esc(g.label)}</span> <b>${esc(v.plate)}</b>${h ? ` <span class="dly ${lateCls(h.late)}">${lateWord(h.late)}</span>` : ''}</div>
         <div class="nc-s">${x.primary ? (riding ? '搭乘中 · ' : x.i > navLegIdx() ? '轉乘 · ' : '要搭的車 · ') : '同路線其他車 · '}${dl ? `<span data-dl="${dl}">${remain(dl)}</span> 到 ${esc(tgt)}` : `往 ${esc(g.dest)}`}</div>
         <div class="nc-s">${T.jam ? '<span class="dly late">疑似塞車</span>' : isFinite(v.speed) && v.speed !== null ? `${Math.round(v.speed)} km/h` : ''}${h ? `${T.jam || isFinite(v.speed) ? ' · ' : ''}${esc(h.label)}` : ''} · <span data-ago="${v.gps}">${agoText(v.gps)}</span>的位置</div>
         <button class="vr">查看 ${esc(g.label)} 路線 ›</button></div>`;
+}
+// ---- 導航中的轉乘狀況檢查 → ⚠️ 與其他抵達終點的方案 ----
+//   候車：末班已過／停駛、要等 > 20 分、尚未發車且發車還很久
+//   下一個轉乘：用我這台車到下車站的即時預估＋步行，比對轉乘路線在上車站的即時班次 (Estimates 含後續班次)
+//     接不上 (停駛、班次都在我到達前)、轉乘緊湊 (< 1.5 分)、等候過長 (> 15 分)
+//   YouBike：借車站 0 車、還車站 0 位 (臺中市政府開放資料，不耗 TDX)
+const NAV_WAIT_LONG = 20, NAV_XFER_TIGHT = 1.5, NAV_XFER_LONG = 15;
+// 我 (或要搭的車) 到某段下車站的即時預估 (ms)
+function navArrAt(g) {
+    if (g.k !== 'bus') return null;
+    const plate = g === navLeg() ? Nav.plate || navWaitInfo(g).plate : (Nav.xfer && Nav.xfer[Nav.legs.indexOf(g)] || {}).plate;
+    return plate ? navEtaOf(g, plate, g.a.name) : null;
+}
+// 某段上車站在 readyMs 之後的第一班 (即時預估；沒有就看尚未發車的表定發車)
+function navNextBus(h, readyMs) {
+    const c = etaCache.get('rt:' + h.r.route);
+    if (!c) return null;
+    const rows = c.rows.filter(x => x.name === h.b.name && x.sub === h.r.sub && x.dir === h.r.dir);
+    const cands = rows.flatMap(x => [{ dl: x.dl, plate: x.plate }, ...(x.ests || []).map(q => ({ dl: q.dl, plate: q.plate }))]).filter(q => q.dl).sort((a, b) => a.dl - b.dl);
+    const nx = cands.find(q => q.dl >= readyMs - 20000) || null;
+    // 沒有即時：今日班表在本站接得上的下一班 (已發車／未依時刻表發車／表定)；班表沒載入才用 API 的下一班發車
+    const sn = navSchedNext(h, readyMs);
+    const sched = sn ? sn.ms : rows.filter(x => x.dl === null && x.status === 1 && x.next).map(x => Date.parse(x.next)).filter(t => t >= readyMs - 20000).sort((a, b) => a - b)[0] || null;
+    const dead = rows.length > 0 && rows.every(x => x.dl === null && (x.status === 3 || x.status === 4)) ? STATUS[rows[0].status] : '';
+    return { nx, sched, sn, dead, any: cands.length };
+}
+const hmOf = ms => fmt(Math.floor(minOfMs(ms)));   // 與倒數 (remain) 的 HH:MM 一致：捨去秒
+// YouBike 站即時 (依座標比對站點)
+function navYbAt(p) {
+    if (!YB.map || !p) return null;
+    let best = null;
+    YB.map.forEach(x => { const d = gDist(x, p); if (d < 25 && (!best || d < best.d)) best = { x, d }; });
+    return best && best.x;
+}
+// 之後各轉乘段接得上的班次：依前段下車時刻 (即時／推估／規劃) ＋步行，逐段往後推
+//   公車：即時到站 → 今日班表下一班 (已發車／未依時刻表發車) → API 下一班發車；捷運：班距推算
+//   → Nav.xfer[j] = { dl, src, plate, st, late, mid }、Nav.xinfo[j] = { arr, arrSrc, ready, nb }
+function navXferCalc() {
+    Nav.xfer = {}; Nav.xinfo = {};
+    const curI = navLegIdx();
+    for (let j = Math.max(1, curI + 1); j < Nav.legs.length; j++) {
+        const g = Nav.legs[j - 1], h = Nav.legs[j], dn = navDnAt(g);
+        if (!dn) continue;
+        const walkMin = Math.max(PL_XFER, gDist(g.a, h.b) * 1.3 / PL_WALK_MPM), ready = dn.ms + walkMin * 60000;
+        let x = null, nb = null;
+        if (h.k === 'mrt') {
+            const ts = mrtTimes(h.ib, h.dirKey, todayKey()), rm = minOfMs(ready), nx = ts.find(t => t >= rm - 0.3);
+            if (nx !== undefined) x = { dl: new Date().setHours(0, 0, 0, 0) + nx * 60000, src: '推估', mid: !navAtOrigin(h) };
+        } else {
+            nb = navNextBus(h, ready);
+            const sn = nb ? nb.sn : navSchedNext(h, ready);
+            x = nb && nb.nx ? { dl: nb.nx.dl, plate: nb.nx.plate, src: '即時' }
+                : sn ? { dl: sn.ms, src: sn.src, st: sn.st, late: sn.late, plate: sn.plate, mid: !navAtOrigin(h) }
+                : nb && nb.sched ? { dl: nb.sched, src: '表定' } : null;
+        }
+        Nav.xinfo[j] = { arr: dn.ms, arrSrc: dn.src, ready, nb };
+        if (x) Nav.xfer[j] = x;
+    }
+}
+// → { key, msg, from: { name, lat, lng }, t (分), ban: [[sub, dir]], skip: [sub, dir] (不要與原方案相同的第一段) } | null
+function navIssue() {
+    const st = Nav.steps[Nav.cur];
+    if (!Nav.started || !st || st.t === 'arrive') return null;
+    const g = navLeg(), gi = g ? Nav.legs.indexOf(g) : -1, now = Date.now(), here = Nav.pos ? { name: '目前位置', lat: Nav.pos.lat, lng: Nav.pos.lng } : null;
+    Nav.xfer = Nav.xfer || {};
+    // YouBike：還沒騎到的借車／還車站
+    const bks = [];
+    if (Nav.plan.bs) bks.push(Nav.plan.bs);
+    if (Nav.plan.be) bks.push(Nav.plan.be);
+    for (const bk of bks) {
+        const k = Nav.steps.findIndex(s => s.t === 'walk' && s.bike && gDist(s.from, bk.A) < 30);
+        if (k < 0 || Nav.cur > k) continue;
+        const A = navYbAt(bk.A), B = navYbAt(bk.B);
+        const msg = A && A.status === 1 && A.rent === 0 ? `${bk.A.name} 目前無車可借` : B && B.status === 1 && B.ret === 0 ? `${bk.B.name} 目前無空位可還` : A && A.status !== 1 ? `${bk.A.name} 暫停營運` : '';
+        if (msg) { const from = here || Nav.steps[Nav.cur].from || bk.A; return { key: 'yb:' + msg, msg, from: { name: from.name || '目前位置', lat: from.lat, lng: from.lng }, t: nowMin(), ban: [] }; }
+    }
+    if (!g || g.k !== 'bus') return null;
+    // 候車 (還沒上車)：這一段
+    if (st.t !== 'ride') {
+        const w = navWaitInfo(g), from = here || g.b, base = { from: { name: from.name || g.b.name, lat: from.lat, lng: from.lng }, t: nowMin() };
+        if (w.row && w.row.dl === null && (w.row.status === 3 || w.row.status === 4)) return { ...base, key: `w${gi}:dead`, msg: `${g.label} ${STATUS[w.row.status]}，搭不到`, ban: [[g.r.sub, g.r.dir]] };
+        if (w.dl && w.dl - now > NAV_WAIT_LONG * 60000) return { ...base, key: `w${gi}:long`, msg: `${g.label} 還要等 ${Math.round((w.dl - now) / 60000)} 分 (即時 ${hmOf(w.dl)} 到站)`, ban: [], skip: [g.r.sub, g.r.dir] };
+        if (!w.dl && w.nx && w.nx.ms - now > NAV_WAIT_LONG * 60000) return { ...base, key: `w${gi}:nodep`, msg: `${g.label} ${w.nx.st || '尚未發車'}，下一班 ${w.nx.src} ${hmOf(w.nx.ms)} ${navAtOrigin(g) ? '發車' : '到站'}`, ban: [], skip: [g.r.sub, g.r.dir] };
+        if (!w.dl && !w.nx && w.row && w.row.status === 1 && w.row.next && Date.parse(w.row.next) - now > NAV_WAIT_LONG * 60000) return { ...base, key: `w${gi}:nodep`, msg: `${g.label} 尚未發車，表定 ${hmOf(Date.parse(w.row.next))} 才發車`, ban: [], skip: [g.r.sub, g.r.dir] };
+    }
+    // 下一個轉乘 (Nav.xfer / Nav.xinfo 由 navXferCalc 先算好)；只在前段下車是即時預估時才警示，避免推估誤報
+    const h = Nav.legs[gi + 1], xi = Nav.xinfo && Nav.xinfo[gi + 1];
+    if (!h || h.k !== 'bus' || !xi || xi.arrSrc !== '即時' || !xi.nb) return null;
+    const { arr, ready, nb } = xi;
+    const base = { from: { name: g.a.name, lat: g.a.lat, lng: g.a.lng }, t: minOfMs(arr), keep: gi + 1 };   // keep：改用時保留到這一段為止
+    const lbl = `即時 ${hmOf(arr)} 在 ${g.a.name} 下車`;
+    if (nb.dead) return { ...base, key: `x${gi}:dead`, msg: `轉乘 ${h.label} ${nb.dead}，接不上 (${lbl})`, ban: [[h.r.sub, h.r.dir]] };
+    const t1 = nb.nx ? nb.nx.dl : nb.sched;
+    if (!t1) return nb.any ? { ...base, key: `x${gi}:gone`, msg: `轉乘 ${h.label} 的即時班次都在你到達前開走，接不上 (${lbl})`, ban: [[h.r.sub, h.r.dir]] } : null;
+    const wait = (t1 - ready) / 60000;
+    if (nb.nx && wait < NAV_XFER_TIGHT) return { ...base, key: `x${gi}:tight`, msg: `轉乘緊湊：${lbl}，${h.label} 即時 ${hmOf(t1)} 就到 (餘 ${Math.max(0, Math.round(wait))} 分)`, ban: [], skip: [h.r.sub, h.r.dir] };
+    if (wait > NAV_XFER_LONG) return { ...base, key: `x${gi}:long`, msg: `轉乘要等 ${Math.round(wait)} 分：${lbl}，${h.label} ${nb.nx ? '' : nb.sn && nb.sn.st ? nb.sn.st + '，下一班 ' : '下一班 '}${nb.nx ? '即時' : nb.sn ? nb.sn.src : '表定'} ${hmOf(t1)} ${nb.nx || (nb.sn && !navAtOrigin(h)) ? '才到' : '才發車'}`, ban: [], skip: [h.r.sub, h.r.dir] };
+    return null;
+}
+// 其他抵達終點的方案 (最多 2 個，第一段路線不同)；結果依狀況與分鐘快取
+function navAlts(is) {
+    const key = is.key + '|' + Math.floor(nowMin() / 2);
+    if (Nav.alt && Nav.alt.key === key) return Nav.alt;
+    Nav.alt = { key, list: null, busy: true };
+    planLoad().then(() => {
+        const gph = planGraph(), dst = planEnds({ type: 'point', lat: Nav.dest.lat, lng: Nav.dest.lng });
+        const src = planEnds({ type: 'point', lat: is.from.lat, lng: is.from.lng });
+        const idx = (sub, dir) => gph.routes.map((R, i) => R.kind === 'bus' && R.r.sub === sub && R.r.dir === dir ? i : -1).filter(i => i >= 0);
+        const ban = new Set(is.ban.flatMap(([s, d]) => idx(s, d))), skip = is.skip ? new Set(idx(...is.skip)) : null;
+        const cost = q => q.arrive + q.xfers * 5 + q.walk * 0.5, picked = [], firsts = new Set();
+        for (let round = 0; round < 5 && picked.length < 2; round++) {
+            const res = raptor(src, dst, is.t, todayKey(), ban).filter(q => q.arrive - is.t <= 180).sort((a, b) => cost(a) - cost(b));
+            if (!res.length) break;
+            res.forEach(q => { const f = q.rides[0]; if (picked.length < 2 && f && !firsts.has(f.ri) && !(skip && skip.has(f.ri))) { firsts.add(f.ri); picked.push(q); } });
+            res.forEach(q => q.rides[0] && ban.add(q.rides[0].ri));
+        }
+        if (Nav.alt && Nav.alt.key === key) { Nav.alt = { key, list: picked.sort((a, b) => cost(a) - cost(b)), busy: false, from: is.from }; navRender(); }
+    }).catch(() => { if (Nav.alt && Nav.alt.key === key) { Nav.alt = { key, list: [], busy: false }; navRender(); } });
+    return Nav.alt;
+}
+function navWarnHtml() {
+    const is = navIssue();
+    Nav.issue = is;
+    if (!is) return '';
+    const A = navAlts(is);
+    const rows = A.busy ? '<div class="small">找其他方案中…</div>' : !A.list || !A.list.length ? '<div class="small">目前找不到其他可行方案</div>'
+        : A.list.map((q, i) => { const f = q.rides[0], T = f ? legTimes(f) : null;
+            return `<div class="nav-alt">${q.rides.map(x => `<span class="badge" style="background:${legColor(x)}">${esc(legName(x))}</span>`).join('<span class="pl-arrow">›</span>')}
+                <span class="small">${T ? `${tsrc('推估')}${fmt(T.tb)} 於 ${esc(ptName(f.b))} 上車 · ` : ''}<b>${tsrc('推估')}${fmt(q.arrive)} 抵達</b></span><button class="nav-alt-use" data-i="${i}">改用</button></div>`; }).join('');
+    return `<div class="nav-warn"><b>⚠️ ${esc(is.msg)}</b><div class="small">其他抵達 ${esc(Nav.dest.name)} 的方案 (從 ${esc(is.from.name)} ${fmt(is.t)} 起)：</div>${rows}</div>`;
+}
+// 時間軸候車項目的即時文字：之後的轉乘段＝我到得了之後接得上的那一班 (不是現在最近的那班)；有狀況加 ⚠️
+function navTlWait(s, k, w, xf) {
+    const is = Nav.issue, warn = is && is.keep === s.i ? ` <span class="dly late">⚠️ ${esc(is.key.split(':')[1] === 'tight' ? '轉乘緊湊' : is.key.split(':')[1] === 'long' ? '等候過長' : '接不上')}</span>` : '';
+    if (k > Nav.cur && s.xfer && navLeg() !== s.g) {
+        // 轉乘上車時刻已在站名那行：這裡只放發車狀態、車號
+        if (xf && xf.dl) return `${navStTag(xf)}${xf.plate && xf.plate !== '-1' ? esc(xf.plate) : ''}${warn}`;
+        return warn || (navPlanT(s.g, 'pb') ? '' : '<span class="muted">前段到站後再確認</span>');
+    }
+    return navLeftHtml(s.g, w) + warn;
+}
+// 改用替代方案：轉乘狀況＝保留目前這段 (照搭到下車站) 只換後面；候車／YouBike 狀況＝從目前位置重新導航
+function navUseAlt(i) {
+    const A = Nav.alt, q = A && A.list && A.list[i], is = Nav.issue;
+    if (!q) return;
+    const keep = is && is.keep ? is.keep : 0, cur = Nav.cur, plate = Nav.plate;
+    const p = keep
+        ? { ...Nav.plan, to: { ...Nav.plan.to }, legs: Nav.plan.legs.slice(0, keep).concat(planNavLegs(q.rides)), be: undefined, we: q.legs[q.legs.length - 1].type === 'walk' }
+        : { from: { ...A.from }, to: { ...Nav.plan.to }, legs: planNavLegs(q.rides), ws: q.legs[0].type === 'walk', we: q.legs[q.legs.length - 1].type === 'walk' };
+    navClose(); navOpen(p); navStart();
+    if (keep) { Nav.plate = plate; navGo(cur); }   // 前面幾段不變：停在原本的步驟
+}
+// 候車中要搭的車：常駐小標籤
+function navWaitBusLabel(x) {
+    const { g, v, T } = x, a = navApproach(g, v), w = navWaitInfo(g);
+    const mt = navSchedOk(g) ? matchTrips(g.r.route, v.sub, v.dir) : null, h = mt && mt.byPlate.get(v.plate);
+    const cmp = w.cmp && w.plate === v.plate ? w.cmp : null;
+    const where = !a ? '' : a.left < 0 ? '已過上車站' : a.left === 0 ? '進站中' : `${a.at ? '在' : '過'} ${esc(a.name)} · 還有 ${a.left} 站`;
+    const tags = [
+        cmp ? `<span class="dly ${lateCls(cmp.diff)}">${lateWord(cmp.diff)}</span>` : '',
+        h && h.late ? `<span class="dly ${lateCls(h.late)}">${h.late > 0 ? '遲' : '早'}${Math.abs(h.late)}分發車</span>` : '',
+        T.jam || (a && a.jam) ? '<span class="dly late">塞車</span>' : ''
+    ].filter(Boolean).join(' ');
+    return `<div class="nav-vlab nav-vmini"><div class="vh"><span class="badge" style="background:${g.color}">${esc(g.label)}</span> ${where || esc(v.plate)}</div>${tags ? `<div class="nc-s">${tags}</div>` : ''}</div>`;
 }
 // 每幀繪製
 function navFleetFrame() {
@@ -3656,14 +3986,17 @@ function navFleetFrame() {
             mk.getElement().onclick = e => { e.stopPropagation(); navSelBus(key); };
             keep.add('veh:' + key);
         }
-        if (Nav.sel === key) {
-            const c = (Nav.labAt = Nav.labAt || {})[key];
-            if (!c || now - c.t >= 1000) Nav.labAt[key] = { t: now, h: navBusLabel(x) };
+        // 候車中：要搭的那台車常駐小標籤 (在哪站、還有幾站、早/遲、發車早/遲、塞車)；點了展開完整資訊卡
+        const stp = Nav.steps[Nav.cur], waitBus = stp && stp.t === 'wait' && stp.g === x.g && x.primary;
+        if (Nav.sel === key || waitBus) {
+            const c = (Nav.labAt = Nav.labAt || {})[key], full = Nav.sel === key;
+            if (!c || now - c.t >= 1000 || c.full !== full) Nav.labAt[key] = { t: now, full, h: full ? navBusLabel(x) : navWaitBusLabel(x) };
             const mk = navMark('vlab:' + key, x.p, Nav.labAt[key].h, { anchor: 'bottom', cls: 'nav-ca', offset: [0, liv ? -Math.round(10 + 3.4 * k / mpp) : -18] });
             mk.getElement().onclick = e => {
                 e.stopPropagation(); Nav.busHit = Date.now();
                 if (e.target.closest('.vx')) navSelBus(null);
                 else if (e.target.closest('.vr')) navShowRoute(x.g.r.sub, x.g.r.dir);
+                else if (e.target.closest('.nav-vmini')) navSelBus(key);
             };
             keep.add('vlab:' + key);
         }
@@ -3680,16 +4013,28 @@ function navSelBus(plate) {
     Nav.fleetT = 0;
 }
 // 資訊卡「查看路線」：暫時離開導航，看該路線查詢結果；「回到導航」或返回手勢回來
-function navShowRoute(sub, dir) {
+//   sub === null＝捷運綠線；here＝要標示的站 (上車站)
+function navShowRoute(sub, dir, here) {
     if (Nav.hidden) return;
     Nav.hidden = true;
     $('nav').classList.remove('on');
     document.body.style.overflow = '';
     $('nav-back').style.display = 'flex';
     try { history.pushState({ navBack: 1 }, ''); } catch (e) {}
-    openRoute(sub, dir);
+    if (sub === null) openMrt(); else openRoute(sub, dir, here);
     setTimeout(() => map.invalidateSize(), 50);
 }
+// 導航中的路線方塊 (時間軸、上方卡、看板)：點了看該段路線查詢資訊，標示上車站
+const navRtBadge = g => `<span class="badge nav-rt" data-leg="${Nav.legs.indexOf(g)}" style="background:${g.color}">${esc(g.label)}</span>`;
+function navRtClick(e) {
+    const b = e.target.closest('.nav-rt');
+    if (!b) return false;
+    e.stopPropagation(); e.preventDefault();
+    const g = Nav.legs[+b.dataset.leg];
+    if (g) g.k === 'mrt' ? navShowRoute(null) : navShowRoute(g.r.sub, g.r.dir, g.b.name);
+    return true;
+}
+document.addEventListener('click', e => { if (Nav.on && !Nav.hidden && e.target.closest && e.target.closest('#nav .nav-rt')) navRtClick(e); }, true);
 function navReturn() {
     if (!Nav.hidden) return;
     Nav.hidden = false;
@@ -3799,8 +4144,11 @@ function navArrowImg() {
 }
 function navLayers() {
     const m = Nav.map, E = { type: 'FeatureCollection', features: [] };
-    ['nav-legs', 'nav-walk', 'nav-stops'].forEach(id => m.addSource(id, { type: 'geojson', data: E }));
+    ['nav-legs', 'nav-walk', 'nav-stops', 'nav-full'].forEach(id => m.addSource(id, { type: 'geojson', data: E }));
     if (!m.hasImage('nav-arrow')) m.addImage('nav-arrow', navArrowImg(), { pixelRatio: 2 });
+    // 目前這段公車的整條路線 (同方向)：不搭的路段淡化
+    m.addLayer({ id: 'nav-full', type: 'line', source: 'nav-full', slot: 'middle', layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': ['get', 'c'], 'line-width': 5, 'line-opacity': 0.35, 'line-emissive-strength': 1 } });
     m.addLayer({ id: 'nav-walk', type: 'line', source: 'nav-walk', slot: 'middle', layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: { 'line-color': ['case', ['get', 'bike'], '#ff9f0a', ['get', 'cur'], '#0a84ff', '#7fb6ff'], 'line-width': ['case', ['get', 'cur'], 7, 5], 'line-dasharray': [0, 1.8], 'line-emissive-strength': 1 } });
     m.addLayer({ id: 'nav-legs-case', type: 'line', source: 'nav-legs', slot: 'middle', layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -3824,7 +4172,8 @@ function navLayers() {
     m.on('click', () => { setTimeout(() => { if (Nav.sel && Date.now() - (Nav.busHit || 0) > 300) navSelBus(null); }, 0); });   // 點地圖空白處關閉資訊卡
     if (!Nav.raf) Nav.raf = requestAnimationFrame(navFleetFrame);
     m.addLayer({ id: 'nav-stops', type: 'circle', source: 'nav-stops', slot: 'top',
-        paint: { 'circle-radius': ['case', ['get', 'end'], 7, 4], 'circle-color': '#fff', 'circle-stroke-color': ['get', 'c'], 'circle-stroke-width': ['case', ['get', 'end'], 4, 2.5], 'circle-pitch-alignment': 'map', 'circle-emissive-strength': 1 } });
+        paint: { 'circle-radius': ['case', ['get', 'end'], 7, 4], 'circle-color': '#fff', 'circle-stroke-color': ['get', 'c'], 'circle-stroke-width': ['case', ['get', 'end'], 4, 2.5], 'circle-pitch-alignment': 'map', 'circle-emissive-strength': 1,
+            'circle-opacity': ['case', ['get', 'dim'], 0.45, 1], 'circle-stroke-opacity': ['case', ['get', 'dim'], 0.4, 1] } });
 }
 const toLL = p => [p[1], p[0]];
 function navDraw() {
@@ -3834,12 +4183,16 @@ function navDraw() {
     const doneLeg = i => Nav.steps.slice(0, Nav.cur).some(s => s.t === 'ride' && s.i === i);
     m.getSource('nav-legs').setData({ type: 'FeatureCollection', features: Nav.legs.map((g, i) => ({ type: 'Feature',
         properties: { c: g.color, cur: i === curI, done: doneLeg(i) }, geometry: { type: 'LineString', coordinates: g.path.map(toLL) } })) });
-    const pts = [];
+    const pts = [], full = navLeg();
+    // 目前 (或下一段) 要搭的公車：整條路線同方向的線形與各站 (不搭的路段淡化)
+    const fullBus = full && full.k === 'bus' ? full : null;
+    m.getSource('nav-full').setData({ type: 'FeatureCollection', features: fullBus ? [{ type: 'Feature', properties: { c: fullBus.color }, geometry: { type: 'LineString', coordinates: fullBus.line.pts.map(toLL) } }] : [] });
+    if (fullBus) fullBus.r.seq.forEach((si, k) => { if (k < fullBus.bp || k > fullBus.ap) pts.push({ p: STOPS[si], c: fullBus.color, end: false, dim: true }); });
     Nav.legs.forEach(g => {
         if (g.k === 'bus') g.r.seq.slice(g.bp, g.ap + 1).forEach((si, k, a) => pts.push({ p: STOPS[si], c: g.color, end: k === 0 || k === a.length - 1 }));
         else [g.b, g.a].forEach(s => pts.push({ p: s, c: g.color, end: true }));
     });
-    m.getSource('nav-stops').setData({ type: 'FeatureCollection', features: pts.map(x => ({ type: 'Feature', properties: { c: x.c, end: x.end }, geometry: { type: 'Point', coordinates: [x.p.lng, x.p.lat] } })) });
+    m.getSource('nav-stops').setData({ type: 'FeatureCollection', features: pts.map(x => ({ type: 'Feature', properties: { c: x.c, end: x.end, dim: !!x.dim }, geometry: { type: 'Point', coordinates: [x.p.lng, x.p.lat] } })) });
     m.getSource('nav-walk').setData({ type: 'FeatureCollection', features: Nav.steps.map((s, k) => s.t === 'walk' ? { type: 'Feature', properties: { cur: k === Nav.cur, bike: !!s.bike },
         geometry: { type: 'LineString', coordinates: s.route ? s.route.line.pts.map(toLL) : [[s.from ? s.from.lng : s.to.lng, s.from ? s.from.lat : s.to.lat], [s.to.lng, s.to.lat]] } } : null).filter(Boolean) });
     navMarks();
@@ -3862,15 +4215,36 @@ function navDropMark(key) { if (Nav.marks[key]) { Nav.marks[key].remove(); delet
 function navMarks() {
     if (!Nav.map) return;
     const st = Nav.steps[Nav.cur];
+    const badge = g => navRtBadge(g);
+    const curI = navLegIdx(), riding = st && st.t === 'ride';
     Nav.legs.forEach((g, i) => {
+        // 已搭過的段：上車看板、下車圖釘都拿掉；搭乘中這段：上車看板拿掉 (會壓在公車上)
+        if (i < curI) { navDropMark('b' + i); navDropMark('a' + i); return; }
         const isNext = navLeg() === g && st.t !== 'ride';
-        let body = `<div class="nc-h"><span class="badge" style="background:${g.color}">${esc(g.label)}</span> 往 ${esc(g.dest)}</div><div class="nc-s">${esc(g.b.name)} · ${i ? '轉乘上車' : '上車'}</div>`;
+        const boarded = i === curI && riding;
+        const prev = Nav.legs[i - 1], next = Nav.legs[i + 1];
+        const sameIn = prev && navXKind(i) === 'same', sameOut = next && navXKind(i + 1) === 'same';   // 同站同側轉乘 (下車站＝下一段上車站)
+        const w = isNext ? navWaitInfo(g) : null;
+        // 上車時刻：本段＝即時到站 (遲紅早藍準點綠)；之後的轉乘段＝依前段下車預估接得上的那一班
+        const xk = i > 0 ? navXKind(i) : '';
+        const up = navBoardTxt(g, isNext || !i ? '上車' : '轉乘上車');
+        const prevDn = sameIn ? navDnAt(prev) : null;
+        // 同站轉乘：上一段的「下車」與這一段的「轉乘上車」合成一張看板
+        const inLine = sameIn ? `<div class="nc-s">${badge(prev)} ${prevDn ? navTm(prevDn, '下車') : '下車'}</div><div class="nc-x">↓ 同站轉乘</div>` : '';
+        let body = `${inLine}<div class="nc-h">${badge(g)} 往 ${esc(g.dest)}</div><div class="nc-s">${esc(g.b.name)} · ${up || (xk === 'opp' ? '對向轉乘上車' : i ? '轉乘上車' : '上車')}</div>`;
         if (isNext) {
-            const w = navWaitInfo(g);
-            body += w.dl ? `<div class="nc-t"><span data-dl="${w.dl}">${remain(w.dl)}</span>${w.cmp ? ` <span class="dly ${lateCls(w.cmp.diff)}">${lateWord(w.cmp.diff)}</span>` : ''}</div>` : `<div class="nc-s">${esc(w.txt || '')}</div>`;
+            // 上車時刻已在上一行：這裡只放倒數 (15 分內)、早遲、發車狀態
+            const lh = navLeftHtml(g, w);
+            if (lh) body += `<div class="${w.dl ? 'nc-t' : 'nc-s'}">${lh}</div>`;
         }
-        navMark('b' + i, g.b, `<div class="nav-callout${isNext ? ' next' : ''}">${body}</div>`, { anchor: 'bottom', cls: 'nav-ca' });
-        navMark('a' + i, g.a, `<div class="nav-pin" style="--c:${g.color}">${i === Nav.legs.length - 1 ? '下車' : '下車・轉乘'}<small>${esc(g.a.name)}</small></div>`, { anchor: 'bottom', cls: 'nav-ca' });
+        // 轉乘段有狀況 (接不上／緊湊／等太久)：看板加 ⚠️
+        const warn = Nav.issue && Nav.issue.keep === i ? `<div class="nc-s"><span class="dly late">⚠️ ${esc(Nav.issue.key.split(':')[1] === 'tight' ? '轉乘緊湊' : Nav.issue.key.split(':')[1] === 'long' ? '等候過長' : '接不上')}</span></div>` : '';
+        if (boarded) navDropMark('b' + i);
+        else navMark('b' + i, g.b, `<div class="nav-callout${isNext ? ' next' : ''}${warn ? ' warn' : ''}">${body}${warn}</div>`, { anchor: 'bottom', cls: 'nav-ca' });
+        // 下車圖釘：同站轉乘時併入下一段看板，不另畫
+        if (sameOut) { navDropMark('a' + i); return; }
+        const dn = navDnAt(g);
+        navMark('a' + i, g.a, `<div class="nav-pin" style="--c:${g.color}">${badge(g)} ${next ? (navXKind(i + 1) === 'opp' ? '下車・對向轉乘' : '下車・步行轉乘') : '下車'}${dn ? `<span class="t">${tsrc(dn.src)}${hmOf(dn.ms)}下車</span>` : ''}<small>${esc(g.a.name)}</small></div>`, { anchor: 'bottom', cls: 'nav-ca' });
     });
     navMark('dest', Nav.dest, `<div class="nav-pin dest">🏁 ${esc(Nav.dest.name)}</div>`, { anchor: 'bottom', cls: 'nav-ca' });
     // 公車 (要搭、要轉乘、附近同路線) 由 navFleetFrame 每幀繪製
@@ -3881,7 +4255,32 @@ function navMe() {
     const h = Loc.compass !== null && Loc.compass !== undefined ? Loc.compass : Nav.pos.hd;
     navMark('me', Nav.pos, `<div class="nav-me">${h !== null && h !== undefined ? '<div class="cone"></div>' : ''}<div class="dot"></div></div>`, { cls: 'nav-mew', rot: true, rotation: h || 0 });
 }
-// 視點：候車前＝我的位置＋羅盤方向；搭乘中＝跟隨當班公車
+// 候車中：從上車站望向公車來的方向，站與要搭的車都在畫面內 (車還沒出現：沿路線往回看)
+const brgOf = (a, b) => (Math.atan2((b.lng - a.lng) * 101700, (b.lat - a.lat) * 110900) * 180 / Math.PI + 360) % 360;
+function navWaitCam(g) {
+    const m = Nav.map, S = g.b, b = navBusPos(g), sh = Nav.sheetH || innerHeight * 0.4;
+    const before = b && b.s !== undefined && b.s < g.sB - 20;   // 車還在上車站之前
+    let center, zoom, brg, pitch = 58;
+    if (before && gDist(b, S) < 6000) {
+        brg = brgOf(S, b);
+        const bb = [[Math.min(S.lng, b.lng), Math.min(S.lat, b.lat)], [Math.max(S.lng, b.lng), Math.max(S.lat, b.lat)]];
+        let cam = null;
+        try { cam = m.cameraForBounds(bb, { bearing: brg, pitch, padding: { top: 170, bottom: sh + 50, left: 60, right: 60 } }); } catch (e) { cam = null; }
+        if (!cam) return false;
+        const cc = cam.center && (cam.center.lng !== undefined ? cam.center : mapboxgl.LngLat.convert(cam.center));
+        center = [cc.lng, cc.lat]; zoom = Math.max(13, Math.min(17.5, cam.zoom));
+    } else {
+        // 沿路線從上車站往回 150 m 的方向
+        const p = lineAt(g.line, Math.max(0, g.sB - 150));
+        brg = brgOf(S, p); center = [S.lng, S.lat]; zoom = 17;
+    }
+    const cur = m.getBearing();
+    Nav.brg = angLerp(Nav.brg === null ? cur : Nav.brg, brg, 0.2);
+    m.easeTo({ center, bearing: Nav.brg, pitch, zoom, duration: 250, easing: t => t });
+    Nav.zoomSet = true;
+    return true;
+}
+// 視點：候車前＝我的位置＋羅盤方向；候車中＝望向公車來向；搭乘中＝跟隨當班公車
 function navCam() {
     if (!Nav.map || !Nav.started) return;
     navMe();
@@ -3889,6 +4288,7 @@ function navCam() {
     if (st.t === 'ride' || st.t === 'wait') navMarks();
     if (Nav.free) return;
     let c = null, brg = null, pitch = 62, zoom = 17.3;
+    if (st.t === 'wait' && st.g.k === 'bus' && navWaitCam(st.g)) return;
     if (st.t === 'ride') {
         const b = st.g.k === 'bus' ? navBusPos(st.g) : null;
         if (b) { c = b; brg = b.brg; pitch = 66; zoom = 17; }
@@ -3922,7 +4322,7 @@ function navTop() {
     }
     if (st.t === 'wait') {
         const g = st.g, w = navWaitInfo(g);
-        return { ic: '🚏', big: `在 ${esc(g.b.name)} 搭 <span class="badge" style="background:${g.color}">${esc(g.label)}</span>`, small: `往 ${esc(g.dest)} · ${w.dl ? `<span data-dl="${w.dl}">${remain(w.dl)}</span> 到站${w.cmp ? ` <span class="dly ${lateCls(w.cmp.diff)}">${lateWord(w.cmp.diff)}</span>` : ''}${w.plate ? ` · ${esc(w.plate)}` : ''}` : esc(w.txt || '')}` };
+        return { ic: '🚏', big: `在 ${esc(g.b.name)} 搭 ${navRtBadge(g)}`, small: `往 ${esc(g.dest)} · ${navWhen(g, w)}${w.dl ? `${w.cmp ? ` <span class="dly ${lateCls(w.cmp.diff)}">${lateWord(w.cmp.diff)}</span>` : ''}${w.plate ? ` · ${esc(w.plate)}` : ''}` : ''}` };
     }
     if (st.t === 'ride') {
         const g = st.g, L = navStopsLeft(g), n = g.k === 'mrt' ? L : L && L.n;
@@ -3931,18 +4331,20 @@ function navTop() {
         if (alert && Nav.warned !== Nav.cur) { Nav.warned = Nav.cur; if (navigator.vibrate) navigator.vibrate([200, 100, 200]); }
         const v = navVeh(g), jam = v && (vehState(g.r, v) || {}).jam;
         return { alert, ic: alert ? '🔔' : g.k === 'mrt' ? '🚇' : '🚌', big: alert ? `下一站 ${esc(g.a.name)} 下車` : `搭乘中 · 還有 ${n === null || n === undefined ? '?' : n} 站`,
-                 small: `<span class="badge" style="background:${g.color}">${esc(g.label)}</span> 往 ${esc(g.dest)} · 在 ${esc(g.a.name)} 下車${arT ? ` · <span data-dl="${arT}">${remain(arT)}</span> 後抵達` : ''}${jam ? ' · <span class="dly late">塞車中</span>' : ''}${Nav.plate ? ` · ${esc(Nav.plate)}` : ''}` };
+                 small: `${navRtBadge(g)} 往 ${esc(g.dest)} · 在 ${esc(g.a.name)} 下車${arT ? ` · ${tsrc('即時')}<span data-dl="${arT}" data-sfx="到站">${remain(arT, '到站')}</span>` : ''}${jam ? ' · <span class="dly late">塞車中</span>' : ''}${Nav.plate ? ` · ${esc(Nav.plate)}` : ''}` };
     }
     return { ic: '🏁', big: `已抵達 ${esc(st.name)}`, small: '導航結束' };
 }
 function navRender() {
     if (!Nav.on) return;
-    const t = Nav.started ? navTop() : { ic: '🧭', big: `${esc(Nav.plan.from ? Nav.plan.from.name : '')} → ${esc(Nav.dest.name)}`, small: `${Nav.plan.bs ? '🚲 › ' : ''}${Nav.legs.map(g => `<span class="badge" style="background:${g.color}">${esc(g.label)}</span>`).join(' ')}${Nav.plan.be ? ' › 🚲' : ''} · 轉乘 ${Nav.legs.length - 1} 次` };
+    const t = Nav.started ? navTop() : { ic: '🧭', big: `${esc(Nav.plan.from ? Nav.plan.from.name : '')} → ${esc(Nav.dest.name)}`, small: `${Nav.plan.bs ? '🚲 › ' : ''}${Nav.legs.map(g => `${navRtBadge(g)}`).join(' ')}${Nav.plan.be ? ' › 🚲' : ''} · 轉乘 ${Nav.legs.length - 1} 次` };
     const top = $('nav-top');
     top.classList.toggle('alert', !!t.alert);
     top.innerHTML = `<div class="ic">${t.ic}</div><div style="min-width:0"><div class="big">${t.big}</div><div class="small">${t.small}</div></div>`;
     const st = Nav.steps[Nav.cur];
     const nextLbl = !Nav.started ? '' : st.t === 'wait' ? '已上車 ▶' : st.t === 'ride' ? '已下車 ▶' : st.t === 'walk' ? '已到達 ▶' : '';
+    navXferCalc();   // 之後各轉乘段接得上的班次 (開始導航前也算，預覽就有時間)
+    const warnHtml = Nav.started ? navWarnHtml() : '';   // 先算狀況 (時間軸、看板要用 Nav.issue / Nav.xfer)
     const tl = Nav.steps.map((s, k) => {
         const cls = k < Nav.cur ? 'done' : k === Nav.cur && Nav.started ? 'cur' : '';
         if (s.t === 'walk' && s.bike) {
@@ -3950,18 +4352,29 @@ function navRender() {
             return `<div class="tl ${cls} walk bike" data-k="${k}"><div class="tl-ic">🚲</div><div><b>騎 YouBike 約 ${Math.max(1, Math.round((s.route ? s.route.dur / 60 : d / PL_BK_MPM)))} 分</b><div class="tl-s">${(d / 1000).toFixed(1)} km → ${esc(s.name)} 還車</div>${gBikeBtn(s.from, s.to, 'nav-gl')}</div></div>`;
         }
         if (s.t === 'walk') {
-            const d = s.route ? s.route.dist : gDist(s.from || s.to, s.to);
-            return `<div class="tl ${cls} walk" data-k="${k}"><div class="tl-ic">🚶</div><div><b>步行 約 ${Math.max(1, Math.round((s.route ? s.route.dur : d / 1.2) / 60))} 分</b><div class="tl-s">${Math.round(d)} m → ${esc(s.name)}${s.xfer ? '（轉乘）' : ''}</div></div></div>`;
+            const d = s.route ? s.route.dist : gDist(s.from || s.to, s.to), mn = Math.max(1, Math.round((s.route ? s.route.dur : d / 1.2) / 60));
+            const nx = Nav.steps[k + 1];
+            // 同站名對向轉乘：兩站圓圈分開，中間 ⇄
+            if (s.xfer && nx && nx.t === 'wait' && navXKind(nx.i) === 'opp')
+                return `<div class="tl ${cls} walk opp" data-k="${k}"><div class="tl-ic tl-x">⇄</div><div><b>對向轉乘</b><div class="tl-s">到對面站牌 ${esc(s.name)} · ${Math.round(d)} m · 約 ${mn} 分</div></div></div>`;
+            return `<div class="tl ${cls} walk" data-k="${k}"><div class="tl-ic">🚶</div><div><b>步行 約 ${mn} 分</b><div class="tl-s">${Math.round(d)} m → ${esc(s.name)}${s.xfer ? '（轉乘）' : ''}</div></div></div>`;
         }
         if (s.t === 'wait') {
-            const g = s.g, w = navWaitInfo(g);
-            return `<div class="tl ${cls}" data-k="${k}"><div class="tl-ic"><span class="tl-dot" style="border-color:${g.color}"></span></div><div><b>${esc(g.b.name)}</b> ${s.xfer ? '<small class="muted">轉乘</small>' : ''}
-                <div class="tl-s"><span class="badge" style="background:${g.color}">${esc(g.label)}</span> 往 ${esc(g.dest)} · ${w.dl ? `<span data-dl="${w.dl}">${remain(w.dl)}</span>${w.cmp ? ` <span class="dly ${lateCls(w.cmp.diff)}">${lateWord(w.cmp.diff)}</span>` : ''}` : esc(w.txt || '')}</div></div></div>`;
+            const g = s.g, w = navWaitInfo(g), xf = Nav.xfer && Nav.xfer[s.i], xk = s.i ? navXKind(s.i) : '', prev = Nav.legs[s.i - 1];
+            const up = k >= Nav.cur ? navBoardTxt(g, s.xfer && navLeg() !== g ? '轉乘上車' : '上車') : '';
+            // 同站同側轉乘：雙色同心圓 (內圈前段車、外圈下段車)
+            const dot = xk === 'same' ? `<span class="tl-dot dual" style="--cp:${prev.color}"></span>` : '<span class="tl-dot"></span>';
+            const lbl = xk === 'same' ? '同站轉乘' : xk === 'opp' ? '對向轉乘' : s.xfer ? '轉乘' : '';
+            // 對向轉乘但站牌座標相同 (沒有步行步驟)：補一列 ⇄
+            const opp = xk === 'opp' && Nav.steps[k - 1] && Nav.steps[k - 1].t === 'ride' ? `<div class="tl ${cls} walk opp"><div class="tl-ic tl-x">⇄</div><div><b>對向轉乘</b><div class="tl-s">到對面站牌 ${esc(g.b.name)}</div></div></div>` : '';
+            return `${opp}<div class="tl ${cls} stop" data-k="${k}" style="--c:${g.color}"><div class="tl-ic">${dot}</div><div><b>${esc(g.b.name)}</b>${up ? ` · ${up}` : ''} ${lbl ? `<small class="muted">${lbl}</small>` : ''}
+                <div class="tl-s">${navRtBadge(g)} 往 ${esc(g.dest)}${(t => t ? ` · ${t}` : '')(navTlWait(s, k, w, xf))}</div></div></div>`;
         }
         if (s.t === 'ride') {
-            const g = s.g;
-            return `<div class="tl ${cls} ride" data-k="${k}" style="--c:${g.color}"><div class="tl-ic"><span class="tl-bar"></span></div><div><div class="tl-s">搭 ${g.nStops} 站${g.k === 'bus' ? ` · ${(alongOf(g.r)[g.ap] - alongOf(g.r)[g.bp]) / 1000 < 1 ? Math.round(alongOf(g.r)[g.ap] - alongOf(g.r)[g.bp]) + ' m' : ((alongOf(g.r)[g.ap] - alongOf(g.r)[g.bp]) / 1000).toFixed(1) + ' km'}` : ''}</div>
-                <b>${esc(g.a.name)}</b> <small class="muted">下車</small></div></div>`;
+            const g = s.g, joined = navXKind(s.i + 1) === 'same', dn = k >= Nav.cur ? navDnAt(g) : null;
+            // 左側線：上接上車站圓圈；下接下車站圓圈 (同站轉乘＝接到下一段的同心圓)
+            return `<div class="tl ${cls} ride${joined ? ' joined' : ''}" data-k="${k}" style="--c:${g.color}"><div class="tl-ic"><span class="tl-bar"></span>${joined ? '' : '<span class="tl-dot end"></span>'}</div><div><div class="tl-s">搭 ${g.nStops} 站${g.k === 'bus' ? ` · ${(alongOf(g.r)[g.ap] - alongOf(g.r)[g.bp]) / 1000 < 1 ? Math.round(alongOf(g.r)[g.ap] - alongOf(g.r)[g.bp]) + ' m' : ((alongOf(g.r)[g.ap] - alongOf(g.r)[g.bp]) / 1000).toFixed(1) + ' km'}` : ''}</div>
+                <b>${esc(g.a.name)}</b> ${dn ? `· ${navTm(dn, '下車')}` : '<small class="muted">下車</small>'}</div></div>`;
         }
         return `<div class="tl ${cls}" data-k="${k}"><div class="tl-ic">🏁</div><div><b>${esc(s.name)}</b><div class="tl-s">目的地</div></div></div>`;
     }).join('');
@@ -3970,7 +4383,10 @@ function navRender() {
         <div class="nav-btns">${Nav.started
             ? `<button id="nav-prev" ${Nav.cur ? '' : 'disabled'}>◀</button>${nextLbl ? `<button id="nav-next" class="go">${nextLbl}</button>` : ''}${Nav.free ? '<button id="nav-re">◎ 置中</button>' : ''}<button id="nav-end" class="end">結束</button>`
             : `<button id="nav-go" class="go">🧭 開始導航</button><button id="nav-end" class="end">關閉</button>`}</div>
+        ${warnHtml}
         <div class="tls">${tl}</div>`;
+    $('nav-sheet').querySelectorAll('.nav-alt-use').forEach(b => b.onclick = () => navUseAlt(+b.dataset.i));
+    if (Nav.issue) top.querySelector('.small').insertAdjacentHTML('beforeend', ` · <span class="dly late">⚠️ ${esc(Nav.issue.key.startsWith('yb') ? 'YouBike' : '轉乘')}狀況，見下方</span>`);
     const on = (id, f) => { const e = $(id); if (e) e.onclick = f; };
     on('nav-go', navStart); on('nav-end', navClose); on('nav-prev', () => navGo(Nav.cur - 1)); on('nav-next', () => navGo(Nav.cur + 1));
     on('nav-re', () => { Nav.free = false; Nav.zoomSet = false; navRender(); });
@@ -4750,9 +5166,11 @@ function drawPlan(fit) {
     if (fit && pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.15), { maxZoom: 16 });
 }
 // 規劃結果 → 跟隨班次導航
+// rm：規劃車程 (分)，導航沒有即時下車預估時用來推估下車時刻
+const planNavLegs = rides => rides.map(l => ({ ...(l.R.kind === 'mrt' ? { k: 'mrt', dirKey: l.R.dirKey, b: M.stations[l.b - planGraph().nS].name, a: M.stations[l.a - planGraph().nS].name }
+    : { k: 'bus', sub: l.R.r.sub, dir: l.R.r.dir, b: STOPS[l.b].name, a: STOPS[l.a].name }), rm: l.ta - l.tb, pb: l.tb, pa: l.ta, plive: !!(l.lt || l.live) }));
 function planToNav(p) {
-    const legs = p.rides.map(l => l.R.kind === 'mrt' ? { k: 'mrt', dirKey: l.R.dirKey, b: M.stations[l.b - planGraph().nS].name, a: M.stations[l.a - planGraph().nS].name }
-        : { k: 'bus', sub: l.R.r.sub, dir: l.R.r.dir, b: STOPS[l.b].name, a: STOPS[l.a].name });
+    const legs = planNavLegs(p.rides);
     const i0 = p.legs.indexOf(p.rides[0]), i1 = p.legs.indexOf(p.rides[p.rides.length - 1]);
     const bk = l => l ? { A: { name: 'YouBike ' + l.A.name, lat: l.A.lat, lng: l.A.lng }, B: { name: 'YouBike ' + l.B.name, lat: l.B.lat, lng: l.B.lng } } : undefined;
     return { from: planPt(PL.from), to: planPt(PL.to), legs, ws: p.legs[0].type === 'walk', we: p.legs[p.legs.length - 1].type === 'walk',
