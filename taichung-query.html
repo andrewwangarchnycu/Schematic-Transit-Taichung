@@ -462,8 +462,16 @@
         bottom: calc(var(--sheet-h, 45vh) + max(8px, env(safe-area-inset-bottom)) - 24px); transition: bottom .28s cubic-bezier(.2, .8, .2, 1); }
     #grip.drag { transition: none; }
     #grip span { width: 40px; height: 5px; border-radius: 3px; background: var(--grip, rgba(60,60,67,.35)); }
+    .an-box { margin: 8px 0; padding: 8px 10px; border-radius: 12px; background: rgba(255,69,58,.08); border: 1px solid rgba(255,69,58,.25); }
+    .an-box summary { cursor: pointer; } .an-box .an-t { font-size: 11px; }
+    .an-sum { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+    .an-chip { border: 1px solid var(--c); color: var(--text, #fff); background: transparent; border-radius: 12px; padding: 4px 10px; font-size: 13px; cursor: pointer; }
+    .an-chip b { color: var(--c); } .an-chip.on { background: var(--c); } .an-chip.on b { color: #fff; }
+    .an-row { display: flex; gap: 8px; align-items: center; padding: 8px 4px; border-bottom: 1px solid var(--line, rgba(255,255,255,.1)); cursor: pointer; }
+    .an-t { color: #fff; font-size: 12px; font-weight: 700; border-radius: 6px; padding: 2px 6px; white-space: nowrap; }
+    .an-m { min-width: 0; font-size: 14px; }
     .hdr-tools { display: inline-flex; gap: 2px; align-items: center; }   /* 路線圖 · 外觀 (太陽／月亮) · 圖層 */
-    #btn-base, #btn-theme, #btn-map { background: none; border: 0; font-size: 18px; cursor: pointer; padding: 2px 4px; line-height: 1; color: var(--text); display: inline-flex; text-decoration: none; }
+    #btn-base, #btn-theme, #btn-map, #btn-anom { background: none; border: 0; font-size: 18px; cursor: pointer; padding: 2px 4px; line-height: 1; color: var(--text); display: inline-flex; text-decoration: none; }
     @media (max-width: 760px) {
         #app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 36vh 1fr; }
         .qwrap { min-width: 0; flex-basis: 100%; order: 5; }
@@ -512,7 +520,7 @@
         <span class="qwrap kb"><input type="search" id="q" placeholder="輸入路線，例：300、綠線" autocomplete="off" inputmode="numeric"><button id="q-kb" type="button" title="切換鍵盤">ABC 中</button></span>
         <select id="date" title="時刻表日期"></select>
         <span id="api" title="點擊查看 API 用量">--</span>
-        <span class="hdr-tools"><a id="btn-map" href="taichung.html" title="捷運風格路線圖"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18.5 9 12.5h6l6-6"/><path d="M15 12.5V21" opacity=".55"/><circle cx="9" cy="12.5" r="2.1"/><circle cx="15" cy="12.5" r="2.1"/><circle cx="20.5" cy="6.5" r="1.5"/><circle cx="3.5" cy="18" r="1.5"/></svg></a><button id="btn-theme" type="button" title="外觀：深色 / 淺色 Liquid Glass"></button><button id="btn-base" type="button" title="地圖圖層 (OSM / OSM 大眾運輸 / Mapbox / 內政部)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3 2 8l10 5 10-5-10-5Z"/><path d="m2 13 10 5 10-5"/><path d="m2 17.5 10 5 10-5" opacity=".55"/></svg></button></span>
+        <span class="hdr-tools"><button id="btn-anom" type="button" title="今日發車異常 (早發／誤點／脫班／漏班)" onclick="openAnom()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></button><a id="btn-map" href="taichung.html" title="捷運風格路線圖"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18.5 9 12.5h6l6-6"/><path d="M15 12.5V21" opacity=".55"/><circle cx="9" cy="12.5" r="2.1"/><circle cx="15" cy="12.5" r="2.1"/><circle cx="20.5" cy="6.5" r="1.5"/><circle cx="3.5" cy="18" r="1.5"/></svg></a><button id="btn-theme" type="button" title="外觀：深色 / 淺色 Liquid Glass"></button><button id="btn-base" type="button" title="地圖圖層 (OSM / OSM 大眾運輸 / Mapbox / 內政部)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3 2 8l10 5 10-5-10-5Z"/><path d="m2 13 10 5 10-5"/><path d="m2 17.5 10 5 10-5" opacity=".55"/></svg></button></span>
     </header>
     <div id="panel"><div class="hint">載入站牌資料中…</div></div>
     <div id="grip" title="拖曳調整面板高度"><span></span></div>
@@ -1475,14 +1483,16 @@ function tripInfo(e) {
 const matchCache = new Map();
 // → { byPlate, byTrip, running, pending, idle } | null (時刻表或車輛資料未載入)
 function matchTrips(route, sub, dir) {
-    const v = todaySched(route), e = v && v.subs[sub] && v.subs[sub][dir], d = a2Cache.get(route);
-    if (!e || !d) return null;
-    const key = `${route}|${sub}|${dir}`, nowM = Math.floor(nowMin()), c = matchCache.get(key);
-    if (c && c.at === d.at && c.nowM === nowM && c.e === e) return c.res;
+    const v = todaySched(route), e = v && v.subs[sub] && v.subs[sub][dir], d = a2Cache.get(route), lg = depLogOf(route);
+    if (!e || (!d && !lg)) return null;
+    const key = `${route}|${sub}|${dir}`, nowM = Math.floor(nowMin()), c = matchCache.get(key), at = `${d ? d.at : 0}|${lg ? lg.at : 0}`;
+    if (c && c.at === at && c.nowM === nowM && c.e === e) return c.res;
     const info = tripInfo(e), today0 = new Date().setHours(0, 0, 0, 0);
     const fresh0 = Math.max(today0, Date.now() - TRIP_MATCH.maxTripMin * 60000);
-    const all = d.vehicles.filter(x => x.sub === sub && x.dir === dir);
-    const veh = all.filter(x => x.start !== null && x.start >= fresh0).sort((a, b) => a.start - b.start);
+    const all = (d ? d.vehicles : []).filter(x => x.sub === sub && x.dir === dir);
+    // 監測路線的今日發車紀錄 (GitHub Actions 每 15 分鐘記錄)：已跑完的班次也配得到 (同車牌、發車差 1 分內視為同一筆)
+    const past = lg ? lg.rows.filter(x => x.sub === sub && x.dir === dir && x.start >= today0 && !all.some(y => y.plate === x.plate && Math.abs((y.start || 0) - x.start) < 60000)) : [];
+    const veh = all.filter(x => x.start !== null && x.start >= fresh0).concat(past).sort((a, b) => a.start - b.start);
     const T = info.order, n = veh.length, m = T.length, S = TRIP_MATCH.skipCost;
     const cost = (x, k) => { const df = minOfMs(x.start) - info.dep[k]; if (df < -TRIP_MATCH.early || df > TRIP_MATCH.late) return Infinity; return df < 0 ? -df * TRIP_MATCH.earlyWeight : df; };
     const f = Array.from({ length: n + 1 }, () => new Float64Array(m + 1)), how = Array.from({ length: n + 1 }, () => new Uint8Array(m + 1));
@@ -1499,7 +1509,8 @@ function matchTrips(route, sub, dir) {
         const h = how[i][j];
         if (h === 3) { const x = veh[i - 1], k = T[j - 1];
             const r = { k, label: info.label(k), dep: info.dep[k], start: x.start, late: Math.round(minOfMs(x.start) - info.dep[k]), v: x };
-            byPlate.set(x.plate, r); byTrip.set(k, r); running.unshift(r); i--; j--; }
+            if (!byPlate.has(x.plate)) byPlate.set(x.plate, r);   // 由晚到早回推：同車牌留最近一班
+            byTrip.set(k, r); running.unshift(r); i--; j--; }
         else if (h === 1 || j === 0) i--; else j--;
     }
     const lastUsed = T.reduce((a, k, j) => byTrip.has(k) ? j : a, -1), pending = [], pendingOf = new Map();
@@ -1509,7 +1520,7 @@ function matchTrips(route, sub, dir) {
         if (late >= 1 && late <= TRIP_MATCH.pendingWindow) { const p = { k, label: info.label(k), dep: info.dep[k], late: Math.floor(late) }; pending.push(p); pendingOf.set(k, p); }
     });
     const res = { e, byPlate, byTrip, running, pending, pendingOf, idle: all.filter(x => !byPlate.has(x.plate)) };
-    matchCache.set(key, { at: d.at, nowM, e, res });
+    matchCache.set(key, { at, nowM, e, res });
     return res;
 }
 const lateWord = m => m >= 1 ? `遲${m}分` : m <= -1 ? `早${-m}分` : '準點';
@@ -1992,6 +2003,7 @@ function rerender() {
     if (view.type === 'station') renderStation(); else if (view.type === 'route') renderRoute(); else if (view.type === 'multi') renderMulti(); else if (view.type === 'near') renderNearRoutes();
     else if (view.type === 'stlist') { const k = panel.scrollTop; listStations(view.list, view.head, view.place, false); panel.scrollTop = k; }
     else if (view.type === 'grp') renderGroup();
+    else if (view.type === 'anom') renderAnom();
     else renderMrt();
 }
 
@@ -2579,6 +2591,7 @@ function openRoute(sub, dir, here, back) {
         if (back) loadVehiclesMany(selRoutes().filter(Boolean).map(x => x.route)).then(drawVehicles).catch(() => {});
         else loadVehicles(r.route).catch(() => {});
         if (selDate() === todayKey()) loadA2(r.route).catch(() => {});
+        if (selDate() === todayKey() && depWatched(r.route)) depLoad(r.route).then(() => view && view.type === 'route' && renderRoute());   // 監測路線：今日發車紀錄 (GitHub，不耗 TDX)
     };
     etaRoute(r.route, `${r.route} 即時`).then(rest, rest);
     drawRouteMap(r);
@@ -3242,6 +3255,7 @@ function renderRoute() {
         ${multi.length ? `<button class="btn" id="b-mopen">多選 (${multi.length})</button>` : ''}</div>
         ${(() => { const e = daySched(r.route, ds); const x = e && e.subs[r.sub] && e.subs[r.sub][r.dir];
             return x && ((x.cancel && x.cancel.length) || (x.added && x.added.size)) ? `<div class="mk-legend">今日比對每日營運時刻表：<s class="cx">HH:MM</s> 紅字劃掉＝取消班次${x.cancel.length ? ` ${x.cancel.length} 班` : ''}　<span class="ad">HH:MM</span> 橘字＝增調班次${x.added && x.added.size ? ` ${x.added.size} 班` : ''}</div>` : ''; })()}
+        ${isToday ? routeAnomHtml(r) : ''}
         <div class="hint">點站名展開該站全日時刻表；地圖上點站牌可查該站位。${hasShape ? '地圖小箭頭為行駛方向。' : SHAPES ? '此路線無道路線形資料，地圖虛線為站牌連線。' : '道路線形載入中…'}</div>
         <div class="seq" style="--rc:${c}">${rows}</div>`;
     if (!view.scrolled && view.here) { const h = panel.querySelector('.seq-row.here'); if (h) { panel.scrollTop = h.offsetTop - panel.clientHeight / 3; view.scrolled = true; } } else panel.scrollTop = keep;
@@ -3285,6 +3299,114 @@ function mrtTimes(idx, dirKey, ds) {
         times.unshift(f); times.push(l);   // 首末班以 TDX 時刻為準
     }
     return times;
+}
+// ---------- 發車異常：GitHub Actions (tools/watch_dispatch.js) 每 15 分鐘記錄監測路線的實際發車 (data 分支 departures/YYYY-MM-DD/<路線>.csv) ----------
+//   前端用當日每日營運時刻表 (開路線時本來就會載入) 與發車紀錄＋即時車輛班次配對，判定：
+//   早發＝早 5 分以上；誤點＝遲 5～10 分；脫班＝遲 11～30 分；漏班＝遲超過 30 分 (配對範圍到遲 45 分) 或表定後 35 分仍未偵測到發車
+//   漏班只在發車紀錄沒有中斷 (相鄰抓取 ≤ 25 分) 且該路線前後 3 小時內有車輛回報時才判定
+const DEP_BASE = ['45', '51', '35', '23', '19', '326'];
+const DEP_RAW = (d, f) => `https://raw.githubusercontent.com/andrewwangarchnycu/Schematic-Transit-Taichung/data/departures/${d}/${encodeURIComponent(f)}?t=${Math.floor(Date.now() / 120000)}`;
+let DEP_ROUTES = null;   // 監測路線＋支線／副線 (路線名稱「數字＋非數字字尾」，例 45延、51副)
+const depRoutes = () => DEP_ROUTES || (DEP_ROUTES = [...new Set(ROUTES.map(r => r.route))].filter(n => DEP_BASE.some(w => n.startsWith(w) && !/^[0-9]/.test(n.slice(w.length)))));
+const depWatched = route => depRoutes().includes(route);
+const DepLog = { rows: new Map(), polls: null, pollAt: 0, err: '' };   // 路線 → { d, at, rows: [{ plate, sub, dir, start }] }
+const depLogOf = route => { const x = DepLog.rows.get(route); return x && x.d === todayKey() ? x : null; };
+const ANOM_T = { early: ['早發', '#0a84ff', '早發車 5 分以上'], delay: ['誤點', '#ff9f0a', '延誤 5～10 分'], late: ['脫班', '#ff6b35', '延誤 11～30 分'], miss: ['漏班', '#ff453a', '延誤超過 30 分或未發車'] };
+const ANOM_GAP = 25, ANOM_MISS = 35;
+async function depText(d, f) {
+    const r = await fetch(DEP_RAW(d, f), { cache: 'no-store' });
+    if (r.status === 404) return '';
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.text();
+}
+// 載入某路線今日發車紀錄與抓取時間 (2 分鐘內不重抓)
+async function depLoad(route, force = false) {
+    const d = todayKey(), cur = DepLog.rows.get(route);
+    if (!force && cur && cur.d === d && Date.now() - cur.at < 120000) return cur;
+    try {
+        const [txt, pol] = await Promise.all([depText(d, route + '.csv'),
+            !force && DepLog.polls && DepLog.polls.d === d && Date.now() - DepLog.pollAt < 120000 ? null : depText(d, '_polls.txt')]);
+        if (pol !== null) { DepLog.polls = { d, list: pol.split('\n').filter(Boolean).map(s => Date.parse(s + '+08:00')).filter(isFinite) }; DepLog.pollAt = Date.now(); }
+        const rows = txt.split('\n').slice(1).filter(Boolean).map(l => { const [plate, sub, dir, st] = l.split(','); return { plate, sub, dir: +dir, start: Date.parse(st + '+08:00') }; }).filter(x => isFinite(x.start));
+        DepLog.rows.set(route, { d, at: Date.now(), rows }); DepLog.err = '';
+        matchCache.clear();
+    } catch (e) { DepLog.err = e.message; }
+    return DepLog.rows.get(route);
+}
+// 抓取有涵蓋 [a, b] 且中間沒有中斷
+function depCovered(a, b) {
+    const ps = (DepLog.polls && DepLog.polls.d === todayKey() ? DepLog.polls.list : []).filter(t => t >= a - ANOM_GAP * 60000 && t <= b + ANOM_GAP * 60000);
+    if (!ps.length || ps[0] > a || ps[ps.length - 1] < b) return false;
+    return ps.every((t, k) => !k || t - ps[k - 1] <= ANOM_GAP * 60000);
+}
+const anomType = d => d <= -5 ? 'early' : d >= 5 && d <= 10 ? 'delay' : d >= 11 && d <= 30 ? 'late' : d > 30 ? 'miss' : null;
+// 某路線今日異常 → [{ type, sub, dir, dep (分), act (分|null), diff, plate }]；null＝資料未齊 (每日營運時刻表或發車紀錄)
+function routeAnoms(route) {
+    const v = todaySched(route), lg = depLogOf(route);
+    if (!v || !todayOld(route) || !lg) return null;
+    const out = [], nm = nowMin(), day0 = new Date().setHours(0, 0, 0, 0);
+    Object.entries(v.subs).forEach(([sub, ds]) => Object.entries(ds).forEach(([dir, e]) => {
+        if (!e || !e.trips.length || !(e.kind === 'table' || e.kind === 'daily')) return;   // 推算的回程、純班距不判定
+        const mt = matchTrips(route, sub, +dir), info = tripInfo(e);
+        info.order.forEach(k => {
+            const dep = info.dep[k];
+            if (dep > nm) return;
+            const hit = mt && mt.byTrip.get(k);
+            if (hit) { const type = anomType(hit.late); if (type) out.push({ type, sub, dir: +dir, dep, act: minOfMs(hit.start), diff: hit.late, plate: hit.v.plate }); return; }
+            if (nm < dep + ANOM_MISS) return;
+            const t = day0 + dep * 60000, alive = lg.rows.some(x => x.start >= t - 3 * 3600000 && x.start <= t + 3 * 3600000);
+            if (alive && depCovered(t - 15 * 60000, t + ANOM_MISS * 60000)) out.push({ type: 'miss', sub, dir: +dir, dep, act: null, diff: null, plate: '' });
+        });
+    }));
+    return out.sort((a, b) => b.dep - a.dep);
+}
+function anomItem(x) {
+    const T = ANOM_T[x.type], r = ROUTES.find(y => y.sub === x.sub && y.dir === x.dir);
+    const what = x.act !== null ? `表定 ${fmt(x.dep)} → 實際 ${fmt(Math.floor(x.act))} <span class="dly ${x.diff < 0 ? 'early' : 'late'}">${x.diff < 0 ? '早' : '遲'}${Math.abs(x.diff)}分</span>` : `表定 ${fmt(x.dep)} · <span class="dly late">未偵測到發車</span>`;
+    return `<div class="an-row" data-sub="${esc(x.sub)}" data-dir="${x.dir}"><span class="an-t" style="background:${T[1]}">${T[0]}</span>
+        <span class="badge" style="background:${colorOf(x.sub)}">${esc(x.sub)}</span><span class="an-m"><span class="small">${r ? '往 ' + esc(destOf(r)) : ''}${x.plate ? ` · 車牌 <b>${esc(x.plate)}</b>` : ''}</span><br>${what}</span></div>`;
+}
+const ANOM_NOTE = '判定：當日每日營運時刻表的表定發車 vs 車輛回報的實際發車時刻 (TDX)。早發＝早 5 分以上；誤點＝遲 5～10 分；脫班＝遲 11～30 分；漏班＝遲超過 30 分或表定後 35 分仍未偵測到發車。發車紀錄每 15 分鐘記錄一次，紀錄中斷或路線沒有車機回報時不判漏班；「未偵測到發車」不等於確定未發車，請以業者公告為準。';
+// 路線頁：本路線本方向今日異常 (監測路線才有)
+function routeAnomHtml(r) {
+    if (!depWatched(r.route)) return '';
+    const list = routeAnoms(r.route);
+    if (!list) return `<div class="an-box"><b>⚠️ 今日發車異常</b> <span class="muted">${DepLog.err ? '發車紀錄讀取失敗：' + esc(DepLog.err) : !todayOld(r.route) ? '等待每日營運時刻表…' : '發車紀錄載入中…'}</span></div>`;
+    const mine = list.filter(x => x.sub === r.sub && x.dir === r.dir);
+    const cnt = {}; mine.forEach(x => cnt[x.type] = (cnt[x.type] || 0) + 1);
+    return `<details class="an-box"><summary><b>⚠️ 今日發車異常</b> ${mine.length ? Object.entries(ANOM_T).filter(([k]) => cnt[k]).map(([k, T]) => `<span class="an-t" style="background:${T[1]}">${T[0]} ${cnt[k]}</span>`).join(' ') : '<span class="muted">本方向目前沒有</span>'}</summary>
+        ${mine.map(anomItem).join('')}<div class="hint">${ANOM_NOTE}</div></details>`;
+}
+// 看板：只比對監測路線
+const Anom = { f: '', timer: null, busy: false };
+function openAnom() {
+    view = { type: 'anom' };
+    MrtTrain.clear(); layerVeh.clearLayers(); vehDrawn = ''; clearBikes(); open.clear(); layerSel.clearLayers(); setArrows([]);
+    renderAnom();
+    const reload = () => Promise.all(depRoutes().map(rt => depLoad(rt))).then(() => view && view.type === 'anom' && renderAnom());
+    reload();
+    clearInterval(Anom.timer);
+    Anom.timer = setInterval(() => { if (!view || view.type !== 'anom') { clearInterval(Anom.timer); return; } reload(); }, 120000);
+}
+function renderAnom() {
+    const rts = depRoutes(), ready = rts.filter(rt => todayOld(rt)), miss = rts.filter(rt => !todayOld(rt));
+    const all = [];
+    rts.forEach(rt => { const l = routeAnoms(rt); if (l) all.push(...l); });
+    const cnt = {}; all.forEach(x => cnt[x.type] = (cnt[x.type] || 0) + 1);
+    const rows = all.filter(x => !Anom.f || x.type === Anom.f).sort((a, b) => b.dep - a.dep);
+    panel.innerHTML = `<h2>⚠️ 今日發車異常 <small class="muted">${todayKey().slice(5).replace('-', '/')}</small></h2>
+        <div class="muted small">監測 ${DEP_BASE.join('、')}（含 ${rts.filter(x => !DEP_BASE.includes(x)).join('、') || '—'}）</div>
+        ${miss.length ? `<div class="row" style="margin:8px 0"><button class="btn" id="an-load" ${Anom.busy ? 'disabled' : ''}>${Anom.busy ? '載入中…' : `載入 ${miss.length} 條路線的今日時刻表`}</button><span class="muted small">使用你的 TDX 金鑰；已載入 ${ready.length}/${rts.length}</span></div>` : ''}
+        <div class="an-sum">${Object.entries(ANOM_T).map(([k, T]) => `<button class="an-chip${Anom.f === k ? ' on' : ''}" data-f="${k}" style="--c:${T[1]}" title="${T[2]}"><b>${cnt[k] || 0}</b> ${T[0]}</button>`).join('')}</div>
+        ${DepLog.err ? `<div class="hint">發車紀錄讀取失敗：${esc(DepLog.err)}</div>` : ''}
+        ${rows.length ? `<div class="an-list">${rows.map(anomItem).join('')}</div>` : `<div class="hint">${ready.length ? (Anom.f ? '此類別' : '已載入的路線') + '今日目前沒有異常' : '尚未載入任何路線的今日時刻表'}（發車紀錄每 15 分鐘更新，看板 2 分鐘自動更新）</div>`}
+        <div class="hint">${ANOM_NOTE}點班次看該路線即時資訊。</div>`;
+    if ($('an-load')) $('an-load').onclick = () => {
+        Anom.busy = true; renderAnom();
+        miss.reduce((p, rt) => p.then(() => loadDay(rt).catch(() => {})), Promise.resolve()).then(() => { Anom.busy = false; dayMemo.clear(); matchCache.clear(); if (view && view.type === 'anom') renderAnom(); });
+    };
+    panel.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { Anom.f = Anom.f === b.dataset.f ? '' : b.dataset.f; renderAnom(); });
+    panel.querySelectorAll('.an-row').forEach(e => e.onclick = () => { if (ROUTES.some(x => x.sub === e.dataset.sub && x.dir === +e.dataset.dir)) openRoute(e.dataset.sub, +e.dataset.dir); });
 }
 function openMrt() {
     view = { type: 'mrt', dirKey: 'south' };

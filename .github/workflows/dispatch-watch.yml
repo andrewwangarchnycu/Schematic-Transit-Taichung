@@ -1,0 +1,45 @@
+# 公車實際發車紀錄：每 15 分鐘抓監測路線 (DISPATCH_ROUTES，含支線／副線) 新發車的車 (A2，OData 過濾：上次抓取後才發車的車)
+#   記錄到 data 分支 departures/YYYY-MM-DD/<路線>.csv，抓取時間記在 _polls.txt (前端據此判斷資料是否中斷)
+#   不判定、不抓時刻表：前端開路線時用當日每日營運時刻表比對早發／誤點／脫班／漏班
+#   需要 repo secrets：TDX_CLIENT_ID、TDX_CLIENT_SECRET；API：每次 1 次 (每天 96 次)，回應通常只有幾十～幾百 bytes
+name: dispatch-watch
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+concurrency:
+  group: dispatch-watch
+  cancel-in-progress: false
+permissions:
+  contents: write
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools
+          fetch-depth: 1
+      - name: 準備 data 分支
+        run: |
+          if git ls-remote --exit-code --heads origin data >/dev/null; then
+            git fetch --depth=1 origin data
+            git worktree add databr FETCH_HEAD
+            git -C databr checkout -B data
+          else
+            git worktree add --orphan -b data databr
+          fi
+      - name: 記錄發車
+        env:
+          TDX_CLIENT_ID: ${{ secrets.TDX_CLIENT_ID }}
+          TDX_CLIENT_SECRET: ${{ secrets.TDX_CLIENT_SECRET }}
+          DISPATCH_ROUTES: '45,51,35,23,19,326'
+        run: node tools/watch_dispatch.js --out databr/departures
+      - name: Commit
+        run: |
+          cd databr
+          git add departures
+          if git diff --cached --quiet; then exit 0; fi
+          git -c user.name="dispatch-watch" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -q -m "departures: $(TZ=Asia/Taipei date '+%F %H:%M')"
+          git push -q origin data
