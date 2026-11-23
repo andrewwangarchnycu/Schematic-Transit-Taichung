@@ -1254,9 +1254,56 @@ function daySched(route, ds) {
         if (!rows || !rows.length) { if (hw.length && ds !== todayKey()) (v.subs[sub] = v.subs[sub] || {})[dir] = { kind: 'hw', stops, trips: [], ids: [], hw, cancel: [], added: null, src: 'none' }; return; }
         (v.subs[sub] = v.subs[sub] || {})[dir] = { kind, stops, trips: rows, ids, hw, cancel, added, refDate, src: kind === 'est' ? 'v3' : s2sFn ? 's2s' : prof.length ? 'v3' : 'none' };
     });
+    // 單循環／只有一端發車：沒有預排發車的方向 (回程) 由去程推算 — 回程第 k 班＝去程第 k 班抵達端點＋端點間移動
+    //   各站行駛時間：歷史 (V3 站站班表，只用裝置快取、不呼叫 API) 優先，其次 TDX 站間旅行時間
+    //   今日每日營運時刻表已有這個方向 (daily) 就照用
+    ROUTES.forEach(R => {
+        if (R.route !== route) return;
+        const cur = v.subs[R.sub] && v.subs[R.sub][R.dir];
+        if (cur && cur.trips.length && cur.kind !== 'est') return;
+        const sR = S && S.subs[R.sub] && S.subs[R.sub][R.dir];
+        if (sR && sR.trips.length) return;   // 這個方向本身有預排發車 (只是今天沒開)：不推
+        const lp = loopPartner(R), oe = lp && v.subs[lp.R.sub] && v.subs[lp.R.sub][lp.R.dir];
+        if (!oe || !oe.trips.length || oe.kind === 'est' || oe.kind === 'loop' || oe.kind === 'hw') return;
+        const last = oe.stops.length - 1;
+        const starts = oe.trips.map((row, k) => ({ t: row[last] !== null && row[last] !== undefined ? row[last] + lp.gap : null, id: oe.ids ? oe.ids[k] : String(k + 1) })).filter(x => x.t !== null).sort((a, b) => a.t - b.t);
+        if (!starts.length) return;
+        const stops = R.seq.map(si => STOPS[si].name);
+        const ee = E && E.subs[R.sub] && E.subs[R.sub][R.dir], et = ee && (ee[tag] || ee.wd || ee.we), eIdx = et ? alignStops(stops, et.stops) : null;
+        const prof = et ? et.trips.map(er => {
+            const row = stops.map((_, i) => eIdx[i] >= 0 && er[eIdx[i]] !== null && er[eIdx[i]] !== undefined ? er[eIdx[i]] : null);
+            return row[0] === null ? null : { base: row[0], off: row.map(x => x === null ? null : x - row[0]) };
+        }).filter(Boolean).sort((a, b) => a.base - b.base) : [];
+        const sb = !prof.length && T && T.subs[R.sub] && T.subs[R.sub][R.dir], s2sFn = sb && sb.length ? s2sProfile(R, sb, wd) : null;
+        const rows = starts.map(d => {
+            const row = new Array(stops.length).fill(null), off = prof.length ? profAt(prof, d.t, stops.length) : s2sFn ? s2sFn(d.t) : null;
+            row[0] = d.t;
+            if (off) off.forEach((o, i) => { if (i && o !== null) row[i] = d.t + o; });
+            return row;
+        });
+        (v.subs[R.sub] = v.subs[R.sub] || {})[R.dir] = { kind: 'loop', stops, trips: rows, ids: starts.map(x => '迴' + x.id), hw: cur ? cur.hw || [] : [], cancel: [], added: null,
+            src: prof.length ? 'v3' : s2sFn ? 's2s' : 'none', loop: { sub: lp.R.sub, end: oe.stops[last], gap: lp.gap } };
+    });
     if (!Object.keys(v.subs).length) v.none = true;
     dayMemo.set(mk, v);
     return v;
+}
+// 歷史各班行駛時間：取發車時刻前後最近兩班依時刻內插
+function profAt(prof, t, n) {
+    let a = null, b = null;
+    prof.forEach(p => { if (p.base <= t && (!a || p.base > a.base)) a = p; if (p.base >= t && (!b || p.base < b.base)) b = p; });
+    const w = a && b && b.base > a.base ? (t - a.base) / (b.base - a.base) : 0;
+    return Array.from({ length: n }, (_, i) => { const x = a ? a.off[i] : null, y = b ? b.off[i] : null; return x !== null && y !== null ? x + (y - x) * w : x !== null ? x : y; });
+}
+// 單循環回程接哪個方向的去程：同路線、終點在本方向起點 800 m 內 (同子路線優先)；gap＝端點間移動分鐘 (60 m 內視為同站＝0)
+const LOOP_R = 800, LOOP_MPM = 250;
+function loopPartner(R) {
+    if (R._lp !== undefined) return R._lp;
+    const S0 = STOPS[R.seq[0]];
+    const c = ROUTES.filter(x => x.route === R.route && x !== R).map(x => ({ x, d: mDist(STOPS[x.seq[x.seq.length - 1]], S0) })).filter(o => o.d <= LOOP_R)
+        .sort((a, b) => (a.x.sub === R.sub ? 0 : 1) - (b.x.sub === R.sub ? 0 : 1) || a.d - b.d)[0];
+    R._lp = c ? { R: c.x, d: c.d, gap: c.d < 60 ? 0 : Math.round(c.d * 1.3 / LOOP_MPM * 10) / 10 } : null;
+    return R._lp;
 }
 const todaySched = route => daySched(route, todayKey());
 
@@ -1285,6 +1332,7 @@ function timesAt(r, pos, dateStr) {
     const kind = old ? (e.kind === 'table' ? 'sched' : 'est') : e.kind === 'ref' ? 'ref' : (e.kind === 'table' || e.kind === 'daily') ? 'sched' : 'est';
     const srcTxt = !i ? '' : e.src === 's2s' ? '，各站時間＝發車＋TDX 站間旅行時間 (含每站停靠 10 秒)' : e.src === 'v3' ? '，各站時間＝發車＋近 3 個月歷史行駛時間 (V3)' : '，各站時間＝TDX 時刻表本身的各站時刻';
     const note = old ? '每日營運時刻表 (站站推估班表無法取得)'
+        : e.kind === 'loop' ? `回程時刻＝去程抵達 ${e.loop.end} 時刻${e.loop.gap ? `＋端點間約 ${Math.round(e.loop.gap)} 分` : ''}，再加${e.src === 'v3' ? '歷史行駛時間 (V3)' : e.src === 's2s' ? 'TDX 站間旅行時間 (含每站停靠 10 秒)' : '…'}推算 (單循環／只有一端發車，非實際發車時刻，請搭配公車動態)`
         : e.kind === 'ref' ? `參考 ${e.refDate.slice(5).replace('-', '/')}（週${WD[new Date(e.refDate + 'T00:00:00').getDay()]}）每日營運時刻表發車，實際以當日為準 (路線班表為班距發車${hwTxt ? ' ' + hwTxt : ''})${srcTxt}`
         : e.kind === 'daily' ? `每日營運時刻表發車 (路線班表為班距發車${hwTxt ? ' ' + hwTxt : ''})${srcTxt}`
         : kind === 'sched' ? `路線班表發車 (${dayTxt})${srcTxt}`
@@ -4451,7 +4499,13 @@ function planDeps(R, ri, ds) {
     let deps = [];
     if (R.kind === 'bus') {
         const p = R.plan;
-        if (p) {
+        // 單循環／只有一端發車 (本方向沒有預排發車)：發車＝去程各班抵達端點＋端點間移動 (去程要有站間旅行時間)
+        const lp = p && !p.d.length ? loopPartner(R.r) : null, Q = lp && PLG && PLG.routes[ROUTES.indexOf(lp.R)];
+        if (Q && Q.plan && Q.plan.d.length && planHasTT(Q)) {
+            const end = planOff(Q, Q.stops.length - 1);
+            planDeps(Q, ROUTES.indexOf(lp.R), ds).forEach(t => deps.push(Math.round((t + end + lp.gap) * 10) / 10));
+            R.loop = true;
+        } else if (p) {
             p.d.forEach(([t, m]) => { if (m & bit) deps.push(t); });
             p.f.forEach(([s, e, hw, m]) => { if (m & bit) for (let t = s; t <= e; t += Math.max(3, hw)) deps.push(t); });   // 只給班距的路線：依班距估
         }
@@ -4475,6 +4529,7 @@ function legTimes(l) {
     const R = l.R;
     if (R.kind !== 'bus') return { tb: l.tb, ta: l.ta, cls: 'sched', txt: '班距' };
     if (l.lt || l.live) return { tb: l.tb, ta: l.ta, cls: 'api', txt: '即時' };
+    if (R.loop) return { tb: l.tb, ta: l.ta, cls: 'est', txt: '推估' };   // 單循環回程：由去程抵達端點推算
     const freq = R.plan && R.plan.f.length && !R.plan.d.length;
     return { tb: l.tb, ta: l.ta, cls: freq ? 'freq' : 'sched', txt: '表定' };
 }
