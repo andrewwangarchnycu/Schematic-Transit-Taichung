@@ -17,9 +17,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # 不用 sparse-checkout：data 分支的 worktree 會繼承稀疏設定，git add departures 會被拒絕
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: tools
           fetch-depth: 1
       - name: 準備 data 分支
         run: |
