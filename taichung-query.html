@@ -462,6 +462,16 @@
         bottom: calc(var(--sheet-h, 45vh) + max(8px, env(safe-area-inset-bottom)) - 24px); transition: bottom .28s cubic-bezier(.2, .8, .2, 1); }
     #grip.drag { transition: none; }
     #grip span { width: 40px; height: 5px; border-radius: 3px; background: var(--grip, rgba(60,60,67,.35)); }
+    .pd-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+    .pd-t { border: 1px solid var(--line, rgba(255,255,255,.2)); background: transparent; color: var(--text, #fff); border-radius: 12px; padding: 4px 10px; font-size: 13px; cursor: pointer; }
+    .pd-t.on { background: #0a84ff; border-color: #0a84ff; color: #fff; } .pd-t small { opacity: .75; }
+    .pd-tab .mins span { cursor: pointer; font-weight: 600; }
+    .pd-m.dir { font-weight: 900 !important; text-decoration: underline; text-underline-offset: 3px; }
+    .pd-m.past { opacity: .35; } .pd-m.next { outline: 2px solid #0a84ff; border-radius: 4px; } .pd-m.sel { background: rgba(10,132,255,.3); border-radius: 4px; }
+    .pd-leg { display: flex; align-items: center; gap: 8px; font-size: 12px; margin: 6px 0; } .pd-grad { flex: 1; height: 8px; border-radius: 4px; }
+    .pd-dir { text-decoration: underline; } .pd-bar { height: 6px; background: rgba(127,127,127,.25); border-radius: 3px; overflow: hidden; } .pd-bar span { display: block; height: 100%; background: #0a84ff; transition: width .2s; }
+    .pl-favs { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; } .pl-fav { font-size: 12px; border: 1px solid rgba(255,214,10,.5); border-radius: 12px; padding: 3px 4px 3px 9px; cursor: pointer; }
+    .pl-fav-x { background: none; border: 0; color: inherit; cursor: pointer; font-size: 14px; padding: 0 4px; }
     .an-box { margin: 8px 0; padding: 8px 10px; border-radius: 12px; background: rgba(255,69,58,.08); border: 1px solid rgba(255,69,58,.25); }
     .an-box summary { cursor: pointer; } .an-box .an-t { font-size: 11px; }
     .an-sum { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
@@ -751,7 +761,10 @@ const routeDirs = sub => ROUTES.filter(r => r.sub === sub);
 const destOf = r => STOPS[r.seq[r.seq.length - 1]].name;
 // 路線顏色 (黃金角色相，依路線編號固定)
 const colorOf = sub => { let h = 0; for (const c of sub) h = (h * 31 + c.charCodeAt(0)) >>> 0; const i = SUBS.indexOf(sub); return `hsl(${(i * 137.508) % 360}, 62%, 42%)`; };
-const badge = sub => `<span class="badge" style="background:${colorOf(sub)}">${esc(sub)}</span>`;
+// 夜間公車 (凌晨 00～04 點有 2 個以上不同時刻從起點發車；規劃資料載入後依班表補上) → 路線號碼旁加 🌙
+const NIGHT_SUBS = new Set(['326']);
+const nightMark = sub => NIGHT_SUBS.has(sub) ? '🌙' : '';
+const badge = sub => `<span class="badge" style="background:${colorOf(sub)}">${esc(sub)}${nightMark(sub)}</span>`;
 
 // 兩點方位角 → 八方位
 function bearing(a, b) {
@@ -4853,7 +4866,11 @@ const PL_WALK_R = 350, PL_WALK_MPM = 72, PL_XFER = 1, PL_ROUNDS = 3, PL_ORIGIN_R
 let PLG = null;   // 規劃用路網 (第一次規劃時建立)
 function planLoad() {
     if (PL.data) return Promise.resolve(PL.data);
-    return fetch('data/plan.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : Promise.reject(new Error('找不到規劃資料 data/plan.json (請由網站開啟)'))).then(j => (PL.data = j));
+    return fetch('data/plan.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : Promise.reject(new Error('找不到規劃資料 data/plan.json (請由網站開啟)'))).then(j => {
+        PL.data = j;
+        ROUTES.forEach(r => { const q = j.r[r.i]; if (q && new Set(q.d.filter(([t]) => t < 240).map(([t]) => t)).size >= 2) NIGHT_SUBS.add(r.sub); });   // 夜間公車 (不同時刻 ≥ 2 班；160、161 只有一班 00:25 不算)
+        return j;
+    });
 }
 // 路網：公車 (每個子路線方向一條) ＋捷運南下/北上；捷運車站接在站牌索引後面
 function planGraph() {
@@ -4938,7 +4955,7 @@ function planStopLive(R, pos) {
 function planBoard(R, ri, pos, s, t, ds, first) {
     if (R.kind === 'bus' && !planHasTT(R)) {
         // 沒有站間旅行時間：只能搭即時預估 (N1) 有到站時刻的車，下車時刻也用同一台車的預估
-        if (ds !== todayKey()) return null;
+        if (ds !== todayKey() || PL.noLive) return null;
         let b = null;
         (liveTrips(R.r) || []).forEach(q => { const x = q.t[pos]; if (x !== null && x >= t - 0.3 && x - t <= 90 && (!b || x < b.t[pos])) b = q; });
         return b ? { dep: null, live: b.ms[pos], lt: b } : null;
@@ -4946,7 +4963,7 @@ function planBoard(R, ri, pos, s, t, ds, first) {
     const off = planOff(R, pos);
     if (off === null) return null;
     // 即時到站 (起點站牌另查的、或已載入的路線即時)：末班已過／今日未營運＝不能搭；有預估就用預估 (含誤點、早到)
-    const lv = (first && PL.live && PL.live.get(ri + '|' + s)) || (R.kind === 'bus' && ds === todayKey() ? planStopLive(R, pos) : null);
+    const lv = (first && PL.live && PL.live.get(ri + '|' + s)) || (R.kind === 'bus' && ds === todayKey() && !PL.noLive ? planStopLive(R, pos) : null);
     let floor = t;
     if (lv) {
         if (lv.dead) return null;
@@ -5200,7 +5217,14 @@ function planEnds(p) {
     return g.near(p, PL_ORIGIN_R).map(([s, d]) => [s, d * 1.3 / PL_WALK_MPM]);
 }
 const planPt = p => p.type === 'station' ? (() => { const st = STATIONS.get(p.id); return { name: st.name, lat: st.lat, lng: st.lng }; })() : { name: p.name, lat: p.lat, lng: p.lng };
-async function runPlan() {
+function runPlan() { return PL.dayMode ? runPlanDay() : runPlanNow(); }
+// 方案所有時刻往後移 (隔天凌晨的方案 +1440 分，接在今天之後；顯示時 fmt 取 24 小時制)
+function planShiftDay(p, d) {
+    p.legs.forEach(l => { ['tb', 'ta', 'ready'].forEach(k => { if (l[k] !== undefined && l[k] !== null) l[k] += d; }); if (l.dep !== undefined && l.dep !== null) l.dep += d; });
+    p.arrive += d; p.depart += d;
+    return p;
+}
+async function runPlanNow() {
     if (!PL.from || !PL.to) return;
     PL.busy = true; PL.err = ''; PL.res = null; renderPlan();
     try { await planLoad(); } catch (e) { PL.busy = false; PL.err = e.message; renderPlan(); return; }
@@ -5236,6 +5260,20 @@ async function runPlan() {
             });
             t = Math.min(...rs.map(p => p.depart)) + 1;
         }
+        // 21:00 後出發：再找隔天凌晨的班次 (夜間公車 00～03 點)，時刻加 24 小時接在今天後面
+        if (t0 >= 1260) {
+            const ds2 = dateKey(new Date(new Date(ds + 'T00:00:00').getTime() + 86400000));
+            let u = Math.max(0, t0 - 1440);
+            for (let n = 0; n < N; n++) {
+                const rs = raptor(S, D, u, ds2);
+                if (!rs.length) break;
+                rs.forEach(p => {
+                    planShiftDay(p, 1440); p.nextDay = true;
+                    const key = 'n:' + p.legs.map(l => l.type === 'ride' ? l.ri : l.type === 'bike' ? 'b' : '').filter(x => x !== '').join('>'); const o = seen.get(key); if (!o || p.arrive < o.arrive) seen.set(key, p);
+                });
+                u = Math.min(...rs.map(p => p.depart)) - 1440 + 1;
+            }
+        }
     });
     // 排序：騎車沿自行車道／綠地／河道的部分少算時間 (同 plBikeFeel)
     const cost = p => p.arrive + p.xfers * 5 + p.walk * 0.5 + p.bikes * 3 - p.legs.filter(l => l.type === 'bike').reduce((a, l) => a + l.min - plBikeFeel({ ride: l.min, g: l.g }), 0);
@@ -5243,8 +5281,15 @@ async function runPlan() {
     const all = [...seen.values()];
     PL.res = all.filter(p => !all.some(q => q !== p && q.arrive <= p.arrive && q.xfers <= p.xfers && q.walk <= p.walk + 3 && q.bikes <= p.bikes && (q.arrive < p.arrive || q.xfers < p.xfers)))
         .sort((a, b) => cost(a) - cost(b)).slice(0, 6);
+    // 常用搭法：這組起訖的常用組合，各取 t0 之後最早一班放最上面 (結果裡已有同一班就標成常用)
+    planFavsHere().forEach(f => {
+        const q = planPatEval(f, t0, ds);
+        if (!q) return;
+        const same = PL.res.find(p => planPatKey(p) === f.key && Math.abs(p.rides[0].tb - q.rides[0].tb) < 0.5);
+        if (same) { same.fav = true; PL.res.splice(PL.res.indexOf(same), 1); PL.res.unshift(same); } else PL.res.unshift(q);
+    });
     PL.sel = 0; PL.busy = false; PL.ds = ds; PL.t0 = t0;
-    if (!PL.res.length) PL.err = '找不到 2 次轉乘內、90 分鐘內可搭的方案';
+    if (!PL.res.length) PL.err = '找不到 2 次轉乘內、90 分鐘內可搭的方案'; else PL.err = '';
     renderPlan(); drawPlan(true); planCheckXfers();
 }
 // 起點附近站牌 (最多 40 支) 一次查即時到站 → PL.live：「路線|站」→ 可搭時刻 (分鐘＋ms) 或停駛
@@ -5373,11 +5418,331 @@ function planLive(l) {
     const tb = l.tb, best = dls.reduce((a, v) => Math.abs(minOfMs(v) - tb) < Math.abs(minOfMs(a) - tb) ? v : a, dls[0]);
     return Math.abs(minOfMs(best) - tb) <= 25 ? best : null;
 }
-const legName = l => l.R.kind === 'mrt' ? '綠線' : l.R.r.sub;
+const legName = l => l.R.kind === 'mrt' ? '綠線' : l.R.r.sub + nightMark(l.R.r.sub);
 const legColor = l => l.R.kind === 'mrt' ? (M.color || '#8cc540') : colorOf(l.R.r.sub);
 const legDest = l => l.R.kind === 'mrt' ? (l.R.dirKey === 'south' ? '高鐵臺中站' : '北屯總站') : destOf(l.R.r);
 const ptName = s => planGraph().pts[s].name;
 function planEndLabel(p) { return !p ? '' : p.type === 'station' ? STATIONS.get(p.id).name : p.name; }
+// 規劃結果卡片 (規劃結果與全日時刻表選取的班次共用)；t0＝計算「幾分」的起點
+function planCardHtml(p, k, t0 = PL.t0) {
+        const first = p.rides[0], live = first ? planLive(first) : null;
+    const chips = p.legs.map(l => l.type === 'walk' ? `<span class="pl-walk">🚶${Math.max(1, Math.round(l.min))}</span>` : l.type === 'bike' ? `<span class="pl-bk">🚲${Math.round(l.min)}</span>` : `<span class="badge" style="background:${legColor(l)}">${esc(legName(l))}</span>`).join('<span class="pl-arrow">›</span>');
+    const detail = k === PL.sel ? `<div class="pl-legs">${p.legs.map((l, li) => {
+        if (l.type === 'walk') return `<div class="pl-leg walk"><span class="pl-ic">🚶</span><span class="pl-wk" data-li="${li}" title="在地圖上看這段步行路線">步行約 ${Math.max(1, Math.round(l.min))} 分${l.end ? ` 到 ${esc(planEndLabel(PL.to))}` : l.txt ? ' ' + esc(l.txt) : l.start ? ` 到 ${esc(ptName(l.to))}` : ` 轉乘到 ${esc(ptName(l.to))}`}</span></div>`;
+        if (l.type === 'bike') return `<div class="pl-leg bike"><span class="pl-ic"><span class="pl-bk">🚲</span></span><span><b>${esc(l.A.name)}</b> 借車 ${ybCnt(l.A, 'rent', l.fut)}
+            <br><small>騎約 ${Math.round(l.min)} 分 (含借還${(o => o ? `，OSM 路線 ${(o.dist / 1000).toFixed(1)} km` : '，直線估算')(osmBikeGet(l.A, l.B))}) 到 <b>${esc(l.B.name)}</b> 還車 ${ybCnt(l.B, 'ret', true)}${l.g >= 0.05 ? `<br>🌳 沿自行車道／綠地／河道約 ${Math.round(l.g * 100)}%` : ''}</small>
+            <br>${gBikeBtn(l.A, l.B, 'pl-gl')}</span></div>`;
+        const lv = l === first ? live : null, T = legTimes(l);
+        const xi = l !== first ? planXferInfo(p, l) : { html: '' };
+        const xf = l !== first ? `${l.slack !== undefined && l.slack < 3 ? ` <span class="dly late">轉乘緊湊 (餘 ${Math.max(0, Math.round(l.slack))} 分)</span>` : ''}${xi.html}` : '';
+        const alt = xi.fail ? planAltHtml(p, l) : '';
+        const rtb = l.R.kind === 'bus' ? ` pl-rtb" data-li="${li}" title="看 ${esc(legName(l))} 路線資訊 (${esc(ptName(l.b))})` : '';
+        return `<div class="pl-leg ride" style="--c:${legColor(l)}"><span class="pl-ic${rtb}"><span class="badge" style="background:${legColor(l)}">${esc(legName(l))}</span></span>
+            <span><b>${esc(ptName(l.b))}</b> 上車 ${lv ? `<span data-dl="${lv}">${remain(lv)}</span> <span class="tag api">即時</span>` : `${fmt(T.tb)} <span class="tag ${T.cls}">${T.txt}</span>`}
+${xf}
+            <br><small>往 ${esc(legDest(l))} · 搭 ${l.aPos - l.bPos} 站 · 約 ${fmt(T.ta)} 到 <b>${esc(ptName(l.a))}</b></small></span></div>${alt}`;
+    }).join('')}
+        ${first ? `<div class="row"><button class="btn pl-nav" data-k="${k}">🧭 開始導航</button><button class="btn pl-cal" data-k="${k}">📅 加入行事曆</button><button class="btn pl-star" data-k="${k}">${planFavHas(p) ? '★ 常用' : '☆ 加入常用'}</button></div>` : ''}</div>` : '';
+    // 出發時刻＝上車時刻 − 上車前的步行／騎車 (即時上車時改用即時)
+    const pre = first ? first.tb - p.depart : 0, boardAt = live ? minOfMs(live) : first ? first.tb : null;
+    return `<div class="pl-card${k === PL.sel ? ' sel' : ''}" data-k="${k}"><div class="pl-sum">${p.fav ? '<span class="dly ontime">⭐ 常用</span> ' : ''}${p.nextDay ? '<span class="dly early">隔天凌晨</span> ' : ''}<b>${fmt(p.arrive)} 抵達</b><span class="muted">${Math.round(p.arrive - t0)} 分 · ${p.xfers ? `轉乘 ${p.xfers} 次` : '直達'}${p.bikes ? ` · 騎車 ${Math.round(p.bikeMin)} 分` : ''} · 步行 ${Math.round(p.walk)} 分</span></div>
+        <div class="pl-chips">${chips}</div>
+        <div class="muted pl-first">${!first ? `${fmt(p.depart)} 出發，到 ${esc(p.legs[1].A.name)} 借車` : `<b>${fmt(boardAt - pre)} 出發</b>，${fmt(boardAt)} 於 ${esc(ptName(first.b))} 上車${live ? ` (即時 <span data-dl="${live}">${remain(live)}</span> 後到)` : ''}`}</div>${detail}</div>`;
+}
+// ==================== 全日時刻表：起訖一整天每種搭法的上車時刻 (只用班表，不打 API) ====================
+//   掃描：從 00:00 起反覆規劃 (每次從上一批最早出發之後再找)，收集各搭法 (路線組合＋上下車站) 的每一班
+//   時刻＝第一段公車在上車站的上車時刻；搭車時間＝第一段上車到抵達終點 (含轉乘等車、最後步行，不含在第一站等車)
+//   顏色：本次查詢全部班次中最短＝綠、最長＝紅、中間黃；直達加粗加底線
+//   頁籤：全部 (同一上車時刻只留最快) ／直達／轉乘 1 次／轉乘 2 次以上／⭐ 常用；去掉「比另一班早上車卻更晚到」的班次
+const PL_FAV_KEY = 'txg_pl_fav', PL_FAV_MAX = 10;
+const planPatKey = p => p.legs.map(l => l.type === 'ride' ? `${l.ri}:${l.b}>${l.a}` : l.type === 'bike' ? 'bk' : '').filter(Boolean).join('|');
+const planPatLabel = p => p.rides.map(l => legName(l)).join(' › ');
+// 起訖相同 (名稱相同且相距 80 m 內)
+const planSameEnd = (a, b) => !!(a && b) && planEndLabel(a) === planEndLabel(b) && gDist(planPt(a), planPt(b)) < 80;
+const planFavs = () => { try { return JSON.parse(localStorage.getItem(PL_FAV_KEY) || '[]'); } catch (e) { return []; } };
+const planFavSave = l => { try { localStorage.setItem(PL_FAV_KEY, JSON.stringify(l.slice(0, PL_FAV_MAX))); } catch (e) {} };
+// 常用有兩種：固定搭法 (legs) 與只存起訖 (od，不指定路線，點選後照常規劃)
+const planFavsHere = () => planFavs().filter(f => !f.od && planSameEnd(f.from, PL.from) && planSameEnd(f.to, PL.to));
+const planOdIdx = (l = planFavs()) => l.findIndex(f => f.od && planSameEnd(f.from, PL.from) && planSameEnd(f.to, PL.to));
+function planOdToggle() {
+    if (!PL.from || !PL.to) return;
+    const l = planFavs(), i = planOdIdx(l);
+    if (i >= 0) l.splice(i, 1);
+    else {
+        if (l.length >= PL_FAV_MAX) { alert(`常用最多 ${PL_FAV_MAX} 組，請先移除一組`); return; }
+        l.unshift({ od: true, key: '', from: PL.from, to: PL.to, label: '', legs: [] });
+    }
+    planFavSave(l);
+}
+const planFavHas = p => planFavsHere().some(f => f.key === planPatKey(p));
+function planFavToggle(p) {
+    const key = planPatKey(p), l = planFavs(), i = l.findIndex(f => f.key === key && planSameEnd(f.from, PL.from) && planSameEnd(f.to, PL.to));
+    if (i >= 0) l.splice(i, 1);
+    else {
+        if (l.length >= PL_FAV_MAX) { alert(`常用最多 ${PL_FAV_MAX} 組，請先移除一組`); return; }
+        l.unshift({ key, from: PL.from, to: PL.to, label: planPatLabel(p), legs: p.legs.filter(x => x.type === 'ride').map(x => ({ ri: x.ri, b: x.b, a: x.a })) });
+    }
+    planFavSave(l);
+}
+// 固定搭法在 t 之後最早的一班 (每段接得上的第一班；步行轉乘依規劃圖步行時間) → 與規劃結果同格式；不打 API
+function planPatEval(f, t, ds) {
+    const g = planGraph(), srcW = new Map(planEnds(PL.from).map(([s, w]) => [s, w])), dstW = new Map(planEnds(PL.to).map(([s, w]) => [s, w]));
+    const first = f.legs[0], last = f.legs[f.legs.length - 1];
+    if (!srcW.has(first.b) || !dstW.has(last.a)) return null;
+    const legs = [], w0 = srcW.get(first.b);
+    if (w0 > 0.2) legs.push({ type: 'walk', to: first.b, min: w0, start: true });
+    let ready = t + w0;
+    for (let i = 0; i < f.legs.length; i++) {
+        const x = f.legs[i], R = g.routes[x.ri];
+        if (!R) return null;
+        const bPos = R.stops.indexOf(x.b), aPos = R.stops.indexOf(x.a, bPos + 1);
+        if (bPos < 0 || aPos < 0) return null;
+        const c = planBoard(R, x.ri, bPos, x.b, ready, ds, i === 0);
+        if (!c) return null;
+        const tb = planBoardAt(R, c, bPos), ta = planArrAt(R, c, aPos);
+        if (tb === null || ta === null) return null;
+        legs.push({ type: 'ride', ri: x.ri, R, b: x.b, a: x.a, bPos, aPos, tb, ta, dep: c.dep, live: c.live, lt: c.lt });
+        const nx = f.legs[i + 1];
+        if (nx) {
+            const w = nx.b === x.a ? 0 : ((g.walk(x.a).find(([j]) => j === nx.b) || [0, gDist(g.pts[x.a], g.pts[nx.b]) * 1.3 / PL_WALK_MPM])[1]);
+            if (w > 0) legs.push({ type: 'walk', from: x.a, to: nx.b, min: w });
+            ready = ta + w + (nx.b === x.a ? PL_XFER : 0);
+        }
+    }
+    const wEnd = dstW.get(last.a), arrive = legs[legs.length - 1].ta + wEnd;
+    if (wEnd > 0.2) legs.push({ type: 'walk', end: true, min: wEnd });
+    planReady(legs);
+    const rides = legs.filter(l => l.type === 'ride');
+    return planSum({ legs, rides, arrive, depart: rides[0].tb - w0, xfers: rides.length - 1, fav: true });
+}
+// 一整天 → 班次清單 [{ b, a, dur, x, key, p }]
+async function planDayCompute(ds, onProg) {
+    await planLoad();
+    const src = planEnds(PL.from), dst = planEnds(PL.to), runs = [];
+    if (src.length && dst.length) runs.push([src, dst]);
+    if (PL.bike) {
+        try { await planYB(false); const sb = planBikeCands(PL.from, true), db = planBikeCands(PL.to, false); if (sb.length && db.length) runs.push([src.concat(planBikeEnds(sb, PL_BK_CAPS[2])), dst.concat(planBikeEnds(db, PL_BK_CAPS[2]))]); } catch (e) {}
+    }
+    const out = new Map(), saveLive = PL.live;
+    PL.live = null; PL.noLive = true;   // 全日表只用班表 (不混入現在的即時到站)
+    try {
+        for (let r = 0; r < runs.length; r++) {
+            const [S, D] = runs[r];
+            let t = 0, n = 0;   // 從 00:00 起 (含凌晨夜間公車)
+            while (t < 1560 && n++ < 800) {
+                const rs = raptor(S, D, t, ds);
+                if (!rs.length) { t += 60; continue; }   // 規劃最多等 90 分：這段時間沒車 (例 00～05 點) 就往後 1 小時再找
+                rs.forEach(p => {
+                    if (!p.rides.length || (p.bikes && p.bikeMin > (p.arrive - p.depart) * PL_BK_RATIO + 1e-6)) return;
+                    const k = planPatKey(p) + '@' + p.rides[0].tb.toFixed(1), o = out.get(k);
+                    if (!o || p.arrive < o.arrive) out.set(k, p);
+                });
+                t = Math.min(...rs.map(p => p.depart)) + 0.5;
+                if (n % 6 === 0) { onProg && onProg((r + Math.min(1, t / 1560)) / runs.length); await new Promise(ok => setTimeout(ok, 0)); }
+            }
+        }
+    } finally { PL.live = saveLive; PL.noLive = false; }
+    return [...out.values()].map(p => ({ b: p.rides[0].tb, a: p.arrive, dur: p.arrive - p.rides[0].tb, x: p.xfers, key: planPatKey(p), p }));
+}
+// 常用搭法一整天的班次
+function planFavDay(ds) {
+    const out = [];
+    PL.noLive = true; const saveLive = PL.live; PL.live = null;
+    try {
+        planFavsHere().forEach(f => { let t = 0;
+            for (let n = 0; n < 400 && t < 1560; n++) { const p = planPatEval(f, t, ds); if (!p) { t += 60; continue; } out.push({ b: p.rides[0].tb, a: p.arrive, dur: p.arrive - p.rides[0].tb, x: p.xfers, key: f.key, p, fav: true }); t = p.depart + 0.5; } });
+    } finally { PL.noLive = false; PL.live = saveLive; }
+    return out;
+}
+// 去掉被支配的班次：另一班不早於它上車、卻不晚於它抵達
+function planDom(list) {
+    return list.filter(e => !list.some(o => o !== e && o.b >= e.b - 1e-6 && o.a <= e.a + 1e-6 && (o.b > e.b + 1e-6 || o.a < e.a - 1e-6)));
+}
+// 各頁籤
+function planDayTabs(list, favs) {
+    const all = [], byMin = new Map();
+    planDom(list).forEach(e => { const m = Math.round(e.b), o = byMin.get(m); if (!o || e.a < o.a) byMin.set(m, e); });
+    byMin.forEach(e => all.push(e));
+    const tabs = [['all', '全部', all], ['d0', '直達', planDom(list.filter(e => e.x === 0))], ['d1', '轉乘 1 次', planDom(list.filter(e => e.x === 1))], ['d2', '轉乘 2 次以上', planDom(list.filter(e => e.x >= 2))]];
+    if (favs && favs.length) tabs.push(['fav', '⭐ 常用', favs]);
+    tabs.forEach(t => t[2].sort((a, b) => a.b - b.b));
+    return tabs;
+}
+// 綠 → 黃 → 紅
+function planDurColor(d, lo, hi) {
+    const t = hi > lo ? Math.max(0, Math.min(1, (d - lo) / (hi - lo))) : 0;
+    const A = [48, 209, 88], B = [255, 214, 10], C = [255, 69, 58], [p, q, u] = t < 0.5 ? [A, B, t * 2] : [B, C, (t - 0.5) * 2];
+    return `rgb(${p.map((v, i) => Math.round(v + (q[i] - v) * u)).join(',')})`;
+}
+const PL_DUR_GRAD = 'linear-gradient(90deg, rgb(48,209,88), rgb(255,214,10), rgb(255,69,58))';
+// 時刻表 (格式同站站時刻表：每小時一列)
+function planDayTable(list, lo, hi, isToday, nm, selI) {
+    const byH = new Map();
+    list.forEach(e => { const h = Math.min(25, Math.floor(Math.round(e.b) / 60)); if (!byH.has(h)) byH.set(h, []); byH.get(h).push(e); });
+    let nextMarked = false;
+    const hs = [...byH.keys()], h0 = hs.length ? Math.min(...hs) : 5, h1 = hs.length ? Math.max(...hs) : 23, rows = [];
+    for (let h = h0; h <= h1; h++) {
+        const mins = (byH.get(h) || []).map(e => {
+            const r = Math.round(e.b), past = isToday && r < nm - 0.5, next = isToday && !past && !nextMarked && (nextMarked = true);
+            return `<span class="pd-m${e.x === 0 ? ' dir' : ''}${past ? ' past' : ''}${next ? ' next' : ''}${e.i === selI ? ' sel' : ''}" data-i="${e.i}" style="color:${planDurColor(e.dur, lo, hi)}" title="${esc(planPatLabel(e.p))} · ${Math.round(e.dur)} 分">${pad(r % 60)}</span>`;
+        }).join('');
+        rows.push(`<div class="hr${isToday && h === Math.floor(nm / 60) ? ' cur' : ''}${mins ? '' : ' empty'}"><b>${pad(h % 24)}</b><span class="mins">${mins || '—'}</span></div>`);
+    }
+    return `<div class="daytab pd-tab">${rows.join('')}</div>`;
+}
+async function runPlanDay() {
+    if (!PL.from || !PL.to) return;
+    const ds = selDate();
+    PL.day = { ds, busy: true, prog: 0, list: null, tab: (PL.day && PL.day.tab) || 'all', sel: -1 };
+    PL.res = null; PL.err = ''; renderPlan();
+    try {
+        const list = await planDayCompute(ds, f => { PL.day.prog = f; const e = document.getElementById('pd-prog'); if (e) e.style.width = Math.round(f * 100) + '%'; });
+        const favs = planFavDay(ds);
+        list.concat(favs).forEach((e, i) => e.i = i);
+        Object.assign(PL.day, { busy: false, list, favs });
+        if (!list.length) PL.err = '這一天找不到 2 次轉乘內可搭的方式';
+    } catch (e) { PL.day.busy = false; PL.err = e.message; }
+    renderPlan();
+}
+function planDayHtml() {
+    const D = PL.day;
+    if (!D) return '';
+    if (D.busy) return `<div class="hint">計算全日時刻表中…（只用班表，不耗 API）</div><div class="pd-bar"><span id="pd-prog" style="width:${Math.round(D.prog * 100)}%"></span></div>`;
+    if (!D.list) return '';
+    const tabs = planDayTabs(D.list, D.favs), cur = tabs.find(t => t[0] === D.tab) || tabs[0], every = tabs.flatMap(t => t[2]);
+    const lo = Math.min(...every.map(e => e.dur)), hi = Math.max(...every.map(e => e.dur)), isToday = D.ds === todayKey();
+    const sel = D.sel >= 0 ? D.list.concat(D.favs).find(e => e.i === D.sel) : null;
+    return `<div class="pd-tabs">${tabs.map(([k, n, l]) => `<button class="pd-t${k === cur[0] ? ' on' : ''}" data-t="${k}">${n} <small>${l.length}</small></button>`).join('')}</div>
+        ${cur[2].length ? planDayTable(cur[2], lo, hi, isToday, nowMin(), D.sel) : '<div class="hint">沒有這類搭法</div>'}
+        <div class="pd-leg"><span>${Math.round(lo)} 分</span><span class="pd-grad" style="background:${PL_DUR_GRAD}"></span><span>${Math.round(hi)} 分</span></div>
+        <div class="muted small">時刻＝第一段公車上車時刻；顏色＝搭車時間 (上車到抵達，含轉乘等車與最後步行)；<b class="pd-dir">粗底線</b>＝直達。${D.ds} 班表推算，點時刻看完整方案。</div>
+        <div class="row"><button class="btn" id="pd-png">🖼 匯出 PNG</button><button class="btn" id="pd-pdf">📄 匯出 A4 PDF</button><span class="muted small" id="pd-exp"></span></div>
+        ${sel ? planCardHtml(sel.p, 0, sel.p.depart) : ''}`;
+}
+function planDayBind() {
+    const D = PL.day;
+    panel.querySelectorAll('.pd-t').forEach(b => b.onclick = () => { D.tab = b.dataset.t; renderPlan(); });
+    panel.querySelectorAll('.pd-m').forEach(e => e.onclick = () => {
+        D.sel = +e.dataset.i;
+        const x = D.list.concat(D.favs).find(q => q.i === D.sel);
+        if (x) { PL.res = [x.p]; PL.sel = 0; PL.ds = D.ds; PL.t0 = x.p.depart; renderPlan(); drawPlan(true); }
+    });
+    if ($('pd-png')) $('pd-png').onclick = () => planExport('png');
+    if ($('pd-pdf')) $('pd-pdf').onclick = () => planExport('pdf');
+}
+// ---- 加入行事曆 (.ics；出門前 15 分提醒；依班表，不隨即時誤點更新) ----
+function planIcs(p, ds) {
+    const first = p.rides[0], pre = first.tb - p.depart, day0 = new Date(ds + 'T00:00:00+08:00').getTime();
+    const z = m => new Date(day0 + m * 60000).toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
+    const e = s => String(s).replace(/\\/g, '\\\\').replace(/[,;]/g, m => '\\' + m).replace(/\n/g, '\\n');
+    const steps = p.legs.map(l => l.type === 'ride' ? `${fmt(l.tb)} ${ptName(l.b)} 搭 ${legName(l)} 往 ${legDest(l)} → ${fmt(l.ta)} ${ptName(l.a)} 下車` : l.type === 'walk' ? `步行約 ${Math.max(1, Math.round(l.min))} 分` : `YouBike 約 ${Math.round(l.min)} 分`).join('\n');
+    const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//txg-bus//plan//ZH-TW', 'CALSCALE:GREGORIAN', 'BEGIN:VEVENT',
+        `UID:${Date.now()}-${Math.random().toString(36).slice(2)}@txg-bus`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '')}`,
+        `DTSTART:${z(first.tb - pre)}`, `DTEND:${z(p.arrive)}`, `SUMMARY:${e(`🚌 ${planPatLabel(p)} 往 ${planEndLabel(PL.to)}`)}`, `LOCATION:${e(planEndLabel(PL.from))}`,
+        `DESCRIPTION:${e(`${planEndLabel(PL.from)} → ${planEndLabel(PL.to)}\n${steps}\n${fmt(p.arrive)} 抵達（依班表，不隨即時誤點更新）`)}`,
+        'BEGIN:VALARM', 'TRIGGER:-PT15M', 'ACTION:DISPLAY', 'DESCRIPTION:準備出門搭車', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'];
+    return lines.join('\r\n');
+}
+// 直接下載 (多個檔案依序下載，間隔避免瀏覽器擋掉)
+function planDownload(files) {
+    files.forEach((f, i) => setTimeout(() => { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000); }, i * 400));
+}
+// 行事曆：手機用分享面板開啟 (可直接加入行事曆)，不支援就下載
+async function planShareFiles(files, title) {
+    try { if (navigator.canShare && navigator.canShare({ files })) { await navigator.share({ files, title }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+    planDownload(files);
+}
+function planAddCal(p) {
+    const ds = PL.day && PL.res && PL.res[0] === p ? PL.day.ds : PL.ds || selDate();
+    planShareFiles([new File([planIcs(p, ds)], `bus-${ds}-${fmt(p.rides[0].tb).replace(':', '')}.ics`, { type: 'text/calendar' })], '加入行事曆');
+}
+// ---- 匯出：週間各天依班表分組 (相同就合併)，每組全部頁籤 → PNG (手機直式 1080×2340) ／ A4 PDF ----
+async function planExport(kind) {
+    const D = PL.day, msg = t => { const e = $('pd-exp'); if (e) e.textContent = t; };
+    if (!D || !D.list) return;
+    msg('分析一週班表…');
+    const g = planGraph(), base = new Date(D.ds + 'T00:00:00'), dates = [...Array(7)].map((_, k) => { const d = new Date(base); d.setDate(d.getDate() + k); return dateKey(d); });
+    const ris = new Set(); D.list.concat(D.favs).forEach(e => e.p.rides.forEach(l => ris.add(l.ri)));
+    const sig = ds => [...ris].map(ri => planDeps(g.routes[ri], ri, ds).join(',')).join('|');
+    const groups = [];
+    dates.forEach(ds => { const s = sig(ds), o = groups.find(x => x.sig === s); if (o) o.dates.push(ds); else groups.push({ sig: s, dates: [ds] }); });
+    const wdOrder = d => (new Date(d + 'T00:00:00').getDay() + 6) % 7;   // 週一＝0
+    groups.forEach(G => G.dates.sort((a, b) => wdOrder(a) - wdOrder(b)));
+    groups.sort((a, b) => wdOrder(a.dates[0]) - wdOrder(b.dates[0]));
+    for (let k = 0; k < groups.length; k++) {
+        const G = groups[k];
+        msg(`計算 ${k + 1}/${groups.length} 組…`);
+        G.list = G.dates.includes(D.ds) ? D.list : await planDayCompute(G.dates[0]);
+        G.favs = G.dates.includes(D.ds) ? D.favs : planFavDay(G.dates[0]);
+        G.label = planWdLabel(G.dates);
+    }
+    const every = groups.flatMap(G => planDayTabs(G.list, G.favs).flatMap(t => t[2])), lo = Math.min(...every.map(e => e.dur)), hi = Math.max(...every.map(e => e.dur));
+    msg('產生圖檔…');
+    const spec = kind === 'png' ? { W: 1080, H: 2340, f: 34 } : { W: 1240, H: 1754, f: 26 };
+    const pages = planDrawPages(groups, lo, hi, spec), name = `${planEndLabel(PL.from)}→${planEndLabel(PL.to)}`.replace(/[\\/:*?"<>|]/g, '_');
+    if (kind === 'png') {
+        const files = await Promise.all(pages.map((c, i) => new Promise(ok => c.toBlob(b => ok(new File([b], `${name}-${i + 1}.png`, { type: 'image/png' })), 'image/png'))));
+        planDownload(files);
+    } else {
+        await planLoadJsPdf();
+        const pdf = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4' });
+        pages.forEach((c, i) => { if (i) pdf.addPage(); pdf.addImage(c.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 210, 297); });
+        planDownload([new File([pdf.output('blob')], `${name}.pdf`, { type: 'application/pdf' })]);
+    }
+    msg(`已匯出 ${pages.length} 頁（${groups.map(G => G.label).join('／')}）`);
+}
+function planWdLabel(dates) {
+    const w = dates.map(d => new Date(d + 'T00:00:00').getDay()), names = '日一二三四五六', seq = w.map(x => (x + 6) % 7).sort((a, b) => a - b);
+    const run = seq.length > 2 && seq.every((x, i) => !i || x === seq[i - 1] + 1);
+    return run ? `週${names[(seq[0] + 1) % 7]}～週${names[(seq[seq.length - 1] + 1) % 7]}` : seq.map(x => '週' + names[(x + 1) % 7]).join('、');
+}
+let jsPdfP = null;
+const planLoadJsPdf = () => jsPdfP || (jsPdfP = new Promise((ok, no) => { if (window.jspdf) return ok(); const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'; s.onload = ok; s.onerror = () => { jsPdfP = null; no(new Error('PDF 元件載入失敗')); }; document.head.appendChild(s); }));
+// 畫成固定大小的頁面 (canvas)：標題、各組 (星期) 的各頁籤時刻表、色條
+function planDrawPages(groups, lo, hi, { W, H, f }) {
+    const P = Math.round(f * 1.4), lh = Math.round(f * 1.55), hw = Math.round(f * 2.4), cw = Math.round(f * 1.75), per = Math.max(4, Math.floor((W - P * 2 - hw) / cw));
+    const items = [];   // { h, draw(ctx, y) }
+    const font = (s, b) => `${b ? 'bold ' : ''}${s}px system-ui, -apple-system, "Noto Sans TC", sans-serif`;
+    const text = (ctx, t, x, y, s, c, b) => { ctx.font = font(s, b); ctx.fillStyle = c; ctx.fillText(t, x, y); };
+    items.push({ h: f * 2.6, draw: (c, y) => { text(c, `${planEndLabel(PL.from)} → ${planEndLabel(PL.to)}`, P, y + f * 1.3, f * 1.2, '#111', true); text(c, `全日時刻表 · 依班表推算 · 產生於 ${todayKey()}`, P, y + f * 2.3, f * 0.7, '#666'); } });
+    items.push({ h: f * 2.2, draw: (c, y) => {
+        const gx = P + f * 3, gw = W - P * 2 - f * 6, gr = c.createLinearGradient(gx, 0, gx + gw, 0);
+        gr.addColorStop(0, 'rgb(48,209,88)'); gr.addColorStop(0.5, 'rgb(255,214,10)'); gr.addColorStop(1, 'rgb(255,69,58)');
+        c.fillStyle = gr; c.fillRect(gx, y + f * 0.4, gw, f * 0.6);
+        text(c, `${Math.round(lo)}分`, P, y + f, f * 0.7, '#333'); text(c, `${Math.round(hi)}分`, gx + gw + f * 0.4, y + f, f * 0.7, '#333');
+        text(c, '時刻＝第一段上車時刻　顏色＝搭車時間　粗底線＝直達', P, y + f * 1.9, f * 0.65, '#666'); } });
+    groups.forEach(G => {
+        items.push({ h: f * 2, page: true, draw: (c, y) => { c.fillStyle = '#0a84ff'; c.fillRect(P, y + f * 0.3, W - P * 2, f * 1.4); text(c, G.label, P + f * 0.5, y + f * 1.35, f, '#fff', true); } });
+        planDayTabs(G.list, G.favs).forEach(([, n, list]) => {
+            if (!list.length) return;
+            items.push({ h: f * 1.6, draw: (c, y) => text(c, `${n}（${list.length} 班）`, P, y + f * 1.2, f * 0.85, '#111', true) });
+            const byH = new Map();
+            list.forEach(e => { const h = Math.floor(Math.round(e.b) / 60); if (!byH.has(h)) byH.set(h, []); byH.get(h).push(e); });
+            [...byH.keys()].sort((a, b) => a - b).forEach(h => {
+                const l = byH.get(h), lines = Math.ceil(l.length / per);
+                items.push({ h: lines * lh + 4, draw: (c, y) => {
+                    c.fillStyle = '#f2f2f7'; c.fillRect(P, y, W - P * 2, lines * lh); text(c, pad(h % 24), P + f * 0.3, y + lh * 0.72, f * 0.9, '#333', true);
+                    l.forEach((e, i) => {
+                        const x = P + hw + (i % per) * cw, yy = y + Math.floor(i / per) * lh + lh * 0.72, mm = pad(Math.round(e.b) % 60);
+                        text(c, mm, x, yy, f, planDurColor(e.dur, lo, hi), e.x === 0);
+                        if (e.x === 0) { c.fillStyle = planDurColor(e.dur, lo, hi); c.fillRect(x, yy + f * 0.15, c.measureText(mm).width, Math.max(2, f * 0.09)); }
+                    });
+                } });
+            });
+        });
+    });
+    // 分頁：每組 (星期) 從新頁開始
+    const pages = [];
+    let cv = null, ctx = null, y = 0;
+    const newPage = () => { cv = document.createElement('canvas'); cv.width = W; cv.height = H; ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H); pages.push(cv); y = P; };
+    newPage();
+    items.forEach((it, k) => {
+        if ((it.page && k > 2 && y > P) || y + it.h > H - P) newPage();
+        it.draw(ctx, y); y += it.h;
+    });
+    pages.forEach((c, i) => { const x = c.getContext('2d'); x.font = font(f * 0.6); x.fillStyle = '#999'; x.fillText(`${i + 1} / ${pages.length}`, W - P - f * 3, H - P * 0.4); });
+    return pages;
+}
 function renderPlan() {
     if (mode !== 'plan') return;
     const f = PL.from, t = PL.to, keep = panel.scrollTop;
@@ -5386,42 +5751,21 @@ function renderPlan() {
     const ds = selDate(), isToday = ds === todayKey();
     const atTxt = PL.at !== null ? fmt(PL.at) : '';
     let res = '';
-    if (PL.busy) res = '<div class="hint">規劃中…</div>';
+    PL.altUse = [];
+    if (PL.dayMode) res = (PL.err ? `<div class="hint">${esc(PL.err)}</div>` : '') + planDayHtml();
+    else if (PL.busy) res = '<div class="hint">規劃中…</div>';
     else if (PL.err) res = `<div class="hint">${esc(PL.err)}</div>`;
-    else if (PL.res) { PL.altUse = []; res = PL.res.map((p, k) => {
-        const first = p.rides[0], live = first ? planLive(first) : null;
-        const chips = p.legs.map(l => l.type === 'walk' ? `<span class="pl-walk">🚶${Math.max(1, Math.round(l.min))}</span>` : l.type === 'bike' ? `<span class="pl-bk">🚲${Math.round(l.min)}</span>` : `<span class="badge" style="background:${legColor(l)}">${esc(legName(l))}</span>`).join('<span class="pl-arrow">›</span>');
-        const detail = k === PL.sel ? `<div class="pl-legs">${p.legs.map((l, li) => {
-            if (l.type === 'walk') return `<div class="pl-leg walk"><span class="pl-ic">🚶</span><span class="pl-wk" data-li="${li}" title="在地圖上看這段步行路線">步行約 ${Math.max(1, Math.round(l.min))} 分${l.end ? ` 到 ${esc(planEndLabel(PL.to))}` : l.txt ? ' ' + esc(l.txt) : l.start ? ` 到 ${esc(ptName(l.to))}` : ` 轉乘到 ${esc(ptName(l.to))}`}</span></div>`;
-            if (l.type === 'bike') return `<div class="pl-leg bike"><span class="pl-ic"><span class="pl-bk">🚲</span></span><span><b>${esc(l.A.name)}</b> 借車 ${ybCnt(l.A, 'rent', l.fut)}
-                <br><small>騎約 ${Math.round(l.min)} 分 (含借還${(o => o ? `，OSM 路線 ${(o.dist / 1000).toFixed(1)} km` : '，直線估算')(osmBikeGet(l.A, l.B))}) 到 <b>${esc(l.B.name)}</b> 還車 ${ybCnt(l.B, 'ret', true)}${l.g >= 0.05 ? `<br>🌳 沿自行車道／綠地／河道約 ${Math.round(l.g * 100)}%` : ''}</small>
-                <br>${gBikeBtn(l.A, l.B, 'pl-gl')}</span></div>`;
-            const lv = l === first ? live : null, T = legTimes(l);
-            const xi = l !== first ? planXferInfo(p, l) : { html: '' };
-            const xf = l !== first ? `${l.slack !== undefined && l.slack < 3 ? ` <span class="dly late">轉乘緊湊 (餘 ${Math.max(0, Math.round(l.slack))} 分)</span>` : ''}${xi.html}` : '';
-            const alt = xi.fail ? planAltHtml(p, l) : '';
-            const rtb = l.R.kind === 'bus' ? ` pl-rtb" data-li="${li}" title="看 ${esc(legName(l))} 路線資訊 (${esc(ptName(l.b))})` : '';
-            return `<div class="pl-leg ride" style="--c:${legColor(l)}"><span class="pl-ic${rtb}"><span class="badge" style="background:${legColor(l)}">${esc(legName(l))}</span></span>
-                <span><b>${esc(ptName(l.b))}</b> 上車 ${lv ? `<span data-dl="${lv}">${remain(lv)}</span> <span class="tag api">即時</span>` : `${fmt(T.tb)} <span class="tag ${T.cls}">${T.txt}</span>`}
-${xf}
-                <br><small>往 ${esc(legDest(l))} · 搭 ${l.aPos - l.bPos} 站 · 約 ${fmt(T.ta)} 到 <b>${esc(ptName(l.a))}</b></small></span></div>${alt}`;
-        }).join('')}
-            ${first ? `<div class="row"><button class="btn pl-nav" data-k="${k}">🧭 開始導航</button></div>` : ''}</div>` : '';
-        // 出發時刻＝上車時刻 − 上車前的步行／騎車 (即時上車時改用即時)
-        const pre = first ? first.tb - p.depart : 0, boardAt = live ? minOfMs(live) : first ? first.tb : null;
-        return `<div class="pl-card${k === PL.sel ? ' sel' : ''}" data-k="${k}"><div class="pl-sum"><b>${fmt(p.arrive)} 抵達</b><span class="muted">${Math.round(p.arrive - PL.t0)} 分 · ${p.xfers ? `轉乘 ${p.xfers} 次` : '直達'}${p.bikes ? ` · 騎車 ${Math.round(p.bikeMin)} 分` : ''} · 步行 ${Math.round(p.walk)} 分</span></div>
-            <div class="pl-chips">${chips}</div>
-            <div class="muted pl-first">${!first ? `${fmt(p.depart)} 出發，到 ${esc(p.legs[1].A.name)} 借車` : `<b>${fmt(boardAt - pre)} 出發</b>，${fmt(boardAt)} 於 ${esc(ptName(first.b))} 上車${live ? ` (即時 <span data-dl="${live}">${remain(live)}</span> 後到)` : ''}`}</div>${detail}</div>`;
-    }).join('') + `<div class="hint">${PL.ybNote ? esc(PL.ybNote) + '；' : ''}${PL.liveNote ? esc(PL.liveNote) + '；' : ''}${PL.bike ? `YouBike 騎車以直線距離 ×1.3、時速 13 km/h 估算，每段 ≤ ${PL_BK_MAX} 分、騎車合計不超過旅行時間的 1/5，沿自行車道／公園綠地／河道比例高的騎法優先 (OpenStreetMap 資料，地圖綠線＝自行車道)，地圖路線依 OpenStreetMap (FOSSGIS 單車路線)；終點端的借車與還車為未來時刻，數量僅供參考；` : ''}上下車時刻只用：即時預估到站 (標「即時」) 或路線班表＋TDX 站間旅行時間 (標「表定」)；沒有站間旅行時間的路線只搭即時預估中有到站時刻的車 (同一台車的預估算下車)，不用距離粗估；第一段依起點即時到站 (末班已過／未營運不列入)，已載入路線即時的轉乘段也用即時 (轉乘預留 1 分、步行 ${PL_WALK_R} m 內)；選取方案時另查轉乘路線即時，接不上時立即給替代方案。</div>`; }
+    else if (PL.res) { res = PL.res.map((p, k) => planCardHtml(p, k)).join('') + `<div class="hint">${PL.ybNote ? esc(PL.ybNote) + '；' : ''}${PL.liveNote ? esc(PL.liveNote) + '；' : ''}${PL.bike ? `YouBike 騎車以直線距離 ×1.3、時速 13 km/h 估算，每段 ≤ ${PL_BK_MAX} 分、騎車合計不超過旅行時間的 1/5，沿自行車道／公園綠地／河道比例高的騎法優先 (OpenStreetMap 資料，地圖綠線＝自行車道)，地圖路線依 OpenStreetMap (FOSSGIS 單車路線)；終點端的借車與還車為未來時刻，數量僅供參考；` : ''}上下車時刻只用：即時預估到站 (標「即時」) 或路線班表＋TDX 站間旅行時間 (標「表定」)；沒有站間旅行時間的路線只搭即時預估中有到站時刻的車 (同一台車的預估算下車)，不用距離粗估；第一段依起點即時到站 (末班已過／未營運不列入)，已載入路線即時的轉乘段也用即時 (轉乘預留 1 分、步行 ${PL_WALK_R} m 內)；選取方案時另查轉乘路線即時，接不上時立即給替代方案。</div>`; }
     panel.innerHTML = `<h2>路徑規劃</h2>
         <div class="pl-box">
             <div class="pl-f${PL.active === 'from' ? ' on' : ''}" data-f="from"><span class="pl-dot o"></span><input id="pl-from" placeholder="起點：站名、地圖點選或定位" value="${esc(PL.q && PL.active === 'from' ? PL.q : planEndLabel(f))}" autocomplete="off"><button class="pl-me" data-f="from" title="用我的位置">📍</button></div>
             <div class="pl-f${PL.active === 'to' ? ' on' : ''}" data-f="to"><span class="pl-dot d"></span><input id="pl-to" placeholder="終點：站名或地圖點選" value="${esc(PL.q && PL.active === 'to' ? PL.q : planEndLabel(t))}" autocomplete="off"><button class="pl-me" data-f="to" title="用我的位置">📍</button></div>
             <button class="pl-swap" id="pl-swap" title="交換起訖">⇅</button>
         </div>
-        <div class="row"><select id="pl-when"><option value="now"${PL.at === null ? ' selected' : ''}>${isToday ? '現在出發' : '當日首班起'}</option><option value="at"${PL.at !== null ? ' selected' : ''}>指定出發時間</option></select>
-            <input type="time" id="pl-time" value="${atTxt}" style="display:${PL.at !== null ? 'inline-block' : 'none'}"><label class="pl-ybt" title="起訖兩端可用 YouBike 接駁 (臺中市政府開放資料，不耗 TDX 流量)"><input type="checkbox" id="pl-bike"${PL.bike ? ' checked' : ''}>🚲 YouBike</label><button class="btn" id="pl-go"${f && t ? '' : ' disabled'}>規劃</button></div>
+        <div class="row"><select id="pl-when"><option value="now"${PL.at === null && !PL.dayMode ? ' selected' : ''}>${isToday ? '現在出發' : '當日首班起'}</option><option value="at"${PL.at !== null && !PL.dayMode ? ' selected' : ''}>指定出發時間</option><option value="day"${PL.dayMode ? ' selected' : ''}>全日時刻表</option></select>
+            <input type="time" id="pl-time" value="${atTxt}" style="display:${PL.at !== null && !PL.dayMode ? 'inline-block' : 'none'}"><label class="pl-ybt" title="起訖兩端可用 YouBike 接駁 (臺中市政府開放資料，不耗 TDX 流量)"><input type="checkbox" id="pl-bike"${PL.bike ? ' checked' : ''}>🚲 YouBike</label><button class="btn" id="pl-go"${f && t ? '' : ' disabled'}>規劃</button>${f && t ? `<button class="btn" id="pl-od-star" title="把這組起訖加入常用 (不指定路線)">${planOdIdx() >= 0 ? '★ 起訖常用' : '☆ 起訖加入常用'}</button>` : ''}</div>
         <div id="pl-sugg-box"></div>
+        ${(fv => fv.length ? `<div class="pl-favs">${fv.map((x, i) => `<span class="pl-fav" data-i="${i}">⭐ ${esc(planEndLabel(x.from))} → ${esc(planEndLabel(x.to))} ${x.od ? '' : `<b>${esc(x.label)}</b>`}<button class="pl-fav-x" data-i="${i}" title="移除常用">×</button></span>`).join('')}</div>` : '')(planFavs())}
         ${!f || !t ? '<div class="hint">點輸入框後搜尋站名，或直接在地圖上點選位置設定起點／終點。</div>' : ''}
         ${res}`;
     panel.scrollTop = keep;
@@ -5443,12 +5787,23 @@ ${xf}
     if (fid) { const n = $(fid); PL.refocus = true; n.focus(); PL.refocus = false; try { n.setSelectionRange(fsel[0], fsel[1]); } catch (e) {} }
     panel.querySelectorAll('.pl-me').forEach(b => b.onclick = () => planMe(b.dataset.f));
     $('pl-swap').onclick = () => { [PL.from, PL.to] = [PL.to, PL.from]; PL.res = null; drawPlan(false); if (PL.from && PL.to) runPlan(); else renderPlan(); };
-    $('pl-when').onchange = e => { PL.at = e.target.value === 'at' ? (PL.at !== null ? PL.at : Math.round(nowMin())) : null; renderPlan(); };
+    $('pl-when').onchange = e => {
+        const v = e.target.value, was = PL.dayMode;
+        PL.dayMode = v === 'day'; PL.at = v === 'at' ? (PL.at !== null ? PL.at : Math.round(nowMin())) : null;
+        PL.res = null; PL.err = '';
+        if (PL.dayMode && PL.from && PL.to) runPlanDay(); else if (was && PL.from && PL.to) runPlan(); else renderPlan();
+    };
     $('pl-time').onchange = e => { const [h, m] = e.target.value.split(':').map(Number); if (isFinite(h)) PL.at = h * 60 + m; };
     $('pl-go').onclick = runPlan;
     $('pl-bike').onchange = e => { PL.bike = e.target.checked; try { localStorage.setItem('txg_pl_bike', PL.bike ? '1' : '0'); } catch (x) {} if (PL.from && PL.to) runPlan(); };
     panel.querySelectorAll('.pl-card').forEach(c => c.onclick = ev => { if (ev.target.closest('button')) return; const k = +c.dataset.k; if (k !== PL.sel) { PL.sel = k; renderPlan(); drawPlan(true); planCheckXfers(); } });
     panel.querySelectorAll('.pl-nav').forEach(b => b.onclick = () => navOpen(planToNav(PL.res[+b.dataset.k])));
+    panel.querySelectorAll('.pl-cal').forEach(b => b.onclick = () => planAddCal(PL.res[+b.dataset.k]));
+    panel.querySelectorAll('.pl-star').forEach(b => b.onclick = () => { planFavToggle(PL.res[+b.dataset.k]); if (PL.day && PL.day.list) PL.day.favs = planFavDay(PL.day.ds), PL.day.list.concat(PL.day.favs).forEach((e, i) => e.i = i); renderPlan(); });
+    panel.querySelectorAll('.pl-fav').forEach(e => e.onclick = ev => { if (ev.target.closest('.pl-fav-x')) return; const f = planFavs()[+e.dataset.i]; if (!f) return; PL.from = f.from; PL.to = f.to; PL.res = null; drawPlan(false); runPlan(); });
+    if ($('pl-od-star')) $('pl-od-star').onclick = () => { planOdToggle(); renderPlan(); };
+    panel.querySelectorAll('.pl-fav-x').forEach(b => b.onclick = ev => { ev.stopPropagation(); const l = planFavs(); l.splice(+b.dataset.i, 1); planFavSave(l); renderPlan(); });
+    if (PL.dayMode) planDayBind();
     panel.querySelectorAll('.pl-alt-use').forEach(b => b.onclick = () => { const u = PL.altUse[+b.dataset.i]; if (!u) return; PL.res[PL.sel] = planUseAlt(u.p, u.l, u.a); renderPlan(); drawPlan(true); planCheckXfers(); });
     // 點路線號碼：開該路線資訊，定位到規劃的上車站
     panel.querySelectorAll('.pl-rtb').forEach(e => e.onclick = ev => { ev.stopPropagation(); const l = PL.res[PL.sel].legs[+e.dataset.li]; if (l && l.R.kind === 'bus') openRoute(l.R.r.sub, l.R.r.dir, ptName(l.b)); });
