@@ -233,6 +233,12 @@
     .nav-top.alert .small { color: rgba(255,255,255,.9); }
     .nav-top .ic { font-size: 30px; line-height: 1; width: 44px; height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: center; background: var(--soft, rgba(118,118,128,.24)); flex: none; }
     .nav-top.alert .ic { background: rgba(255,255,255,.2); }
+    .nav-top .nav-dir { flex: none; width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #0a84ff; background: var(--soft, rgba(118,118,128,.24)); transition: transform .25s linear; }
+    /* 即將上車 (綠)／下車 (紅)：外框呼吸燈 */
+    .nav-top.br-up { border: 2px solid #34c759; animation: navBrUp 1.6s ease-in-out infinite; }
+    .nav-top.br-down { border: 2px solid #ff3b30; animation: navBrDn 1.6s ease-in-out infinite; }
+    @keyframes navBrUp { 0%, 100% { box-shadow: 0 0 0 0 rgba(52,199,89,.15), 0 6px 20px rgba(0,0,0,.25); } 50% { box-shadow: 0 0 0 7px rgba(52,199,89,.55), 0 6px 20px rgba(0,0,0,.25); } }
+    @keyframes navBrDn { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,59,48,.15), 0 6px 20px rgba(0,0,0,.25); } 50% { box-shadow: 0 0 0 7px rgba(255,59,48,.6), 0 6px 20px rgba(0,0,0,.25); } }
     .nav-top .big { font-size: 19px; font-weight: 700; line-height: 1.3; letter-spacing: -.2px; }
     .nav-top .small { color: var(--muted, #98989f); font-size: 14px; margin-top: 2px; }
     .nav-top .badge, .nav-sheet .badge, .nav-callout .badge { font-size: 13px; padding: 1px 8px; border-radius: 7px; }
@@ -297,9 +303,13 @@
     .nav-callout .nc-x { color: var(--btn-text, #64d2ff); font-size: 12px; font-weight: 700; margin: 2px 0 3px 6px; }
     .nav-rt { cursor: pointer; }
     .nav-callout .nc-t { font-size: 18px; font-weight: 700; font-family: ui-monospace, monospace; }
+    .tstrike { opacity: .75; white-space: nowrap; } .tstrike s { text-decoration-thickness: 1.5px; }
+    .nav-callout .cd-ontime [data-cd] { color: #34c759; } .nav-callout .cd-early [data-cd] { color: #0a84ff; } .nav-callout .cd-late [data-cd] { color: #ff3b30; }
     .nav-pin { background: var(--c, #333); color: #fff; border: 2px solid #fff; border-radius: 12px; padding: 3px 9px; font-size: 12px; font-weight: 700; white-space: nowrap; margin-bottom: 6px; text-align: center; box-shadow: 0 3px 10px rgba(0,0,0,.4); }
     .nav-pin small { display: block; font-weight: normal; }
-    .nav-pin.dest { background: #ff3b30; font-size: 14px; }
+    .nav-dest { display: flex; flex-direction: column; align-items: center; cursor: pointer; pointer-events: auto; }
+    .nav-dest .ic { font-size: 30px; line-height: 1; filter: drop-shadow(0 2px 3px rgba(0,0,0,.45)); }
+    .nav-dest .lbl { order: -1; margin-bottom: 4px; background: var(--card, rgba(255,255,255,.95)); color: var(--text, #111); border-radius: 10px; padding: 3px 9px; font-size: 13px; font-weight: 700; white-space: nowrap; box-shadow: 0 3px 10px rgba(0,0,0,.3); }
     .nav-bus { width: 34px; height: 34px; }
     .nav-me { position: relative; width: 22px; height: 22px; }
     .nav-me .dot { position: absolute; inset: 2px; border-radius: 50%; background: #0a84ff; border: 3px solid #fff; box-shadow: 0 0 0 6px rgba(10,132,255,.25); }
@@ -470,7 +480,20 @@
     .pd-m.past { opacity: .35; } .pd-m.next { outline: 2px solid #0a84ff; border-radius: 4px; } .pd-m.sel { background: rgba(10,132,255,.3); border-radius: 4px; }
     .pd-leg { display: flex; align-items: center; gap: 8px; font-size: 12px; margin: 6px 0; } .pd-grad { flex: 1; height: 8px; border-radius: 4px; }
     .pd-dir { text-decoration: underline; } .pd-bar { height: 6px; background: rgba(127,127,127,.25); border-radius: 3px; overflow: hidden; } .pd-bar span { display: block; height: 100%; background: #0a84ff; transition: width .2s; }
-    .pl-favs { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; } .pl-fav { font-size: 12px; border: 1px solid rgba(255,214,10,.5); border-radius: 12px; padding: 3px 4px 3px 9px; cursor: pointer; }
+    .pl-favs { display: flex; flex-wrap: nowrap; gap: 6px; margin: 6px 0; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+    .pl-favs::-webkit-scrollbar { display: none; }
+    .pl-fav { flex: 0 0 auto; white-space: nowrap; font-size: 12px; border: 1px solid rgba(255,214,10,.5); border-radius: 12px; padding: 3px 4px 3px 9px; cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+    .pl-fav.pl-place { border-color: rgba(10,132,255,.6); padding-right: 9px; } .pl-fav.pl-place.unset { opacity: .7; border-style: dashed; }
+    .pl-fav-e { background: none; border: 0; color: inherit; cursor: pointer; font-size: 14px; padding: 0 2px 0 0; }
+    .pl-setting { border: 1px dashed #0a84ff; border-radius: 8px; padding: 6px 8px; }
+    button.btn.pl-nav, html[data-theme] button.btn.pl-nav { background: #0a84ff; border-color: #0a84ff; color: #fff; }
+    .map-btn.now-btn { display: none; font-size: 14px; font-weight: bold; background: #0a84ff !important; color: #fff !important; height: 40px; line-height: 38px; padding: 0 14px; border-radius: 20px !important; margin-bottom: 4px; }
+    body[data-mode="plan"] .map-btn.now-btn.ok { display: block; }
+    body[data-mode="plan"] .map-btn.near-btn, body[data-mode="plan"] .map-btn.srch-btn { display: none !important; }
+    .nav-btns .go.cd { position: relative; overflow: hidden; } .nav-btns .go.cd > b { position: relative; z-index: 1; font-weight: inherit; }
+    .nav-btns .go .cdbar { position: absolute; inset: 0; background: rgba(255,255,255,.28); transform-origin: left; transform: scaleX(0); animation: navcd 5s linear forwards; animation-delay: var(--cd0, 0s); }
+    @keyframes navcd { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+    .nav-btns button.leave { background: #fff; color: #ff3b30; border: 2px solid #ff3b30; }
     .pl-fav-x { background: none; border: 0; color: inherit; cursor: pointer; font-size: 14px; padding: 0 4px; }
     .an-box { margin: 8px 0; padding: 8px 10px; border-radius: 12px; background: rgba(255,69,58,.08); border: 1px solid rgba(255,69,58,.25); }
     .an-box summary { cursor: pointer; } .an-box .an-t { font-size: 11px; }
@@ -2008,7 +2031,7 @@ $('q').oninput = () => { view = null; renderSearch(); };
     const s = $('date');
     for (let k = 0; k < 7; k++) { const d = new Date(); d.setDate(d.getDate() + k);
         s.insertAdjacentHTML('beforeend', `<option value="${dateKey(d)}">${k ? '' : '今日 '}${d.getMonth() + 1}/${d.getDate()}(${WD[d.getDay()]})</option>`); }
-    s.onchange = () => rerender();
+    s.onchange = () => { if (mode === 'plan' && !view && PL.from && PL.to) { PL.res = null; runPlan(); } else rerender(); };
 })();
 const selDate = () => $('date').value || todayKey();
 function rerender() {
@@ -2192,6 +2215,9 @@ const sheetSrch = () => Math.max(sheetSnaps()[1], sheetMax() - Math.round(appH()
 function setSheet(h, remember = false) {
     const [lo] = sheetSnaps();
     h = Math.max(lo * 0.6, Math.min(sheetMax(), h));
+    // 可見地圖 (標題列～抽屜上緣) 的中心上下移動抽屜高度差的一半：平移地圖讓原本的中心仍在中間
+    const old = Sheet.h;
+    if (old !== null && Math.abs(h - old) > 0.5 && glassMobile() && !$('app').classList.contains('full')) { try { map.panBy([0, (h - old) / 2], { animate: false }); } catch (e) {} }
     Sheet.h = h; if (remember) Sheet.user = h;
     $('app').style.setProperty('--sheet-h', h + 'px');
     $('app').classList.toggle('sheet-max', h >= sheetMax() - 12);   // 完全展開：隱藏「附近／搜尋」
@@ -2251,6 +2277,8 @@ $('q').addEventListener('focus', () => { listOpen = true; updLayout(); });
 map.addControl(new MapBtn({ position: 'bottomright', cls: 'near-btn', html: '📍 附近', title: '定位點在畫面中＝以我的位置、否則＝以地圖中心 500 公尺內搜尋。站位：附近公車站位與 YouBike；路線清單：附近所有公車路線；路線頁：追蹤最接近我的站 (再按停止)', click: nearClick }));
 // 右下「搜尋」(手機版才顯示，位於「附近」上方)
 map.addControl(new MapBtn({ position: 'bottomright', cls: 'srch-btn', html: '🔍 搜尋', title: '路線／站位搜尋清單', click: srchClick }));
+// 規劃模式：右下改成「⚡ 立即出發」(有方案時才顯示；附近／地圖／搜尋隱藏)
+map.addControl(new MapBtn({ position: 'bottomright', cls: 'now-btn', html: '⚡ 立即出發', title: '用目前選取的方案直接開始導航', click: () => planGoNow() }));
 
 // ---------- 1. 站位 → 站牌 ----------
 function openStation(id) {
@@ -3609,6 +3637,15 @@ function navOpen(p) {
     navRoutes().forEach(rt => { navEta(rt); loadDay(rt, true).catch(() => {}); loadA2(rt, false, true).catch(() => {}); }); loadVehiclesMany(navRoutes(), true).catch(() => {});
     // 3D 公車塗裝；有依業者比對的規則才載入業者名稱 (每 30 天一次)
     if (window.Bus3D) Bus3D.load().then(() => { if (Bus3D.needsOp()) loadOperators().catch(() => {}); });
+    // 預覽 (等車畫面)：跟導航一樣依候車階段抓第一段公車位置／到站，畫面每秒更新，視角望向要搭的車
+    const t0 = Date.now();
+    Nav.pt = { eta: t0, veh: t0, a2: t0 };
+    clearInterval(Nav.poll); clearInterval(Nav.tick); clearInterval(Nav.cam);
+    Nav.poll = setInterval(navPoll, 5000);
+    Nav.tick = setInterval(() => { if (Nav.on && !Nav.started && !Nav.hidden) { navRender(); navMarks(); navPreCam(); } }, 1000);
+    // 「開始導航」倒數 5 秒，沒按就自動開始；動到畫面 (捲動、拖地圖) 就停止倒數
+    clearTimeout(Nav.cdT); Nav.cdAt = Date.now();
+    Nav.cdT = setTimeout(() => { if (Nav.on && !Nav.started && Nav.cdAt) navStart(); }, 5000);
     navRender();
     if (!baseCfg.token) return;
     navLoadGL().then(navMap).catch(e => { $('nav-top').innerHTML = `<div class="small">${esc(e.message)}</div>`; });
@@ -3625,7 +3662,11 @@ function navOpen(p) {
         set(!moved ? (h < s[2] - 10 ? s[2] : s[1]) : s.reduce((a, b) => Math.abs(b - h) < Math.abs(a - h) ? b : a)); };
     sh.addEventListener('pointerup', end); sh.addEventListener('pointercancel', end);
 })();
+function navCdStop() { if (!Nav.cdAt) return; clearTimeout(Nav.cdT); Nav.cdAt = null; if (Nav.on && !Nav.started) navRender(); }
+// 預覽時碰到抽屜 (開始導航／離開按鈕以外) 就停止倒數
+$('nav-sheet').addEventListener('pointerdown', e => { if (!Nav.started && !e.target.closest('#nav-go, #nav-end')) navCdStop(); });
 function navClose() {
+    clearTimeout(Nav.cdT); Nav.cdAt = null;
     clearInterval(Nav.tick); clearInterval(Nav.cam); clearInterval(Nav.poll);
     if (Nav.raf) cancelAnimationFrame(Nav.raf);
     Nav.raf = null; Nav.fleet = []; Nav.labAt = {}; Nav.sel = null; navFleetS.clear();
@@ -3642,6 +3683,7 @@ function navClose() {
 const navRoutes = () => [...new Set(Nav.legs.filter(g => g.k === 'bus').map(g => g.r.route))];
 const navEta = (rt, force = true) => etaRoute(rt, `${rt} 即時 (導航)`, force).catch(() => {});
 function navStart() {
+    clearTimeout(Nav.cdT); Nav.cdAt = null;
     Nav.started = true;
     startCompass();   // iOS 需在使用者點擊時要求方位權限
     if (navigator.geolocation && (Nav.watch === null || Nav.watch === undefined))
@@ -3678,8 +3720,9 @@ function navPollPlan(st, g) {
     return { eta: 60000, veh: 60000, a2: 120000 };
 }
 function navPoll() {
-    if (!Nav.on || !Nav.started || document.visibilityState !== 'visible') return;
-    const st = Nav.steps[Nav.cur], g = navLeg();
+    if (!Nav.on || document.visibilityState !== 'visible') return;
+    // 預覽：當作在第一段公車的上車站候車 (間隔同候車中)
+    const pre = !Nav.started, st = pre ? { t: 'wait' } : Nav.steps[Nav.cur], g = pre ? Nav.legs.find(x => x.k === 'bus') : navLeg();
     // YouBike 借還站即時 (開放資料，不耗 TDX)：還沒騎完前每 2 分鐘
     if ((Nav.plan.bs || Nav.plan.be) && (!Nav.pt.yb || Date.now() - Nav.pt.yb >= 120000)) { Nav.pt.yb = Date.now(); ybLive().then(() => navRender()).catch(() => {}); }
     if (!g || g.k !== 'bus') return;
@@ -3793,28 +3836,37 @@ function navSchedNext(g, afterMs = 0) {
             st = '未依時刻表發車'; late = Math.max(0, nm - dep);
             if (i === 0) {   // 起點站：仍標表定發車時刻 (要接得上：之後才到的轉乘不算這班)
                 if (afterMs && today0 + (nm + 0.5) * 60000 < afterMs) continue;
-                return { ms: today0 + at * 60000, src: '表定', st, plate: null, late: Math.round(late) };
+                return { ms: today0 + at * 60000, src: '表定', st, plate: null, late: Math.round(late), sch: today0 + e.trips[k][i] * 60000, base };
             }
             at += late; src = '推估';
         }
         else if (mt && dep < nm - 1) continue;   // 該發車而沒有配對、也不在待發清單：視為未行駛
         if (at < nm - 0.5 || today0 + at * 60000 < afterMs - 20000) continue;
-        return { ms: today0 + at * 60000, src, st, plate: hit ? hit.v.plate : null, late: Math.round(late) };
+        return { ms: today0 + at * 60000, src, st, plate: hit ? hit.v.plate : null, late: Math.round(late), sch: today0 + e.trips[k][i] * 60000, base };
     }
     return null;
 }
 // 倒數 (不重複上車時刻)：15 分內 mm分ss秒 到站／進站中，超過不顯示
 const navCd = ms => ms - Date.now() > 15 * 60000 ? '' : remain(ms, '到站');
 // 候車第二行：發車狀態、早遲、倒數 (中間站)；沒有時刻才顯示文字 (載入中、末班已過…)
-function navLeftHtml(g, w) {
+// bare＝地圖上車看板：只要倒數 (不放發車狀態、早遲、劃掉的時刻)
+function navLeftHtml(g, w, bare = false) {
     const ms = w.dl || (w.nx && w.nx.ms), out = [];
-    if (!w.dl && w.nx && w.nx.st) out.push(navStTag(w.nx).trim());
-    if (w.dl && w.cmp) out.push(`<span class="dly ${lateCls(w.cmp.diff)}">${lateWord(w.cmp.diff)}</span>`);
+    if (!bare && !w.dl && w.nx && w.nx.st) out.push(navStTag(w.nx).trim());
+    if (!bare && w.dl && w.cmp) out.push(`${navCmpStrike(g, w.cmp)}<span class="dly ${lateCls(w.cmp.diff)}">${lateWord(w.cmp.diff)}</span>`);
     if (ms && !navAtOrigin(g)) out.push(`<span data-dl="${ms}" data-cd="1">${navCd(ms)}</span>`);
     if (!ms && w.txt) out.push(esc(w.txt));
     return out.join(' ');
 }
-const navStTag = x =>x && x.st ? `<span class="dly ${x.st === '已發車' ? 'ontime' : 'late'}">${x.st}${x.late >= 1 ? ` 遲${x.late}分` : x.late <= -1 ? ` 早${-x.late}分` : ''}</span> ` : '';
+const navStrike = (src, ms) => ms ? `<span class="tstrike">${tsrc(src)}<s>${hmOf(ms)}</s></span> ` : '';
+// 即時比對的表定／推估時刻 (cmp.sched＝今天第幾分；中間站沒有站間時刻表時是推估)
+function navCmpStrike(g, c) {
+    if (!c || Math.abs(c.diff) < 1) return '';
+    const v = g.k === 'bus' ? todaySched(g.r.route) : null, e = v && v.subs[g.r.sub] && v.subs[g.r.sub][g.r.dir];
+    const src = navAtOrigin(g) || !e || !e.src ? '表定' : '推估';
+    return navStrike(src, new Date().setHours(0, 0, 0, 0) + c.sched * 60000);
+}
+const navStTag = x =>x && x.st ? `${x.sch && Math.abs(x.ms - x.sch) >= 60000 ? navStrike(x.base || '表定', x.sch) : ''}<span class="dly ${x.st === '已發車' ? 'ontime' : 'late'}">${x.st}${x.late >= 1 ? ` 遲${x.late}分` : x.late <= -1 ? ` 早${-x.late}分` : ''}</span> ` : '';
 // 候車倒數／發車文字 (起點站＝HH:MM 發車；中間站＝mm分ss秒 到站，15 分以上 HH:MM)
 function navWhen(g, w) {
     const at = (src, ms) => navAtOrigin(g) ? `${tsrc(src)}${hmOf(ms)} 發車` : `${tsrc(src)}<span data-dl="${ms}" data-sfx="到站">${remain(ms, '到站')}</span>`;
@@ -4005,7 +4057,7 @@ function navBusLabel(x) {
     const { g, v, T } = x, st = Nav.steps[Nav.cur], riding = st && st.t === 'ride' && st.g === g;
     const mt = navSchedOk(g) ? matchTrips(g.r.route, v.sub, v.dir) : null, h = mt && mt.byPlate.get(v.plate);
     const tgt = riding ? g.a.name : g.b.name, dl = navEtaOf(g, v.plate, tgt);
-    return `<div class="nav-vlab"><button class="vx" title="關閉">×</button><div class="vh"><span class="badge" style="background:${g.color}">${esc(g.label)}</span> <b>${esc(v.plate)}</b>${h ? ` <span class="dly ${lateCls(h.late)}">${lateWord(h.late)}</span>` : ''}</div>
+    return `<div class="nav-vlab"><button class="vx" title="關閉">×</button><div class="vh"><span class="badge" style="background:${g.color}">${esc(g.label)}</span> <b>${esc(v.plate)}</b>${h ? ` ${Math.abs(h.late) >= 1 ? navStrike('表定', new Date().setHours(0, 0, 0, 0) + h.dep * 60000) : ''}<span class="dly ${lateCls(h.late)}">${lateWord(h.late)}</span>` : ''}</div>
         <div class="nc-s">${x.primary ? (riding ? '搭乘中 · ' : x.i > navLegIdx() ? '轉乘 · ' : '要搭的車 · ') : '同路線其他車 · '}${dl ? `<span data-dl="${dl}">${remain(dl)}</span> 到 ${esc(tgt)}` : `往 ${esc(g.dest)}`}</div>
         <div class="nc-s">${T.jam ? '<span class="dly late">疑似塞車</span>' : isFinite(v.speed) && v.speed !== null ? `${Math.round(v.speed)} km/h` : ''}${h ? `${T.jam || isFinite(v.speed) ? ' · ' : ''}${esc(h.label)}` : ''} · <span data-ago="${v.gps}">${agoText(v.gps)}</span>的位置</div>
         <button class="vr">查看 ${esc(g.label)} 路線 ›</button></div>`;
@@ -4115,7 +4167,7 @@ function navAlts(is) {
     Nav.alt = { key, list: null, busy: true };
     planLoad().then(() => {
         const gph = planGraph(), dst = planEnds({ type: 'point', lat: Nav.dest.lat, lng: Nav.dest.lng });
-        const src = planEnds({ type: 'point', lat: is.from.lat, lng: is.from.lng });
+        const src = planGo(planEnds({ type: 'point', lat: is.from.lat, lng: is.from.lng }));
         const idx = (sub, dir) => gph.routes.map((R, i) => R.kind === 'bus' && R.r.sub === sub && R.r.dir === dir ? i : -1).filter(i => i >= 0);
         const ban = new Set(is.ban.flatMap(([s, d]) => idx(s, d))), skip = is.skip ? new Set(idx(...is.skip)) : null;
         const cost = q => q.arrive + q.xfers * 5 + q.walk * 0.5, picked = [], firsts = new Set();
@@ -4168,8 +4220,8 @@ function navWaitBusLabel(x) {
     const cmp = w.cmp && w.plate === v.plate ? w.cmp : null;
     const where = !a ? '' : a.left < 0 ? '已過上車站' : a.left === 0 ? '進站中' : `${a.at ? '在' : '過'} ${esc(a.name)} · 還有 ${a.left} 站`;
     const tags = [
-        cmp ? `<span class="dly ${lateCls(cmp.diff)}">${lateWord(cmp.diff)}</span>` : '',
-        h && h.late ? `<span class="dly ${lateCls(h.late)}">${h.late > 0 ? '遲' : '早'}${Math.abs(h.late)}分發車</span>` : '',
+        cmp ? `${navCmpStrike(g, cmp)}<span class="dly ${lateCls(cmp.diff)}">${lateWord(cmp.diff)}</span>` : '',
+        h && h.late ? `${navStrike('表定', new Date().setHours(0, 0, 0, 0) + h.dep * 60000)}<span class="dly ${lateCls(h.late)}">${h.late > 0 ? '遲' : '早'}${Math.abs(h.late)}分發車</span>` : '',
         T.jam || (a && a.jam) ? '<span class="dly late">塞車</span>' : ''
     ].filter(Boolean).join(' ');
     return `<div class="nav-vlab nav-vmini"><div class="vh"><span class="badge" style="background:${g.color}">${esc(g.label)}</span> ${where || esc(v.plate)}</div>${tags ? `<div class="nc-s">${tags}</div>` : ''}</div>`;
@@ -4572,7 +4624,9 @@ function navMap() {
     mapboxgl.accessToken = baseCfg.token;
     const all = Nav.legs.flatMap(g => g.path).concat([[Nav.dest.lat, Nav.dest.lng]]);
     const b = all.reduce((bb, p) => bb.extend([p[1], p[0]]), new mapboxgl.LngLatBounds([all[0][1], all[0][0]], [all[0][1], all[0][0]]));
-    const m = Nav.map = new mapboxgl.Map({ container: 'nav-map', style: 'mapbox://styles/mapbox/standard', bounds: b, fitBoundsOptions: { padding: { top: 120, bottom: 260, left: 40, right: 40 } }, pitch: 45, antialias: true });
+    const pre = !Nav.started;
+    const m = Nav.map = new mapboxgl.Map({ container: 'nav-map', style: 'mapbox://styles/mapbox/standard', bounds: b, fitBoundsOptions: { padding: navPrePad() }, pitch: pre ? 0 : 45, bearing: 0, antialias: true });
+    m.once('load', () => navPreCam(true));
     m.on('style.load', () => {
         const h = new Date().getHours();
         // 光線依外觀：淺色＝白天 (傍晚 dusk)、深色＝夜間
@@ -4580,7 +4634,7 @@ function navMap() {
         try { m.setConfigProperty('basemap', 'lightPreset', light ? (h >= 17 && h < 19 ? 'dusk' : 'day') : 'night'); } catch (e) {}
         navLayers(); navDraw();
     });
-    ['dragstart', 'rotatestart', 'pitchstart', 'zoomstart'].forEach(ev => m.on(ev, e => { if (e.originalEvent && Nav.started) { Nav.free = true; navRender(); } }));
+    ['dragstart', 'rotatestart', 'pitchstart', 'zoomstart'].forEach(ev => m.on(ev, e => { if (!e.originalEvent) return; Nav.free = true; if (Nav.started) navRender(); else navCdStop(); }));
     m.on('error', e => { if (e && e.error && /401|403|token/i.test(String(e.error.message || e.error.status))) $('nav-top').innerHTML = '<div class="small">Mapbox token 無效或網址受限</div>'; });
 }
 function navArrowImg() {
@@ -4657,6 +4711,8 @@ function navMark(key, ll, html, opt = {}) {
     if (opt.offset) mk.setOffset(opt.offset);
     return mk;
 }
+// 點終點圖示：顯示／收起站名
+$('nav-map').addEventListener('click', e => { if (!e.target.closest('.nav-dest')) return; e.stopPropagation(); Nav.destOpen = !Nav.destOpen; navMarks(); });
 function navDropMark(key) { if (Nav.marks[key]) { Nav.marks[key].remove(); delete Nav.marks[key]; } }
 function navMarks() {
     if (!Nav.map) return;
@@ -4677,11 +4733,13 @@ function navMarks() {
         const prevDn = sameIn ? navDnAt(prev) : null;
         // 同站轉乘：上一段的「下車」與這一段的「轉乘上車」合成一張看板
         const inLine = sameIn ? `<div class="nc-s">${badge(prev)} ${prevDn ? navTm(prevDn, '下車') : '下車'}</div><div class="nc-x">↓ 同站轉乘</div>` : '';
-        let body = `${inLine}<div class="nc-h">${badge(g)} 往 ${esc(g.dest)}</div><div class="nc-s">${esc(g.b.name)} · ${up || (xk === 'opp' ? '對向轉乘上車' : i ? '轉乘上車' : '上車')}</div>`;
+        let body = `${inLine}<div class="nc-h">${badge(g)} 往 ${esc(g.dest)}</div><div class="nc-s">${esc(g.b.name)}${isNext && !navAtOrigin(g) && (w.dl || (w.nx && w.nx.ms)) ? '' : ` · ${up || (xk === 'opp' ? '對向轉乘上車' : i ? '轉乘上車' : '上車')}`}</div>`;
         if (isNext) {
             // 上車時刻已在上一行：這裡只放倒數 (15 分內)、早遲、發車狀態
-            const lh = navLeftHtml(g, w);
-            if (lh) body += `<div class="${w.dl ? 'nc-t' : 'nc-s'}">${lh}</div>`;
+            const lh = navLeftHtml(g, w, true);
+            // 進站倒數著色：準點綠、早到藍、遲到紅 (即時比表定；沒有即時用下一班的發車早遲)
+            const cc = w.dl && w.cmp ? lateCls(w.cmp.diff) : !w.dl && w.nx && w.nx.st ? (w.nx.late >= 1 ? 'late' : w.nx.late <= -1 ? 'early' : 'ontime') : '';
+            if (lh) body += `<div class="${w.dl ? 'nc-t' : 'nc-s'}${cc ? ' cd-' + cc : ''}">${lh}</div>`;
         }
         // 轉乘段有狀況 (接不上／緊湊／等太久)：看板加 ⚠️
         const warn = Nav.issue && Nav.issue.keep === i ? `<div class="nc-s"><span class="dly late">⚠️ ${esc(Nav.issue.key.split(':')[1] === 'tight' ? '轉乘緊湊' : Nav.issue.key.split(':')[1] === 'long' ? '等候過長' : '接不上')}</span></div>` : '';
@@ -4692,7 +4750,7 @@ function navMarks() {
         const dn = navDnAt(g);
         navMark('a' + i, g.a, `<div class="nav-pin" style="--c:${g.color}">${badge(g)} ${next ? (navXKind(i + 1) === 'opp' ? '下車・對向轉乘' : '下車・步行轉乘') : '下車'}${dn ? `<span class="t">${tsrc(dn.src)}${hmOf(dn.ms)}下車</span>` : ''}<small>${esc(g.a.name)}</small></div>`, { anchor: 'bottom', cls: 'nav-ca' });
     });
-    navMark('dest', Nav.dest, `<div class="nav-pin dest">🏁 ${esc(Nav.dest.name)}</div>`, { anchor: 'bottom', cls: 'nav-ca' });
+    navMark('dest', Nav.dest, `<div class="nav-dest${Nav.destOpen ? ' open' : ''}" title="${esc(Nav.dest.name)}"><span class="ic">🏁</span>${Nav.destOpen ? `<span class="lbl">${esc(Nav.dest.name)}</span>` : ''}</div>`, { anchor: 'bottom', cls: 'nav-ca' });
     // 公車 (要搭、要轉乘、附近同路線) 由 navFleetFrame 每幀繪製
     navDropMark('bus');
 }
@@ -4727,8 +4785,17 @@ function navWaitCam(g) {
     return true;
 }
 // 視點：候車前＝我的位置＋羅盤方向；候車中＝望向公車來向；搭乘中＝跟隨當班公車
+// 公車在上車站開往的方位 (沿路線線形往前 60 m)
+function navLegBrg(g) {
+    try { if (g.line && g.sB !== undefined) return brgOf(lineAt(g.line, g.sB), lineAt(g.line, Math.min(g.line.len || Infinity, g.sB + 60))); } catch (e) {}
+    return brgOf(g.b, g.a);
+}
+// 箭頭角度＝開往方位－裝置朝向 (羅盤；沒有羅盤用地圖方位)
+const navDirRot = () => { const ref = Loc.compass !== null && Loc.compass !== undefined ? Loc.compass : Nav.map ? Nav.map.getBearing() : 0; return Math.round(((Nav.dirBrg || 0) - ref + 360) % 360); };
 function navCam() {
-    if (!Nav.map || !Nav.started) return;
+    { const a = document.querySelector('#nav-top .nav-dir'); if (a && Nav.dirBrg !== null) a.style.transform = `rotate(${navDirRot()}deg)`; }
+    if (!Nav.map) return;
+    if (!Nav.started) return;   // 預覽視角見 navPreCam
     navMe();
     const st = Nav.steps[Nav.cur];
     if (st.t === 'ride' || st.t === 'wait') navMarks();
@@ -4768,7 +4835,10 @@ function navTop() {
     }
     if (st.t === 'wait') {
         const g = st.g, w = navWaitInfo(g);
-        return { ic: '🚏', big: `在 ${esc(g.b.name)} 搭 ${navRtBadge(g)}`, small: `往 ${esc(g.dest)} · ${navWhen(g, w)}${w.dl ? `${w.cmp ? ` <span class="dly ${lateCls(w.cmp.diff)}">${lateWord(w.cmp.diff)}</span>` : ''}${w.plate ? ` · ${esc(w.plate)}` : ''}` : ''}` };
+        // 只寫在哪搭、搭哪條、往哪；右側箭頭依裝置羅盤指向公車開往的方向；車快到 (1.5 分內或剩 1 站內) 外框綠色呼吸燈
+        const v = navVeh(g), ap = v ? navApproach(g, v) : null;
+        const soon = (w.dl && w.dl - Date.now() <= 90000) || (ap && ap.left >= 0 && ap.left <= 1);
+        return { ic: '🚏', big: `在 ${esc(g.b.name)} 搭 ${navRtBadge(g)}`, small: `往 ${esc(g.dest)}`, dir: navLegBrg(g), breathe: soon ? 'up' : '' };
     }
     if (st.t === 'ride') {
         const g = st.g, L = navStopsLeft(g), n = g.k === 'mrt' ? L : L && L.n;
@@ -4776,17 +4846,51 @@ function navTop() {
         const alert = n === 1 || n === 0;
         if (alert && Nav.warned !== Nav.cur) { Nav.warned = Nav.cur; if (navigator.vibrate) navigator.vibrate([200, 100, 200]); }
         const v = navVeh(g), jam = v && (vehState(g.r, v) || {}).jam;
-        return { alert, ic: alert ? '🔔' : g.k === 'mrt' ? '🚇' : '🚌', big: alert ? `下一站 ${esc(g.a.name)} 下車` : `搭乘中 · 還有 ${n === null || n === undefined ? '?' : n} 站`,
+        return { alert, breathe: alert ? 'down' : '', ic: alert ? '🔔' : g.k === 'mrt' ? '🚇' : '🚌', big: alert ? `下一站 ${esc(g.a.name)} 下車` : `搭乘中 · 還有 ${n === null || n === undefined ? '?' : n} 站`,
                  small: `${navRtBadge(g)} 往 ${esc(g.dest)} · 在 ${esc(g.a.name)} 下車${arT ? ` · ${tsrc('即時')}<span data-dl="${arT}" data-sfx="到站">${remain(arT, '到站')}</span>` : ''}${jam ? ' · <span class="dly late">塞車中</span>' : ''}${Nav.plate ? ` · ${esc(Nav.plate)}` : ''}` };
     }
     return { ic: '🏁', big: `已抵達 ${esc(st.name)}`, small: '導航結束' };
 }
+// 預覽視角：北朝上、平視 (pitch 0)；範圍＝要搭的車＋各段上下車站 (轉乘點)＋終點，扣掉上方卡與下方抽屜
+function navPrePad() {
+    const top = ($('nav-top').offsetHeight || 100) + 30, sh = Nav.sheetH || $('nav-sheet').offsetHeight || innerHeight * 0.4;
+    return { top, bottom: sh + 30, left: 40, right: 40 };
+}
+function navPreCam(force) {
+    const m = Nav.map;
+    if (!m || Nav.started || Nav.hidden || (Nav.free && !force)) return;
+    const pts = [];
+    Nav.legs.forEach(g => { pts.push(g.b, g.a); });
+    pts.push(Nav.dest);
+    const g0 = Nav.legs.find(x => x.k === 'bus'), b = g0 && navBusPos(g0);
+    if (b && b.s !== undefined && b.s < g0.sB - 20 && gDist(b, g0.b) < 8000) pts.push(b);   // 還沒到上車站的那班車
+    const lo = [Math.min(...pts.map(p => p.lng)), Math.min(...pts.map(p => p.lat))], hi = [Math.max(...pts.map(p => p.lng)), Math.max(...pts.map(p => p.lat))];
+    const key = [lo, hi].flat().map(x => x.toFixed(4)).join(',') + '|' + Math.round(navPrePad().bottom / 20);
+    if (!force && key === Nav.preKey) return;
+    Nav.preKey = key;
+    let cam = null;
+    try { cam = m.cameraForBounds([lo, hi], { padding: navPrePad(), bearing: 0, pitch: 0, maxZoom: 17 }); } catch (e) { cam = null; }
+    if (!cam) return;
+    m.easeTo({ center: cam.center, zoom: Math.min(17, cam.zoom), bearing: 0, pitch: 0, duration: force ? 0 : 700 });
+}
+// 預覽上方卡 (仿叫車 App 等車畫面)：要搭的車、車牌、還有幾站、幾分到上車站
+function navPreTop() {
+    const sum = `${Nav.plan.bs ? '🚲 › ' : ''}${Nav.legs.map(g => navRtBadge(g)).join(' ')}${Nav.plan.be ? ' › 🚲' : ''} · 轉乘 ${Nav.legs.length - 1} 次`;
+    const g = Nav.legs.find(x => x.k === 'bus');
+    if (!g) return { ic: '🧭', big: `${esc(Nav.plan.from ? Nav.plan.from.name : '')} → ${esc(Nav.dest.name)}`, small: sum };
+    const w = navWaitInfo(g), v = navVeh(g), ap = v ? navApproach(g, v) : null;
+    const where = ap ? (ap.left > 1 ? `還有 ${ap.left} 站` : ap.left === 1 ? '下一站就到' : ap.left === 0 ? '進站中' : '') : '';
+    return { ic: '🚌', big: `${navRtBadge(g)}${Nav.plate ? ` (${esc(Nav.plate)})` : ''}${where ? ` · ${where}` : ''}`,
+        small: `${navWhen(g, w)} · 在 ${esc(g.b.name)} 上車${ap && ap.jam ? ' · <span class="dly late">塞車中</span>' : ''}<br>→ ${esc(Nav.dest.name)} · ${sum}` };
+}
 function navRender() {
     if (!Nav.on) return;
-    const t = Nav.started ? navTop() : { ic: '🧭', big: `${esc(Nav.plan.from ? Nav.plan.from.name : '')} → ${esc(Nav.dest.name)}`, small: `${Nav.plan.bs ? '🚲 › ' : ''}${Nav.legs.map(g => `${navRtBadge(g)}`).join(' ')}${Nav.plan.be ? ' › 🚲' : ''} · 轉乘 ${Nav.legs.length - 1} 次` };
+    const t = Nav.started ? navTop() : navPreTop();
     const top = $('nav-top');
     top.classList.toggle('alert', !!t.alert);
-    top.innerHTML = `<div class="ic">${t.ic}</div><div style="min-width:0"><div class="big">${t.big}</div><div class="small">${t.small}</div></div>`;
+    top.classList.toggle('br-up', t.breathe === 'up'); top.classList.toggle('br-down', t.breathe === 'down');
+    Nav.dirBrg = t.dir === undefined ? null : t.dir;
+    top.innerHTML = `<div class="ic">${t.ic}</div><div style="min-width:0;flex:1"><div class="big">${t.big}</div><div class="small">${t.small}</div></div>${Nav.dirBrg !== null ? `<div class="nav-dir" title="公車開往的方向" style="transform:rotate(${navDirRot()}deg)"><svg width="30" height="30" viewBox="0 0 24 24"><path d="M12 2 20 21 12 16.5 4 21Z" fill="currentColor"/></svg></div>` : ''}`;
     const st = Nav.steps[Nav.cur];
     const nextLbl = !Nav.started ? '' : st.t === 'wait' ? '已上車 ▶' : st.t === 'ride' ? '已下車 ▶' : st.t === 'walk' ? '已到達 ▶' : '';
     navXferCalc();   // 之後各轉乘段接得上的班次 (開始導航前也算，預覽就有時間)
@@ -4829,7 +4933,7 @@ function navRender() {
         ${!baseCfg.token ? `<div class="nav-tok">3D 導航需要 Mapbox token（只存在這台裝置）：<div class="row"><input id="nav-tok" type="search" placeholder="pk.…" style="flex:1"><button class="btn" id="nav-tok-ok">套用</button></div></div>` : ''}
         <div class="nav-btns">${Nav.started
             ? `<button id="nav-prev" ${Nav.cur ? '' : 'disabled'}>◀</button>${nextLbl ? `<button id="nav-next" class="go">${nextLbl}</button>` : ''}${Nav.free ? '<button id="nav-re">◎ 置中</button>' : ''}<button id="nav-end" class="end">結束</button>`
-            : `<button id="nav-go" class="go">🧭 開始導航</button><button id="nav-end" class="end">關閉</button>`}</div>
+            : `<button id="nav-go" class="go${Nav.cdAt ? ' cd' : ''}"${Nav.cdAt ? ` style="--cd0:-${((Date.now() - Nav.cdAt) / 1000).toFixed(2)}s"` : ''}>${Nav.cdAt ? '<span class="cdbar"></span>' : ''}<b>🧭 開始導航${Nav.cdAt ? ` ${Math.max(1, Math.ceil(5 - (Date.now() - Nav.cdAt) / 1000))}` : ''}</b></button><button id="nav-end" class="leave">離開</button>`}</div>
         ${unkHtml}${warnHtml}
         <div class="tls">${tl}</div>`;
     $('nav-sheet').querySelectorAll('.nav-alt-use:not([class*="unk-"])').forEach(b => b.onclick = () => navUseAlt(+b.dataset.i));
@@ -4862,7 +4966,9 @@ const PL = { from: null, to: null, active: 'from', res: null, sel: 0, at: null, 
 const PL_BK_MPM = 13000 / 60, PL_BK_DET = 1.3, PL_BK_FIX = 1, PL_BK_MAX = 25, PL_BK_MIN_M = 400, PL_BK_END = 300, PL_BK_STOP = 250;
 // 騎車總時長 ≤ 旅行時間 (出發到抵達) 的 1/5；每段騎車上限分別試 6、10、15、25 分 (只在最後篩選會漏掉「少騎一點」的方案)
 const PL_BK_RATIO = 1 / 5, PL_BK_CAPS = [6, 10, 15, PL_BK_MAX];
-const PL_WALK_R = 350, PL_WALK_MPM = 72, PL_XFER = 1, PL_ROUNDS = 3, PL_ORIGIN_R = 600;
+const PL_WALK_R = 350, PL_WALK_MPM = 72, PL_XFER = 1, PL_ROUNDS = 3, PL_ORIGIN_R = 600, PL_GO = 3;
+// 起點端：要走路才到得了的站 (步行／YouBike 接駁) 多留 PL_GO 分出門 (第 4 欄＝緩衝，步行時間本身不變)
+const planGo = list => list.map(([s, w, bk]) => [s, w, bk, w > 0.2 || bk ? PL_GO : 0]);
 let PLG = null;   // 規劃用路網 (第一次規劃時建立)
 function planLoad() {
     if (PL.data) return Promise.resolve(PL.data);
@@ -4984,7 +5090,7 @@ function raptor(src, dst, t0, ds, ban = null) {
     const arr = [], lab = [], best = new Float64Array(N).fill(INF);
     for (let k = 0; k <= PL_ROUNDS; k++) { arr.push(new Float64Array(N).fill(INF)); lab.push(new Array(N)); }
     let marked = new Set();
-    src.forEach(([s, w, bk]) => { const t = t0 + w; if (t < arr[0][s]) { arr[0][s] = t; best[s] = t; lab[0][s] = { type: 'start', w, bk }; marked.add(s); } });
+    src.forEach(([s, w, bk, go = 0]) => { const t = t0 + w + go; if (t < arr[0][s]) { arr[0][s] = t; best[s] = t; lab[0][s] = { type: 'start', w, bk, go }; marked.add(s); } });
     const dstMap = new Map();
     dst.forEach(([s, w, bk]) => { const o = dstMap.get(s); if (!o || w < o.w) dstMap.set(s, { w, bk }); });
     let bestDst = INF;
@@ -5026,11 +5132,11 @@ function raptor(src, dst, t0, ds, ban = null) {
 }
 function planTrace(lab, arr, k, s, end, ds) {
     const g = planGraph(), legs = [], tStop = arr[k][s], wEnd = end.w, sEnd = s;
-    let guard = 0;
+    let guard = 0, go = 0;
     while (guard++ < 20) {
         const L = lab[k][s];
         if (!L) return null;
-        if (L.type === 'start') { if (L.bk) legs.unshift(...planBikeLegs(L.bk, true, s)); else if (L.w > 0.2) legs.unshift({ type: 'walk', to: s, min: L.w, start: true }); break; }
+        if (L.type === 'start') { go = L.go || 0; if (L.bk) legs.unshift(...planBikeLegs(L.bk, true, s)); else if (L.w > 0.2) legs.unshift({ type: 'walk', to: s, min: L.w, start: true }); break; }
         if (L.type === 'walk') { legs.unshift({ type: 'walk', from: L.from, to: s, min: L.w }); s = L.from; continue; }
         const R = g.routes[L.ri], dep = L.dep;
         legs.unshift({ type: 'ride', ri: L.ri, R, b: L.bStop, a: s, bPos: L.bPos, aPos: L.pos, tb: planBoardAt(R, L, L.bPos), ta: planArrAt(R, L, L.pos), dep, live: L.live, lt: L.lt });
@@ -5047,7 +5153,7 @@ function planTrace(lab, arr, k, s, end, ds) {
     const rides = legs.filter(l => l.type === 'ride');
     if (!rides.length) return null;
     const pre = legs.slice(0, legs.indexOf(rides[0])).reduce((a, l) => a + l.min, 0);
-    return planSum({ legs, rides, arrive: tEnd, depart: rides[0].tb - pre, xfers: rides.length - 1 });
+    return planSum({ legs, rides, arrive: tEnd, depart: rides[0].tb - pre - go, xfers: rides.length - 1 });
 }
 // 各轉乘段：到達上車站的時刻 (ready) 與餘裕 (slack)
 function planReady(legs) {
@@ -5231,7 +5337,7 @@ async function runPlanNow() {
     const ds = selDate(), now = new Date();
     const t0 = PL.at !== null ? PL.at : (ds === todayKey() ? now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60 : 300);
     const nowMode = ds === todayKey() && PL.at === null;
-    const src = planEnds(PL.from), dst = planEnds(PL.to);
+    const src = planGo(planEnds(PL.from)), dst = planEnds(PL.to);
     PL.ybNote = '';
     let srcB = null, dstB = null;
     if (PL.bike) {
@@ -5247,7 +5353,7 @@ async function runPlanNow() {
     //   每段騎車上限 PL_BK_CAPS 各跑一次，騎車總時長超過旅行時間 1/5 的方案不列入
     const seen = new Map();
     const runs = [[src, dst, 4]];
-    if (srcB && dstB) PL_BK_CAPS.forEach(cap => runs.push([src.concat(planBikeEnds(srcB, cap)), dst.concat(planBikeEnds(dstB, cap)), 2]));
+    if (srcB && dstB) PL_BK_CAPS.forEach(cap => runs.push([src.concat(planGo(planBikeEnds(srcB, cap))), dst.concat(planBikeEnds(dstB, cap)), 2]));
     runs.forEach(([S, D, N]) => {
         if (!S.length || !D.length) return;
         let t = t0;
@@ -5489,9 +5595,9 @@ function planPatEval(f, t, ds) {
     const g = planGraph(), srcW = new Map(planEnds(PL.from).map(([s, w]) => [s, w])), dstW = new Map(planEnds(PL.to).map(([s, w]) => [s, w]));
     const first = f.legs[0], last = f.legs[f.legs.length - 1];
     if (!srcW.has(first.b) || !dstW.has(last.a)) return null;
-    const legs = [], w0 = srcW.get(first.b);
+    const legs = [], w0 = srcW.get(first.b), go = w0 > 0.2 ? PL_GO : 0;
     if (w0 > 0.2) legs.push({ type: 'walk', to: first.b, min: w0, start: true });
-    let ready = t + w0;
+    let ready = t + w0 + go;
     for (let i = 0; i < f.legs.length; i++) {
         const x = f.legs[i], R = g.routes[x.ri];
         if (!R) return null;
@@ -5513,15 +5619,15 @@ function planPatEval(f, t, ds) {
     if (wEnd > 0.2) legs.push({ type: 'walk', end: true, min: wEnd });
     planReady(legs);
     const rides = legs.filter(l => l.type === 'ride');
-    return planSum({ legs, rides, arrive, depart: rides[0].tb - w0, xfers: rides.length - 1, fav: true });
+    return planSum({ legs, rides, arrive, depart: rides[0].tb - w0 - go, xfers: rides.length - 1, fav: true });
 }
 // 一整天 → 班次清單 [{ b, a, dur, x, key, p }]
 async function planDayCompute(ds, onProg) {
     await planLoad();
-    const src = planEnds(PL.from), dst = planEnds(PL.to), runs = [];
+    const src = planGo(planEnds(PL.from)), dst = planEnds(PL.to), runs = [];
     if (src.length && dst.length) runs.push([src, dst]);
     if (PL.bike) {
-        try { await planYB(false); const sb = planBikeCands(PL.from, true), db = planBikeCands(PL.to, false); if (sb.length && db.length) runs.push([src.concat(planBikeEnds(sb, PL_BK_CAPS[2])), dst.concat(planBikeEnds(db, PL_BK_CAPS[2]))]); } catch (e) {}
+        try { await planYB(false); const sb = planBikeCands(PL.from, true), db = planBikeCands(PL.to, false); if (sb.length && db.length) runs.push([src.concat(planGo(planBikeEnds(sb, PL_BK_CAPS[2]))), dst.concat(planBikeEnds(db, PL_BK_CAPS[2]))]); } catch (e) {}
     }
     const out = new Map(), saveLive = PL.live;
     PL.live = null; PL.noLive = true;   // 全日表只用班表 (不混入現在的即時到站)
@@ -5778,9 +5884,10 @@ function renderPlan() {
             <button class="pl-swap" id="pl-swap" title="交換起訖">⇅</button>
         </div>
         <div class="row"><select id="pl-when"><option value="now"${PL.at === null && !PL.dayMode ? ' selected' : ''}>${isToday ? '現在出發' : '當日首班起'}</option><option value="at"${PL.at !== null && !PL.dayMode ? ' selected' : ''}>指定出發時間</option><option value="day"${PL.dayMode ? ' selected' : ''}>全日時刻表</option></select>
-            <input type="time" id="pl-time" value="${atTxt}" style="display:${PL.at !== null && !PL.dayMode ? 'inline-block' : 'none'}"><label class="pl-ybt" title="起訖兩端可用 YouBike 接駁 (臺中市政府開放資料，不耗 TDX 流量)"><input type="checkbox" id="pl-bike"${PL.bike ? ' checked' : ''}>🚲 YouBike</label><button class="btn" id="pl-go"${f && t ? '' : ' disabled'}>規劃</button>${f && t ? `<button class="btn" id="pl-od-star" title="把這組起訖加入常用 (不指定路線)">${planOdIdx() >= 0 ? '★ 起訖常用' : '☆ 起訖加入常用'}</button>` : ''}</div>
+            <input type="time" id="pl-time" value="${atTxt}" style="display:${PL.at !== null && !PL.dayMode ? 'inline-block' : 'none'}"><label class="pl-ybt" title="起訖兩端可用 YouBike 接駁 (臺中市政府開放資料，不耗 TDX 流量)"><input type="checkbox" id="pl-bike"${PL.bike ? ' checked' : ''}>🚲 YouBike</label>${f && t ? `<button class="btn" id="pl-od-star" title="把這組起訖加入常用 (不指定路線)">${planOdIdx() >= 0 ? '★ 常用' : '☆ 加入常用'}</button>` : ''}</div>
         <div id="pl-sugg-box"></div>
-        ${(fv => fv.length ? `<div class="pl-favs">${fv.map((x, i) => `<span class="pl-fav" data-i="${i}">⭐ ${esc(planEndLabel(x.from))} → ${esc(planEndLabel(x.to))} ${x.od ? '' : `<b>${esc(x.label)}</b>`}<button class="pl-fav-x" data-i="${i}" title="移除常用">×</button></span>`).join('')}</div>` : '')(planFavs())}
+        ${PL.setting ? `<div class="hint pl-setting">設定「${esc(planPlaceDef(PL.setting)[2])}」的位置：在終點欄搜尋站名，或直接在地圖上點選 <button class="btn" id="pl-set-x">取消</button></div>` : ''}
+        <div class="pl-favs">${(pl => PL_PLACES.map(([k, e, n]) => `<span class="pl-fav pl-place${pl[k] ? '' : ' unset'}" data-p="${k}" title="${pl[k] ? esc(planEndLabel(pl[k])) + '（長按修改位置）' : '第一次按：設定位置'}">${e} ${n}</span>`).join(''))(planPlaces())}${planFavs().map((x, i) => `<span class="pl-fav" data-i="${i}"><button class="pl-fav-e" data-i="${i}" title="自訂 emoji">${esc(x.emoji || '⭐')}</button>${esc(planEndLabel(x.from))} → ${esc(planEndLabel(x.to))} ${x.od ? '' : `<b>${esc(x.label)}</b>`}<button class="pl-fav-x" data-i="${i}" title="移除常用">×</button></span>`).join('')}</div>
         ${!f || !t ? '<div class="hint">點輸入框後搜尋站名，或直接在地圖上點選位置設定起點／終點。</div>' : ''}
         ${res}`;
     panel.scrollTop = keep;
@@ -5806,16 +5913,28 @@ function renderPlan() {
         const v = e.target.value, was = PL.dayMode;
         PL.dayMode = v === 'day'; PL.at = v === 'at' ? (PL.at !== null ? PL.at : Math.round(nowMin())) : null;
         PL.res = null; PL.err = '';
-        if (PL.dayMode && PL.from && PL.to) runPlanDay(); else if (was && PL.from && PL.to) runPlan(); else renderPlan();
+        if (PL.from && PL.to) runPlan(); else renderPlan();   // 換模式就自動重新規劃
     };
-    $('pl-time').onchange = e => { const [h, m] = e.target.value.split(':').map(Number); if (isFinite(h)) PL.at = h * 60 + m; };
-    $('pl-go').onclick = runPlan;
+    // 改時間：停 0.7 秒沒再改就自動重新規劃 (不用按「規劃」)
+    $('pl-time').onchange = e => { const [h, m] = e.target.value.split(':').map(Number); if (!isFinite(h)) return; PL.at = h * 60 + m; clearTimeout(PL.atT); PL.atT = setTimeout(() => { if (PL.from && PL.to) runPlan(); }, 700); };
     $('pl-bike').onchange = e => { PL.bike = e.target.checked; try { localStorage.setItem('txg_pl_bike', PL.bike ? '1' : '0'); } catch (x) {} if (PL.from && PL.to) runPlan(); };
     panel.querySelectorAll('.pl-card').forEach(c => c.onclick = ev => { if (ev.target.closest('button')) return; const k = +c.dataset.k; if (k !== PL.sel) { PL.sel = k; renderPlan(); drawPlan(true); planCheckXfers(); } });
     panel.querySelectorAll('.pl-nav').forEach(b => b.onclick = () => navOpen(planToNav(PL.res[+b.dataset.k])));
     panel.querySelectorAll('.pl-cal').forEach(b => b.onclick = () => planAddCal(PL.res[+b.dataset.k]));
     panel.querySelectorAll('.pl-star').forEach(b => b.onclick = () => { planFavToggle(PL.res[+b.dataset.k]); if (PL.day && PL.day.list) PL.day.favs = planFavDay(PL.day.ds), PL.day.list.concat(PL.day.favs).forEach((e, i) => e.i = i); renderPlan(); });
-    panel.querySelectorAll('.pl-fav').forEach(e => e.onclick = ev => { if (ev.target.closest('.pl-fav-x')) return; const f = planFavs()[+e.dataset.i]; if (!f) return; PL.from = f.from; PL.to = f.to; PL.res = null; drawPlan(false); runPlan(); });
+    panel.querySelectorAll('.pl-fav[data-i]').forEach(e => e.onclick = ev => { if (ev.target.closest('.pl-fav-x, .pl-fav-e')) return; const f = planFavs()[+e.dataset.i]; if (!f) return; PL.setting = null; PL.from = f.from; PL.to = f.to; PL.res = null; drawPlan(false); runPlan(); });
+    panel.querySelectorAll('.pl-fav-e').forEach(b => b.onclick = ev => { ev.stopPropagation(); planFavEmoji(+b.dataset.i); });
+    // 回家／上班上課：按一下＝從目前位置規劃 (沒設定過就先設定)；長按＝修改位置
+    panel.querySelectorAll('.pl-place').forEach(e => {
+        let lt = null, long = false;
+        const k = e.dataset.p, stop = () => { clearTimeout(lt); lt = null; };
+        e.onpointerdown = () => { long = false; stop(); lt = setTimeout(() => { long = true; planPlaceAsk(k); }, 550); };
+        e.onpointerup = e.onpointerleave = e.onpointercancel = stop;
+        e.oncontextmenu = ev => { ev.preventDefault(); if (!long) { long = true; stop(); planPlaceAsk(k); } };
+        e.onclick = () => { if (long) { long = false; return; } planGoPlace(k); };
+    });
+    if ($('pl-set-x')) $('pl-set-x').onclick = () => { PL.setting = null; renderPlan(); };
+    { const gb = document.querySelector('.now-btn'); if (gb) gb.classList.toggle('ok', !!(PL.res && PL.res[PL.sel] && !PL.busy)); }
     if ($('pl-od-star')) $('pl-od-star').onclick = () => { planOdToggle(); renderPlan(); };
     panel.querySelectorAll('.pl-fav-x').forEach(b => b.onclick = ev => { ev.stopPropagation(); const l = planFavs(); l.splice(+b.dataset.i, 1); planFavSave(l); renderPlan(); });
     if (PL.dayMode) planDayBind();
@@ -5896,8 +6015,50 @@ function planSugg() {
     box.querySelectorAll('[data-st]:not([data-rc])').forEach(e => e.onclick = () => planSet(PL.active, { type: 'station', id: e.dataset.st }));
     box.querySelectorAll('[data-pt]').forEach(e => e.onclick = () => planSet(PL.active, items[+e.dataset.pt]));
 }
+// ---- 回家／上班上課：位置存在這台裝置；按下＝從目前位置規劃到那裡 ----
+const PL_PLACE_KEY = 'txg_pl_place', PL_PLACES = [['home', '🏠', '回家'], ['work', '🏢', '上班上課']];
+const planPlaceDef = k => PL_PLACES.find(x => x[0] === k) || PL_PLACES[0];
+const planPlaces = () => { try { return JSON.parse(localStorage.getItem(PL_PLACE_KEY) || '{}') || {}; } catch (e) { return {}; } };
+function planPlaceSave(k, p) { const o = planPlaces(); o[k] = p; try { localStorage.setItem(PL_PLACE_KEY, JSON.stringify(o)); } catch (e) {} }
+function planPlaceAsk(k) {
+    PL.setting = k; PL.active = 'to'; PL.q = '';
+    renderPlan();
+    const i = $('pl-to'); if (i) { i.value = ''; i.focus(); }
+}
+function planGoPlace(k) {
+    const dst = planPlaces()[k];
+    if (!dst) { planPlaceAsk(k); return; }
+    const go = pos => { PL.setting = null; PL.from = { type: 'point', name: '我的位置', lat: pos.lat, lng: pos.lng }; PL.to = dst; PL.q = ''; PL.res = null; PL.err = ''; PL.active = 'to'; drawPlan(false); runPlan(); };
+    if (Loc.pos && Date.now() - Loc.pos.at < 30000) { go(Loc.pos); return; }
+    if (!navigator.geolocation) { alert('此裝置不支援定位'); return; }
+    navigator.geolocation.getCurrentPosition(p => go({ lat: p.coords.latitude, lng: p.coords.longitude }), () => alert('無法取得定位'), { enableHighAccuracy: true, timeout: 8000 });
+}
+// 常用的自訂 emoji (取第一個字元；留空＝⭐)
+function planFavEmoji(i) {
+    const l = planFavs(), f = l[i];
+    if (!f) return;
+    const v = prompt('這組常用的 emoji（留空＝⭐）', f.emoji || '⭐');
+    if (v === null) return;
+    const t = v.trim();
+    let e = t;
+    try { if (t && window.Intl && Intl.Segmenter) e = [...new Intl.Segmenter('zh', { granularity: 'grapheme' }).segment(t)][0].segment; else e = [...t].slice(0, 1).join(''); } catch (x) { e = [...t].slice(0, 1).join(''); }
+    if (e && e !== '⭐') f.emoji = e; else delete f.emoji;
+    planFavSave(l); renderPlan();
+}
+// ⚡ 立即出發：目前選取的方案直接開始導航 (略過兩次「開始導航」)
+function planGoNow() {
+    const p = PL.res && PL.res[PL.sel];
+    if (!p || PL.busy) return;
+    navOpen(planToNav(p));
+    if (Nav.on) navStart();
+}
 function planSet(which, p) {
     plRecentAdd(p);
+    if (PL.setting) {   // 正在設定家／公司學校：選到的位置存起來，接著從目前位置規劃過去
+        const k = PL.setting; PL.setting = null;
+        if (document.activeElement && /^pl-(from|to)$/.test(document.activeElement.id)) document.activeElement.blur();
+        planPlaceSave(k, p); planGoPlace(k); return;
+    }
     if (document.activeElement && /^pl-(from|to)$/.test(document.activeElement.id)) document.activeElement.blur();
     PL[which] = p; PL.q = ''; PL.res = null; PL.err = '';
     PL.active = which === 'from' && !PL.to ? 'to' : which;
