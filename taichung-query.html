@@ -5630,16 +5630,20 @@ function planDayBind() {
     if ($('pd-png')) $('pd-png').onclick = () => planExport('png');
     if ($('pd-pdf')) $('pd-pdf').onclick = () => planExport('pdf');
 }
-// ---- 加入行事曆 (.ics；出門前 15 分提醒；依班表，不隨即時誤點更新) ----
-function planIcs(p, ds) {
-    const first = p.rides[0], pre = first.tb - p.depart, day0 = new Date(ds + 'T00:00:00+08:00').getTime();
-    const z = m => new Date(day0 + m * 60000).toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
-    const e = s => String(s).replace(/\\/g, '\\\\').replace(/[,;]/g, m => '\\' + m).replace(/\n/g, '\\n');
+// ---- 加入行事曆：手機直接跳到行事曆的新增活動畫面 (Android 系統行事曆／iOS Safari 行事曆)，其他用 .ics；出門前 15 分提醒，依班表不隨即時誤點更新 ----
+function planCalEv(p, ds) {
+    const first = p.rides[0], day0 = new Date(ds + 'T00:00:00+08:00').getTime();
     const steps = p.legs.map(l => l.type === 'ride' ? `${fmt(l.tb)} ${ptName(l.b)} 搭 ${legName(l)} 往 ${legDest(l)} → ${fmt(l.ta)} ${ptName(l.a)} 下車` : l.type === 'walk' ? `步行約 ${Math.max(1, Math.round(l.min))} 分` : `YouBike 約 ${Math.round(l.min)} 分`).join('\n');
+    return { title: `🚌 ${planPatLabel(p)} 往 ${planEndLabel(PL.to)}`, loc: planEndLabel(PL.from),
+        desc: `${planEndLabel(PL.from)} → ${planEndLabel(PL.to)}\n${steps}\n${fmt(p.arrive)} 抵達（依班表，不隨即時誤點更新）`,
+        start: day0 + p.depart * 60000, end: day0 + p.arrive * 60000, name: `bus-${ds}-${fmt(first.tb).replace(':', '')}.ics` };
+}
+const planCalZ = ms => new Date(ms).toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
+function planIcs(p, ds) {
+    const v = planCalEv(p, ds), e = s => String(s).replace(/\\/g, '\\\\').replace(/[,;]/g, m => '\\' + m).replace(/\n/g, '\\n');
     const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//txg-bus//plan//ZH-TW', 'CALSCALE:GREGORIAN', 'BEGIN:VEVENT',
-        `UID:${Date.now()}-${Math.random().toString(36).slice(2)}@txg-bus`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '')}`,
-        `DTSTART:${z(first.tb - pre)}`, `DTEND:${z(p.arrive)}`, `SUMMARY:${e(`🚌 ${planPatLabel(p)} 往 ${planEndLabel(PL.to)}`)}`, `LOCATION:${e(planEndLabel(PL.from))}`,
-        `DESCRIPTION:${e(`${planEndLabel(PL.from)} → ${planEndLabel(PL.to)}\n${steps}\n${fmt(p.arrive)} 抵達（依班表，不隨即時誤點更新）`)}`,
+        `UID:${Date.now()}-${Math.random().toString(36).slice(2)}@txg-bus`, `DTSTAMP:${planCalZ(Date.now())}`,
+        `DTSTART:${planCalZ(v.start)}`, `DTEND:${planCalZ(v.end)}`, `SUMMARY:${e(v.title)}`, `LOCATION:${e(v.loc)}`, `DESCRIPTION:${e(v.desc)}`,
         'BEGIN:VALARM', 'TRIGGER:-PT15M', 'ACTION:DISPLAY', 'DESCRIPTION:準備出門搭車', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'];
     return lines.join('\r\n');
 }
@@ -5654,7 +5658,18 @@ async function planShareFiles(files, title) {
 }
 function planAddCal(p) {
     const ds = PL.day && PL.res && PL.res[0] === p ? PL.day.ds : PL.ds || selDate();
-    planShareFiles([new File([planIcs(p, ds)], `bus-${ds}-${fmt(p.rides[0].tb).replace(':', '')}.ics`, { type: 'text/calendar' })], '加入行事曆');
+    const v = planCalEv(p, ds), ics = planIcs(p, ds), ua = navigator.userAgent;
+    const ios = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (/Android/i.test(ua)) {
+        // 系統行事曆的新增活動畫面 (Intent INSERT；提醒用行事曆預設值)，沒有行事曆 App 時改開 Google 日曆新增頁
+        const g = 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + encodeURIComponent(v.title) + '&dates=' + planCalZ(v.start) + '/' + planCalZ(v.end) + '&details=' + encodeURIComponent(v.desc) + '&location=' + encodeURIComponent(v.loc);
+        const x = s => encodeURIComponent(s);
+        location.href = `intent:#Intent;action=android.intent.action.INSERT;type=vnd.android.cursor.dir/event;S.title=${x(v.title)};S.description=${x(v.desc)};S.eventLocation=${x(v.loc)};l.beginTime=${Math.round(v.start)};l.endTime=${Math.round(v.end)};S.browser_fallback_url=${x(g)};end`;
+        return;
+    }
+    // iOS Safari 開 text/calendar 會直接跳出「加入行事曆」畫面 (含 15 分提醒)；iOS 其他瀏覽器用分享面板
+    if (ios && !/CriOS|FxiOS|EdgiOS/.test(ua)) { location.href = 'data:text/calendar;charset=utf-8,' + encodeURIComponent(ics); return; }
+    planShareFiles([new File([ics], v.name, { type: 'text/calendar' })], '加入行事曆');
 }
 // ---- 匯出：週間各天依班表分組 (相同就合併)，每組全部頁籤 → PNG (手機直式 1080×2340) ／ A4 PDF ----
 async function planExport(kind) {
