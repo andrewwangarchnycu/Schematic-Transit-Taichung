@@ -1524,13 +1524,20 @@ function tripInfo(e) {
 //   B：回報的發車時刻比「已在起點之後的站被看到」還晚 → 回報不可能成立，用推估 (不論遠近)；推不出來就保留回報但標疑似
 //   疑似 (sus)：上面兩種保留回報的情況、站間時刻是推算的 (回程由去程推算)、或用推估但離起點超過 40 分 (塞車誤差大)
 const DEP_FIX = { diff: 10, win: 120, near: 15, far: 40 };
-function depFix(e, x) {
-    const obs = x.seen || x.gps || null, raw = x.start;
-    if (!x.stop || !obs || raw === null) return { start: raw };
+//   沒有回報 (TripStartTime 空值) 或回報是舊值 (同車牌已記錄更晚的一趟)：只能靠位置反推 (離起點超過 15 分標疑似)
+function depFix(e, x, stale = false) {
+    const obs = x.seen || x.gps || null, raw = stale ? null : x.start;
+    const why0 = raw === null ? (stale ? `車機回報的發車時刻 ${x.start ? hmOf(x.start) : ''} 是之前的班次，本趟未回報` : '車機未回報本趟發車時刻') : '';
+    if (!x.stop || !obs) return { start: raw };
     const i = e.stops.indexOf(x.stop);
     if (i <= 0 || e.stops.indexOf(x.stop, i + 1) >= 0) return { start: raw };   // 在起點 (可能還在等發車)、找不到或站名重複：不推
     const info = tripInfo(e), om = minOfMs(obs);
     const offs = e.trips.map((t, k) => t[i] !== null && t[i] !== undefined && info.dep[k] !== null && Math.abs(info.dep[k] - om) <= DEP_FIX.win ? t[i] - info.dep[k] : null).filter(v => v !== null && v >= 0).sort((a, b) => a - b);
+    if (raw === null) {
+        if (!offs.length) return { start: null };
+        const off = offs[offs.length >> 1];
+        return { start: obs - off * 60000, raw: null, how: 'pos', sus: !!e.src || off > DEP_FIX.near, why: why0, stop: x.stop, obs };
+    }
     const bad = obs < raw - 60000;   // B：發車前就已經跑到後面的站
     if (!offs.length) return bad ? { start: raw, sus: true, why: '車機回報的發車時刻晚於車輛已出現在途中的時間' } : { start: raw };
     const off = offs[offs.length >> 1], inf = obs - off * 60000;
@@ -1550,9 +1557,12 @@ function matchTrips(route, sub, dir) {
     const all = (d ? d.vehicles : []).filter(x => x.sub === sub && x.dir === dir);
     // 監測路線的今日發車紀錄 (GitHub Actions 每 15 分鐘記錄)：已跑完的班次也配得到 (同車牌、發車差 1 分內視為同一筆)
     const past = lg ? lg.rows.filter(x => x.sub === sub && x.dir === dir && x.start >= today0 && !all.some(y => y.plate === x.plate && Math.abs((y.start || 0) - x.start) < 60000)) : [];
-    const veh = all.filter(x => x.start !== null && x.start >= fresh0).concat(past)
-        .map(x => { const f = depFix(e, x); return { ...x, start: f.start, fix: f.how ? f : null, sus: !!f.sus, why: f.why || '', orig: x }; })
-        .sort((a, b) => a.start - b.start);
+    // 線上車回報的發車時刻是舊值：同車牌在發車紀錄裡已有更晚的一趟 (司機這趟沒按發車)
+    const stale = x => x.start !== null && !!lg && lg.rows.some(y => y.plate === x.plate && y.start > x.start + 60000);
+    const live = all.map(x => { const st = stale(x), f = depFix(e, x, st); return { ...x, start: f.start, fix: f.how ? f : null, sus: !!f.sus, why: f.why || '', orig: x, live: true, noStart: x.start === null || st }; })
+        .filter(x => x.start !== null && x.start >= fresh0);
+    const veh = live.concat(past.map(x => { const f = depFix(e, x); return { ...x, start: f.start, fix: f.how ? f : null, sus: !!f.sus, why: f.why || '', orig: x }; }))
+        .filter(x => x.start !== null).sort((a, b) => a.start - b.start);
     const T = info.order, n = veh.length, m = T.length, S = TRIP_MATCH.skipCost;
     const cost = (x, k) => { const df = minOfMs(x.start) - info.dep[k]; if (df < -TRIP_MATCH.early || df > TRIP_MATCH.late) return Infinity; return df < 0 ? -df * TRIP_MATCH.earlyWeight : df; };
     const f = Array.from({ length: n + 1 }, () => new Float64Array(m + 1)), how = Array.from({ length: n + 1 }, () => new Uint8Array(m + 1));
@@ -1568,8 +1578,8 @@ function matchTrips(route, sub, dir) {
     for (let i = n, j = m; i > 0;) {
         const h = how[i][j];
         if (h === 3) { const x = veh[i - 1], k = T[j - 1];
-            const r = { k, label: info.label(k), dep: info.dep[k], start: x.start, late: Math.round(minOfMs(x.start) - info.dep[k]), v: x.orig, fix: x.fix, sus: x.sus, why: x.why };
-            if (!byPlate.has(x.plate)) byPlate.set(x.plate, r);   // 由晚到早回推：同車牌留最近一班
+            const r = { k, label: info.label(k), dep: info.dep[k], start: x.start, late: Math.round(minOfMs(x.start) - info.dep[k]), v: x.orig, fix: x.fix, sus: x.sus, why: x.why, live: !!x.live };
+            if (x.live && !byPlate.has(x.plate)) byPlate.set(x.plate, r);   // 只放線上車正在跑的這一趟 (已跑完的班次不掛到現在的車上)
             byTrip.set(k, r); running.unshift(r); i--; j--; }
         else if (h === 1 || j === 0) i--; else j--;
     }
@@ -1579,7 +1589,9 @@ function matchTrips(route, sub, dir) {
         const late = nowMin() - info.dep[k];
         if (late >= 1 && late <= TRIP_MATCH.pendingWindow) { const p = { k, label: info.label(k), dep: info.dep[k], late: Math.floor(late) }; pending.push(p); pendingOf.set(k, p); }
     });
-    const res = { e, byPlate, byTrip, running, pending, pendingOf, idle: all.filter(x => !byPlate.has(x.plate)) };
+    // 在線但沒有可用發車時刻、也推不出來的車 (漏班判定前要看)
+    const ghost = all.filter(x => !byPlate.has(x.plate) && (x.start === null || stale(x)));
+    const res = { e, byPlate, byTrip, running, pending, pendingOf, idle: all.filter(x => !byPlate.has(x.plate)), ghost };
     matchCache.set(key, { at, nowM, e, res });
     return res;
 }
@@ -3203,6 +3215,7 @@ function vehPopup(v, r) {
         ${other ? '往 ' + esc(destOf(other)) + '<br>' : ''}${op ? esc(op) + '<br>' : (ops ? '' : '<span class="muted">客運業者載入中…</span><br>')}
         <span data-ago="${v.gps}">${agoText(v.gps)}</span>的位置${isFinite(v.speed) ? ` · ${Math.round(v.speed)} km/h` : ''}<br>
         ${(() => { const mt = matchTrips(r.route, v.sub, v.dir), h = mt && mt.byPlate.get(v.plate);
+            if (mt && !h) return '<span class="muted">本趟未配對到班次' + ((mt.ghost || []).some(x => x.plate === v.plate) ? '（車機未回報本趟發車時刻）' : '') + '</span><br>';
             return h ? `${esc(h.label)}<br>表定 ${fmt(h.dep)} · 實際 ${fmt(minOfMs(h.start))} 發車 <span class="dly ${lateCls(h.late)}">${lateWord(h.late)}</span>${depFixNote(h)}<br>` : ''; })()}
         <a href="https://www.google.com/search?tbm=isch&q=${q}" target="_blank" rel="noopener">🔍 Google 圖片：${esc(v.plate)} ${esc(op)}</a></div>`;
 }
@@ -3420,7 +3433,10 @@ function routeAnoms(route) {
             if (hit) { const type = anomType(hit.late); if (type) out.push({ type, sub, dir: +dir, dep, act: minOfMs(hit.start), diff: hit.late, plate: hit.v.plate, fix: hit.fix, sus: hit.sus, why: hit.why }); return; }
             if (nm < dep + ANOM_MISS) return;
             const t = day0 + dep * 60000, alive = lg.rows.some(x => x.start >= t - 3 * 3600000 && x.start <= t + 3 * 3600000);
-            if (alive && depCovered(t - 15 * 60000, t + ANOM_MISS * 60000)) out.push({ type: 'miss', sub, dir: +dir, dep, act: null, diff: null, plate: '' });
+            if (alive && depCovered(t - 15 * 60000, t + ANOM_MISS * 60000)) {
+                const gh = mt && mt.ghost && mt.ghost.length ? mt.ghost : null;
+                out.push({ type: 'miss', sub, dir: +dir, dep, act: null, diff: null, plate: '', sus: !!gh, why: gh ? `有車在線 (${gh.map(x => x.plate).join('、')}) 但未回報發車時刻，可能其實有發車` : '' });
+            }
         });
     }));
     return out.sort((a, b) => b.dep - a.dep);
@@ -3429,12 +3445,12 @@ function routeAnoms(route) {
 function depFixNote(h) {
     const f = h && h.fix, out = [];
     if (h && h.sus) out.push(`<span class="dly sus" title="${esc(h.why || (f ? '由位置推算的發車時刻誤差可能較大' : ''))}">疑似</span>`);
-    if (f) out.push(`<span class="muted small" title="${esc(`${hmOf(f.obs)} 在 ${f.stop}，依時刻表站間時間反推`)}">（依位置推算；車機回報 ${hmOf(f.raw)} 發車）</span>`);
+    if (f) out.push(`<span class="muted small" title="${esc(`${hmOf(f.obs)} 在 ${f.stop}，依時刻表站間時間反推`)}">（依位置推算；${f.raw ? `車機回報 ${hmOf(f.raw)} 發車` : '車機未回報本趟發車時刻'}）</span>`);
     return out.length ? ' ' + out.join(' ') : '';
 }
 function anomItem(x) {
     const T = ANOM_T[x.type], r = ROUTES.find(y => y.sub === x.sub && y.dir === x.dir);
-    const what = x.act !== null ? `表定 ${fmt(x.dep)} → 實際 ${fmt(Math.floor(x.act))} <span class="dly ${x.diff < 0 ? 'early' : 'late'}">${x.diff < 0 ? '早' : '遲'}${Math.abs(x.diff)}分</span>${depFixNote(x)}` : `表定 ${fmt(x.dep)} · <span class="dly late">未偵測到發車</span>`;
+    const what = x.act !== null ? `表定 ${fmt(x.dep)} → 實際 ${fmt(Math.floor(x.act))} <span class="dly ${x.diff < 0 ? 'early' : 'late'}">${x.diff < 0 ? '早' : '遲'}${Math.abs(x.diff)}分</span>${depFixNote(x)}` : `表定 ${fmt(x.dep)} · <span class="dly late">未偵測到發車</span>${depFixNote(x)}`;
     return `<div class="an-row" data-sub="${esc(x.sub)}" data-dir="${x.dir}"><span class="an-t" style="background:${T[1]}">${T[0]}</span>
         <span class="badge" style="background:${colorOf(x.sub)}">${esc(x.sub)}</span><span class="an-m"><span class="small">${r ? '往 ' + esc(destOf(r)) : ''}${x.plate ? ` · 車牌 <b>${esc(x.plate)}</b>` : ''}</span><br>${what}</span></div>`;
 }
