@@ -9,6 +9,9 @@
 // 輸出 (--out，workflow 指到 data 分支 departures/)：
 //   YYYY-MM-DD/<路線名稱>.csv：plate,sub,dir,start,stop,seen (start＝車機回報的發車時刻，臺北時間 YYYY-MM-DDTHH:MM:SS；依發車日期分檔；同車牌同發車只記一次)
 //     stop,seen＝第一次抓到這一趟時車在哪一站、GPS 時間：司機發車時刻按錯時，前端用「站＋時間」依時刻表站間時間反推實際發車
+//     type＝TripStartTimeType (TDX：0 實際發車時間、1 預估發車時間、2 無法推估 → start 空白)
+//     seq,ev,bus,duty＝StopSequence、A2EventType、BusStatus (99＝非營運)、DutyStatus (2＝到終點結束)
+//   無法推估發車時間 (type 2) 的車也抓 (同車牌同方向 150 分內只記第一次)；非營運／已結束的不記
 //   YYYY-MM-DD/_polls.txt：每次成功抓取的時間 (前端據此判斷資料有沒有中斷，中斷時段不判漏班)
 'use strict';
 const fs = require('fs'), path = require('path');
@@ -52,28 +55,37 @@ const readLines = f => { try { return fs.readFileSync(f, 'utf8').split('\n').fil
     const lastTxt = [dkey(now), dkey(now - 86400000)].map(d => readLines(path.join(OUT, d, '_polls.txt')).pop()).find(Boolean);
     const last = lastTxt ? Date.parse(lastTxt + '+08:00') : 0;
     const since = Math.max(now - 120 * MIN, Math.min(now - 30 * MIN, last - 10 * MIN));
-    const js = await api(`RealTimeNearStop/City/Taichung?$filter=${encodeURIComponent(`${RT_F} and TripStartTime ge '${local(since)}+08:00'`)}&$select=PlateNumb,RouteName,SubRouteName,Direction,TripStartTime,StopName,GPSTime`, token);
+    const js = await api(`RealTimeNearStop/City/Taichung?$filter=${encodeURIComponent(`${RT_F} and (TripStartTime ge '${local(since)}+08:00' or TripStartTimeType eq 2)`)}&$select=PlateNumb,RouteName,SubRouteName,Direction,TripStartTime,TripStartTimeType,StopName,StopSequence,A2EventType,BusStatus,DutyStatus,GPSTime`, token);
     let added = 0;
     const files = new Map();   // 檔名 → { have: Set, lines: [] }
     js.forEach(v => {
-        if (!v.PlateNumb || v.PlateNumb === '-1' || !v.TripStartTime) return;
-        const s = Date.parse(v.TripStartTime);
-        if (!isFinite(s) || s > now + 5 * MIN) return;
+        if (!v.PlateNumb || v.PlateNumb === '-1') return;
+        if (v.BusStatus === 99 || v.DutyStatus === 2) return;   // 非營運／已到終點結束
+        const g = v.GPSTime ? Date.parse(v.GPSTime) : NaN, s = v.TripStartTime ? Date.parse(v.TripStartTime) : NaN;
+        const none = !isFinite(s);   // 無法推估發車時間 (type 2)
+        if (none && !isFinite(g)) return;
+        if (!none && s > now + 5 * MIN) return;
         const route = v.RouteName && v.RouteName.Zh_tw;
         if (!route) return;
-        const f = path.join(OUT, dkey(s), route.replace(/[\\/:*?"<>|]/g, '_') + '.csv');
-        if (!files.has(f)) files.set(f, { have: new Set(readLines(f).slice(1).map(l => l.split(',')[0] + '|' + l.split(',')[3])), lines: [] });
-        const F = files.get(f), key = v.PlateNumb + '|' + local(s);
-        if (F.have.has(key)) return;
-        F.have.add(key);
-        const g = v.GPSTime ? Date.parse(v.GPSTime) : NaN, stop = ((v.StopName && v.StopName.Zh_tw) || '').replace(/[,\r\n]/g, ' ');
-        F.lines.push([v.PlateNumb, subOf(v), v.Direction, local(s), stop, isFinite(g) ? local(g) : ''].join(','));
+        const t = none ? g : s, f = path.join(OUT, dkey(t), route.replace(/[\\/:*?"<>|]/g, '_') + '.csv');
+        if (!files.has(f)) files.set(f, { rows: readLines(f).slice(1).map(l => l.split(',')), lines: [] });
+        const F = files.get(f);
+        if (none) {
+            // 同車牌同方向：150 分內已有記錄 (有發車時刻或也是無法推估) → 視為同一趟
+            if (F.rows.some(r => r[0] === v.PlateNumb && +r[2] === v.Direction && (() => { const x = Date.parse((r[3] || r[5]) + '+08:00'); return isFinite(x) && g - x >= -5 * MIN && g - x <= 150 * MIN; })())) return;
+        } else if (F.rows.some(r => r[0] === v.PlateNumb && r[3] === local(s))) return;
+        const stop = ((v.StopName && v.StopName.Zh_tw) || '').replace(/[,\r\n]/g, ' ');
+        const row = [v.PlateNumb, subOf(v), v.Direction, none ? '' : local(s), stop, isFinite(g) ? local(g) : '',
+            v.TripStartTimeType === undefined ? '' : v.TripStartTimeType, v.StopSequence === undefined ? '' : v.StopSequence,
+            v.A2EventType === undefined ? '' : v.A2EventType, v.BusStatus === undefined ? '' : v.BusStatus, v.DutyStatus === undefined ? '' : v.DutyStatus];
+        F.rows.push(row.map(String)); F.lines.push(row.join(','));
         added++;
     });
     files.forEach((F, f) => {
         if (!F.lines.length) return;
         fs.mkdirSync(path.dirname(f), { recursive: true });
-        fs.appendFileSync(f, (fs.existsSync(f) ? '' : 'plate,sub,dir,start,stop,seen\n') + F.lines.sort((a, b) => a.split(',')[3].localeCompare(b.split(',')[3])).join('\n') + '\n');
+        const tk = l => { const c = l.split(','); return c[3] || c[5]; };
+        fs.appendFileSync(f, (fs.existsSync(f) ? '' : 'plate,sub,dir,start,stop,seen,type,seq,ev,bus,duty\n') + F.lines.sort((a, b) => tk(a).localeCompare(tk(b))).join('\n') + '\n');
     });
     const pf = path.join(OUT, dkey(now), '_polls.txt');
     fs.mkdirSync(path.dirname(pf), { recursive: true });
