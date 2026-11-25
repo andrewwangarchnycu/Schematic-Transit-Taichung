@@ -7,7 +7,8 @@
 // TDX 流量最小化：車輛班次 RealTimeNearStop (A2) 用 OData 只取監測路線、且 TripStartTime 在上次抓取之後的車
 //   (TripStartTime 是字串，同格式可直接比大小)；每次 1 次 API，回應通常只有幾十～幾百 bytes
 // 輸出 (--out，workflow 指到 data 分支 departures/)：
-//   YYYY-MM-DD/<路線名稱>.csv：plate,sub,dir,start (start＝臺北時間 YYYY-MM-DDTHH:MM:SS；依發車日期分檔；同車牌同發車只記一次)
+//   YYYY-MM-DD/<路線名稱>.csv：plate,sub,dir,start,stop,seen (start＝車機回報的發車時刻，臺北時間 YYYY-MM-DDTHH:MM:SS；依發車日期分檔；同車牌同發車只記一次)
+//     stop,seen＝第一次抓到這一趟時車在哪一站、GPS 時間：司機發車時刻按錯時，前端用「站＋時間」依時刻表站間時間反推實際發車
 //   YYYY-MM-DD/_polls.txt：每次成功抓取的時間 (前端據此判斷資料有沒有中斷，中斷時段不判漏班)
 'use strict';
 const fs = require('fs'), path = require('path');
@@ -51,7 +52,7 @@ const readLines = f => { try { return fs.readFileSync(f, 'utf8').split('\n').fil
     const lastTxt = [dkey(now), dkey(now - 86400000)].map(d => readLines(path.join(OUT, d, '_polls.txt')).pop()).find(Boolean);
     const last = lastTxt ? Date.parse(lastTxt + '+08:00') : 0;
     const since = Math.max(now - 120 * MIN, Math.min(now - 30 * MIN, last - 10 * MIN));
-    const js = await api(`RealTimeNearStop/City/Taichung?$filter=${encodeURIComponent(`${RT_F} and TripStartTime ge '${local(since)}+08:00'`)}&$select=PlateNumb,RouteName,SubRouteName,Direction,TripStartTime`, token);
+    const js = await api(`RealTimeNearStop/City/Taichung?$filter=${encodeURIComponent(`${RT_F} and TripStartTime ge '${local(since)}+08:00'`)}&$select=PlateNumb,RouteName,SubRouteName,Direction,TripStartTime,StopName,GPSTime`, token);
     let added = 0;
     const files = new Map();   // 檔名 → { have: Set, lines: [] }
     js.forEach(v => {
@@ -65,13 +66,14 @@ const readLines = f => { try { return fs.readFileSync(f, 'utf8').split('\n').fil
         const F = files.get(f), key = v.PlateNumb + '|' + local(s);
         if (F.have.has(key)) return;
         F.have.add(key);
-        F.lines.push([v.PlateNumb, subOf(v), v.Direction, local(s)].join(','));
+        const g = v.GPSTime ? Date.parse(v.GPSTime) : NaN, stop = ((v.StopName && v.StopName.Zh_tw) || '').replace(/[,\r\n]/g, ' ');
+        F.lines.push([v.PlateNumb, subOf(v), v.Direction, local(s), stop, isFinite(g) ? local(g) : ''].join(','));
         added++;
     });
     files.forEach((F, f) => {
         if (!F.lines.length) return;
         fs.mkdirSync(path.dirname(f), { recursive: true });
-        fs.appendFileSync(f, (fs.existsSync(f) ? '' : 'plate,sub,dir,start\n') + F.lines.sort((a, b) => a.split(',')[3].localeCompare(b.split(',')[3])).join('\n') + '\n');
+        fs.appendFileSync(f, (fs.existsSync(f) ? '' : 'plate,sub,dir,start,stop,seen\n') + F.lines.sort((a, b) => a.split(',')[3].localeCompare(b.split(',')[3])).join('\n') + '\n');
     });
     const pf = path.join(OUT, dkey(now), '_polls.txt');
     fs.mkdirSync(path.dirname(pf), { recursive: true });
