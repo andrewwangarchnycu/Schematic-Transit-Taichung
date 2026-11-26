@@ -1196,7 +1196,8 @@ function daySched(route, ds) {
     if (!useV3 && !T && loading.has('s2:' + route)) return null;   // 站間旅行時間載入中
     if (v3 && !E && loading.has('es:' + route)) return null;       // V3 (快取/靜態檔) 讀取中
     // 未來日 (非今日)：路線班表沒有預排班次的方向用參考班表 (refPick)
-    const REF = ds !== todayKey() ? refPick(route, ds, S) : null;
+    //   今日：每日營運時刻表沒有這個方向 (TDX 當日缺資料或載入失敗) 時也用參考班表 (之前存下的發車時刻)，不要變成無班次
+    const REF = refPick(route, ds, S);
     const mk = `${route}|${ds}|${S ? S.at : 0}|${E ? E.at : 0}|${T ? T.at : 0}|${useV3 ? 1 : 0}|${ds === todayKey() && todayOld(route) ? 1 : 0}|${REF ? REF.date : ''}`;
     if (dayMemo.has(mk)) return dayMemo.get(mk);
     const wd = new Date(ds + 'T00:00:00').getDay(), tag = wd === 0 || wd === 6 ? 'we' : 'wd';
@@ -1246,7 +1247,7 @@ function daySched(route, ds) {
             dailyBackbone = true;
         }
         let refDate = null;
-        const rd = !deps.length && REF && REF.subs[sub] && REF.subs[sub][dir];
+        const rd = !deps.length && !(ds === todayKey() && (o || loading.has('t:' + route))) && REF && REF.subs[sub] && REF.subs[sub][dir];
         if (rd && rd.length) {
             // 未來日、路線班表只有班距：發車＝參考日的每日營運時刻表發車時刻，各站時間同樣用站間旅行時間／V3
             rd.forEach((x, k) => deps.push({ t: x, id: 'R' + (k + 1), st: [[stops[0], x]] }));
@@ -1299,7 +1300,7 @@ function daySched(route, ds) {
         }
         const hw = s ? s.freq.filter(f => f.days[wd]).map(f => [f.s, f.e, f.min, f.max]) : [];
         // 沒有班次可列、但路線班表有當日班距：只顯示班距 (不依班距排出班次)
-        if (!rows || !rows.length) { if (hw.length && ds !== todayKey()) (v.subs[sub] = v.subs[sub] || {})[dir] = { kind: 'hw', stops, trips: [], ids: [], hw, cancel: [], added: null, src: 'none' }; return; }
+        if (!rows || !rows.length) { if (hw.length && (ds !== todayKey() || (!o && !loading.has('t:' + route)))) (v.subs[sub] = v.subs[sub] || {})[dir] = { kind: 'hw', stops, trips: [], ids: [], hw, cancel: [], added: null, src: 'none' }; return; }
         (v.subs[sub] = v.subs[sub] || {})[dir] = { kind, stops, trips: rows, ids, hw, cancel, added, refDate, src: kind === 'est' ? 'v3' : s2sFn ? 's2s' : prof.length ? 'v3' : 'none' };
     });
     // 單循環／只有一端發車：沒有預排發車的方向 (回程) 由去程推算 — 回程第 k 班＝去程第 k 班抵達端點＋端點間移動
@@ -1416,10 +1417,15 @@ function dayTable(times, isToday, nm, note, col, mk = null) {
 
 // ---------- 即時 ----------
 const etaCache = new Map();   // key → { at, rows }
+// 子路線＋方向 → 起點站 StopUID (NextBusTime 在起點是發車時刻、其他站是到站時刻)
+let ORG_UID = null;
+const isOrgStop = (uid, sub, dir) => (ORG_UID || (ORG_UID = new Map(ROUTES.map(R => [R.sub + '|' + R.dir, STOPS[R.seq[0]].uid])))).get(sub + '|' + dir) === uid;
+const nextWord = row => row && row.org ? '發車' : '到站';
 function etaRow(it, at) {
     let dl = null;
     if (it.EstimateTime != null) { const src = Date.parse(it.SrcUpdateTime); const lat = isNaN(src) ? 0 : Math.min(90, Math.max(0, (at - src) / 1000)); dl = Math.round(at + (it.EstimateTime - lat) * 1000); }
     return { uid: it.StopUID, name: it.StopName.Zh_tw, sub: (it.SubRouteName && it.SubRouteName.Zh_tw) || it.RouteName.Zh_tw, dir: it.Direction, dl, status: it.StopStatus, next: it.NextBusTime || null, plate: it.PlateNumb || '',
+        org: isOrgStop(it.StopUID, (it.SubRouteName && it.SubRouteName.Zh_tw) || it.RouteName.Zh_tw, it.Direction),
         ests: (it.Estimates || []).map(q => ({ plate: q.PlateNumb, dl: q.EstimateTime != null ? Math.round(at + q.EstimateTime * 1000) : null })) };
 }
 const ETA_SELECT = 'StopUID,StopName,RouteName,SubRouteName,Direction,EstimateTime,StopStatus,NextBusTime,SrcUpdateTime,PlateNumb,Estimates';
@@ -1481,7 +1487,7 @@ const etaSortKey = row => !row ? Infinity : row.dl !== null ? row.dl : row.statu
 function etaHtml(row) {
     if (!row) return '<span class="muted">--</span>';
     if (row.dl !== null) return `<span data-dl="${row.dl}">${remain(row.dl)}</span>`;
-    if (row.status === 1 && row.next) { const d = new Date(row.next); if (!isNaN(d)) return `<span class="muted">${pad(d.getHours())}:${pad(d.getMinutes())} 發車</span>`; }
+    if (row.status === 1 && row.next) { const d = new Date(row.next); if (!isNaN(d)) return `<span class="muted">${pad(d.getHours())}:${pad(d.getMinutes())} ${nextWord(row)}</span>`; }
     return `<span class="muted">${STATUS[row.status] || '--'}</span>`;
 }
 
@@ -1599,7 +1605,7 @@ function matchTrips(route, sub, dir) {
     });
     // 在線但沒有可用發車時刻、也推不出來的車 (漏班判定前要看)
     const ghost = all.filter(x => !byPlate.has(x.plate) && (x.start === null || x.type === 2 || stale(x)));
-    const res = { e, byPlate, byTrip, running, pending, pendingOf, idle: all.filter(x => !byPlate.has(x.plate)), ghost };
+    const res = { e, byPlate, byTrip, running, pending, pendingOf, idle: all.filter(x => !byPlate.has(x.plate)), ghost, veh };
     matchCache.set(key, { at, nowM, e, res });
     return res;
 }
@@ -2995,7 +3001,7 @@ function mnTimes(r, pos) {
     let nxt = dls.length > 1 ? dls[1] : null, nxtSched = null, txt = '';
     if (cur === null) {
         const r0 = rows.find(x => x.status === 1 && x.next) || rows[0];
-        txt = !c ? '即時載入中…' : !r0 ? '暫無到站資訊' : r0.status === 1 && r0.next ? `表定 ${fmt(minOfMs(Date.parse(r0.next)))} 發車` : (STATUS[r0.status] || '暫無到站資訊');
+        txt = !c ? '即時載入中…' : !r0 ? '暫無到站資訊' : r0.status === 1 && r0.next ? `表定 ${fmt(minOfMs(Date.parse(r0.next)))} ${nextWord(r0)}` : (STATUS[r0.status] || '暫無到站資訊');
     }
     if (nxt === null) {
         const t = timesAt(r, pos, todayKey());
@@ -3277,6 +3283,12 @@ function vehPopup(v, r) {
         <span data-ago="${v.gps}">${agoText(v.gps)}</span>的位置${isFinite(v.speed) ? ` · ${Math.round(v.speed)} km/h` : ''}<br>
         ${(() => { const mt = matchTrips(r.route, v.sub, v.dir), h = mt && mt.byPlate.get(v.plate);
             if (mt && !h) return '<span class="muted">本趟未配對到班次' + ((mt.ghost || []).some(x => x.plate === v.plate) ? '（車機未回報本趟發車時刻）' : '') + '</span><br>';
+            if (h && isHw(mt.e)) {
+                const ends = hwEnds(r.route, v.sub, v.dir, mt.e), deps = ends ? hwDeps(mt, ends) : [], t = minOfMs(h.start), i = deps.findIndex(d => Math.abs(d.t - t) < 0.02 && d.x.plate === v.plate);
+                const pv = i > 0 ? deps[i - 1] : null, hw = pv ? hwAt(mt.e.hw, pv.t) : null, gap = pv ? Math.round(t - pv.t) : 0, ht = pv ? hwType(gap, hw[0], hw[1]) : null;
+                return `${fmt(t)} 發車${depFixNote(h)}<br>${pv ? `與前一班 (${esc(pv.x.plate)} ${fmt(Math.floor(pv.t))}) 間隔 <b>${gap}</b> 分 · 班距 ${hw[0]}${hw[1] !== hw[0] ? '～' + hw[1] : ''} 分${ht ? ` <span class="dly ${ht.diff < 0 ? 'early' : 'late'}">${ANOM_T[ht.type][0]}</span>` : ''}` : (i === 0 ? '今日首班' : '')}<br>
+                    <span class="muted small">參考：每日營運時刻表 ${esc(h.label)} 表定 ${fmt(h.dep)}</span><br>`;
+            }
             return h ? `${esc(h.label)}<br>表定 ${fmt(h.dep)} · 實際 ${fmt(minOfMs(h.start))} 發車 <span class="dly ${lateCls(h.late)}">${lateWord(h.late)}</span>${depFixNote(h)}<br>` : ''; })()}
         <a href="https://www.google.com/search?tbm=isch&q=${q}" target="_blank" rel="noopener">🔍 Google 圖片：${esc(v.plate)} ${esc(op)}</a></div>`;
 }
@@ -3493,6 +3505,99 @@ function depCovered(a, b) {
     return ps.every((t, k) => !k || t - ps[k - 1] <= ANOM_GAP * 60000);
 }
 const anomType = d => d <= -5 ? 'early' : d >= 5 && d <= 10 ? 'delay' : d >= 11 && d <= 30 ? 'late' : d > 30 ? 'miss' : null;
+// ---------- 班距制路線 (路線班表只有 Frequencys，如 35)：以「與前一班的發車間隔」判定，每日營運時刻表只供參考 ----------
+//   首末班用時刻表判定：每日營運時刻表的首末班；與班距時段起訖對不上 (不確定是不是首末班) 時改用 TDX FirstLastTripInfo (每路線每天查一次)
+const isHw = e => !!e && e.kind === 'daily' && !!e.hw && e.hw.length > 0;
+const FLT = new Map();   // 路線 → { d, list: [{ sub, dir, first, last }] } | 'busy'
+const FL_WD = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+function fltOf(route) {
+    const d = todayKey();
+    let c = FLT.get(route);
+    if (!c) { const st = store.get('txg_flt_' + route); if (st && st.d === d) { FLT.set(route, st); c = st; } }
+    if (c === 'busy') return null;
+    if (c && c.d === d) return c;
+    FLT.set(route, 'busy');
+    Api.run('FirstLastTripInfo/City/Taichung', { '$filter': `RouteName/Zh_tw eq '${route}'`, '$select': 'SubRouteName,Direction,FirstLastTrips' }, { label: route + ' 首末班' })
+        .then(js => {
+            const wd = FL_WD[new Date().getDay()];
+            const list = (js || []).map(x => { const t = (x.FirstLastTrips || []).find(f => f.ServiceDay && f.ServiceDay[wd]);
+                return t && t.FirstTripDepTime && t.LastTripDepTime ? { sub: x.SubRouteName && x.SubRouteName.Zh_tw, dir: x.Direction, first: hm(t.FirstTripDepTime), last: hm(t.LastTripDepTime) } : null; }).filter(Boolean);
+            const v = { d, list }; FLT.set(route, v); store.set('txg_flt_' + route, v);
+            matchCache.clear();
+            if (view && view.type === 'anom') renderAnom(); else if (view && view.type === 'route') renderRoute();
+        }, () => FLT.set(route, { d, list: [], err: true }));
+    return null;
+}
+// 首末班表定 (分) → { first, last, src: 'daily'|'flt' }
+function hwEnds(route, sub, dir, e) {
+    const info = tripInfo(e), o = info.order;
+    if (!o.length) return null;
+    let first = info.dep[o[0]], last = info.dep[o[o.length - 1]], src = 'daily';
+    const s0 = Math.min(...e.hw.map(h => h[0])), e1 = Math.max(...e.hw.map(h => h[1])), mx = Math.max(...e.hw.map(h => h[3] || h[2]));
+    const sure = first >= s0 - 5 && first <= s0 + mx && last >= e1 - mx - 5 && last <= e1 + 5;
+    if (!sure) {
+        const c = fltOf(route), f = c && c.list.find(x => x.sub === sub && x.dir === dir);
+        if (f) { first = f.first; last = f.last; src = 'flt'; }
+    }
+    return { first, last, src };
+}
+// 某時刻的班距 [min, max] (分)：所在時段；時段外取最近的時段
+function hwAt(hw, t) {
+    const h = hw.find(x => t >= x[0] && t < x[1]) || hw.slice().sort((a, b) => Math.min(Math.abs(t - a[0]), Math.abs(t - a[1])) - Math.min(Math.abs(t - b[0]), Math.abs(t - b[1])))[0];
+    return [h[2], h[3] || h[2]];
+}
+// 今日發車 (依時刻排序) → [{ t (分), x }]
+function hwDeps(mt, ends) {
+    return (mt ? mt.veh : []).map(x => ({ t: minOfMs(x.start), x })).filter(d => d.t >= ends.first - TRIP_MATCH.early && d.t <= ends.last + TRIP_MATCH.late).sort((a, b) => a.t - b.t);
+}
+// 班距間隔 → 異常類型：比最短班距短 5 分以上＝早發 (串車)；超過最長班距 5～10＝誤點、11～30＝脫班、30 以上＝漏班
+function hwType(gap, mn, mx) {
+    if (gap <= mn - 5) return { type: 'early', diff: Math.round(gap - mn) };
+    const ex = Math.round(gap - mx), type = anomType(ex);
+    return type && ex > 0 ? { type, diff: ex } : null;
+}
+function hwAnoms(route, sub, dir, e, mt, lg, nm, day0) {
+    const out = [], ends = hwEnds(route, sub, dir, e);
+    if (!ends) return out;
+    const { first, last } = ends, deps = hwDeps(mt, ends);
+    const gh = mt && mt.ghost && mt.ghost.length ? mt.ghost : null;
+    const ghWhy = gh ? `有車在線 (${gh.map(x => x.plate).join('、')}) 但未回報發車時刻，可能其實有發車` : '';
+    const alive = t => lg.rows.some(x => (x.start ?? x.seen) >= t - 3 * 3600000 && (x.start ?? x.seen) <= t + 3 * 3600000);
+    const hit = (d, o) => ({ sub, dir, act: d.t, plate: d.x.plate, fix: d.x.fix, sus: d.x.sus, why: d.x.why, ...o });
+    // 首班：比表定
+    let i0 = 0;
+    if (deps.length && deps[0].t <= first + TRIP_MATCH.late) {
+        const df = Math.round(deps[0].t - first), type = anomType(df);
+        if (type) out.push(hit(deps[0], { type, dep: first, diff: df, end: 'first' }));
+        i0 = 1;
+    } else if (nm >= first + ANOM_MISS) {
+        const t = day0 + first * 60000;
+        if (alive(t) && depCovered(t - 15 * 60000, t + ANOM_MISS * 60000)) out.push({ type: 'miss', sub, dir, dep: first, act: null, diff: null, plate: '', end: 'first', sus: !!gh, why: ghWhy });
+        i0 = deps.length ? 1 : 0;   // 首班沒開：第一台車當作起算的前一班
+    }
+    // 末班：最後一台、時間在末班前 10 分之後 (末班時刻未到時，還沒到末班時刻的車不算末班)
+    const L = deps.length - 1, isLast = L >= i0 && deps[L].t >= last - 10 && (nm >= last || deps[L].t >= last);
+    if (isLast) { const df = Math.round(deps[L].t - last), type = anomType(df); if (type) out.push(hit(deps[L], { type, dep: last, diff: df, end: 'last' })); }
+    else if (nm >= last + ANOM_MISS) {
+        const t = day0 + last * 60000;
+        if (alive(t) && depCovered(t - 15 * 60000, t + ANOM_MISS * 60000)) out.push({ type: 'miss', sub, dir, dep: last, act: null, diff: null, plate: '', end: 'last', sus: !!gh, why: ghWhy });
+    }
+    // 中間各班：與前一班的間隔
+    for (let i = Math.max(1, i0); i <= L; i++) {
+        if (isLast && i === L) break;
+        const pv = deps[i - 1].t, [mn, mx] = hwAt(e.hw, pv), gap = Math.round(deps[i].t - pv), r = hwType(gap, mn, mx);
+        if (r) out.push(hit(deps[i], { type: r.type, dep: deps[i].t, diff: r.diff, hw: { prev: pv, prevPlate: deps[i - 1].x.plate, gap, min: mn, max: mx } }));
+    }
+    // 前一班之後超過「最長班距＋30 分」仍沒有下一班 (末班前)
+    if (!isLast && L >= 0 && nm < last + ANOM_MISS) {
+        const pv = deps[L].t, [mn, mx] = hwAt(e.hw, pv), wait = nm - pv;
+        if (wait > mx + 30 && pv + mx < last) {
+            const t = day0 + pv * 60000;
+            if (alive(t) && depCovered(t, Date.now())) out.push({ type: 'miss', sub, dir, dep: pv + mx, act: null, diff: null, plate: '', sus: !!gh, why: ghWhy, hw: { prev: pv, prevPlate: deps[L].x.plate, gap: Math.floor(wait), min: mn, max: mx } });
+        }
+    }
+    return out;
+}
 // 某路線今日異常 → [{ type, sub, dir, dep (分), act (分|null), diff, plate }]；null＝資料未齊 (每日營運時刻表或發車紀錄)
 function routeAnoms(route) {
     const v = todaySched(route), lg = depLogOf(route);
@@ -3501,6 +3606,7 @@ function routeAnoms(route) {
     Object.entries(v.subs).forEach(([sub, ds]) => Object.entries(ds).forEach(([dir, e]) => {
         if (!e || !e.trips.length || !(e.kind === 'table' || e.kind === 'daily')) return;   // 推算的回程、純班距不判定
         const mt = matchTrips(route, sub, +dir), info = tripInfo(e);
+        if (isHw(e)) { out.push(...hwAnoms(route, sub, +dir, e, mt, lg, nm, day0)); return; }
         info.order.forEach(k => {
             const dep = info.dep[k];
             if (dep > nm) return;
@@ -3528,11 +3634,19 @@ function depFixNote(h) {
 }
 function anomItem(x) {
     const T = ANOM_T[x.type], r = ROUTES.find(y => y.sub === x.sub && y.dir === x.dir);
-    const what = x.act !== null ? `表定 ${fmt(x.dep)} → 實際 ${fmt(Math.floor(x.act))} <span class="dly ${x.diff < 0 ? 'early' : 'late'}">${x.diff < 0 ? '早' : '遲'}${Math.abs(x.diff)}分</span>${depFixNote(x)}` : `表定 ${fmt(x.dep)} · <span class="dly late">未偵測到發車</span>${depFixNote(x)}`;
+    const hwTxt = h => ` <span class="muted small">(班距 ${h.min}${h.max !== h.min ? '～' + h.max : ''} 分)</span>`;
+    if (x.hw) {
+        const h = x.hw, pv = `前班 ${fmt(Math.floor(h.prev))}${h.prevPlate ? ` <span class="muted small">${esc(h.prevPlate)}</span>` : ''}`;
+        const what = x.act !== null ? `${pv} → 本班 ${fmt(Math.floor(x.act))} · 間隔 ${h.gap} 分 <span class="dly ${x.diff < 0 ? 'early' : 'late'}">${x.diff < 0 ? '短' + Math.abs(x.diff) + '分' : '超過' + x.diff + '分'}</span>${hwTxt(h)}${depFixNote(x)}`
+            : `${pv} 後 ${h.gap} 分 · <span class="dly late">未偵測到下一班</span>${hwTxt(h)}${depFixNote(x)}`;
+        return `<div class="an-row" data-sub="${esc(x.sub)}" data-dir="${x.dir}"><span class="an-t" style="background:${T[1]}">${T[0]}</span>
+        <span class="badge" style="background:${colorOf(x.sub)}">${esc(x.sub)}</span><span class="an-m"><span class="small">${r ? '往 ' + esc(destOf(r)) : ''}${x.plate ? ` · 車牌 <b>${esc(x.plate)}</b>` : ''} · 班距制</span><br>${what}</span></div>`;
+    }
+    const what = (x.end ? (x.end === 'first' ? '首班 ' : '末班 ') : '') + (x.act !== null ? `表定 ${fmt(x.dep)} → 實際 ${fmt(Math.floor(x.act))} <span class="dly ${x.diff < 0 ? 'early' : 'late'}">${x.diff < 0 ? '早' : '遲'}${Math.abs(x.diff)}分</span>${depFixNote(x)}` : `表定 ${fmt(x.dep)} · <span class="dly late">未偵測到發車</span>${depFixNote(x)}`);
     return `<div class="an-row" data-sub="${esc(x.sub)}" data-dir="${x.dir}"><span class="an-t" style="background:${T[1]}">${T[0]}</span>
         <span class="badge" style="background:${colorOf(x.sub)}">${esc(x.sub)}</span><span class="an-m"><span class="small">${r ? '往 ' + esc(destOf(r)) : ''}${x.plate ? ` · 車牌 <b>${esc(x.plate)}</b>` : ''}</span><br>${what}</span></div>`;
 }
-const ANOM_NOTE = '判定：當日每日營運時刻表的表定發車 vs 車輛的發車時刻 (TDX；TripStartTimeType 0＝實際、1＝TDX 預估、2＝無法推估 → 依位置反推)。非營運或已到終點結束的車不列入。早發＝早 5 分以上；誤點＝遲 5～10 分；脫班＝遲 11～30 分；漏班＝遲超過 30 分或表定後 35 分仍未偵測到發車。車機回報的發車時刻是司機操作的，與「車輛出現在哪站、什麼時間」依時刻表站間時間反推的發車差 10 分以上 (或回報晚於車已在途中的時間) 時，改用反推值並標「依位置推算」(只用離起點 15 分內的位置，較遠的位置只在回報不可能成立時採用)；差距可能是途中塞車、反推誤差可能較大或推不出來時保留並標「疑似」。發車紀錄每 15 分鐘記錄一次，紀錄中斷或路線沒有車機回報時不判漏班；「未偵測到發車」不等於確定未發車，請以業者公告為準。';
+const ANOM_NOTE = '判定：當日每日營運時刻表的表定發車 vs 車輛的發車時刻 (TDX；TripStartTimeType 0＝實際、1＝TDX 預估、2＝無法推估 → 依位置反推)。非營運或已到終點結束的車不列入。早發＝早 5 分以上；誤點＝遲 5～10 分；脫班＝遲 11～30 分；漏班＝遲超過 30 分或表定後 35 分仍未偵測到發車。車機回報的發車時刻是司機操作的，與「車輛出現在哪站、什麼時間」依時刻表站間時間反推的發車差 10 分以上 (或回報晚於車已在途中的時間) 時，改用反推值並標「依位置推算」(只用離起點 15 分內的位置，較遠的位置只在回報不可能成立時採用)；差距可能是途中塞車、反推誤差可能較大或推不出來時保留並標「疑似」。班距制路線 (路線班表只有班距，如 35)：首末班依每日營運時刻表判定 (與班距時段起訖對不上時改查 TDX 首末班資料)；其他班次看與前一班的發車間隔，比該時段最短班距短 5 分以上＝早發 (串車)，超過最長班距 5～10 分＝誤點、11～30 分＝脫班、超過 30 分或前一班後超過「最長班距＋30 分」仍沒有下一班＝漏班；每日營運時刻表的逐班時刻只供參考。發車紀錄每 15 分鐘記錄一次，紀錄中斷或路線沒有車機回報時不判漏班；「未偵測到發車」不等於確定未發車，請以業者公告為準。';
 // 路線頁：本路線本方向今日異常 (監測路線才有)
 function routeAnomHtml(r) {
     if (!depWatched(r.route)) return '';
@@ -3920,7 +4034,7 @@ function navWaitInfo(g) {
     const row = navEtaRow(g, g.b.name);
     if (!row) return { txt: etaCache.has('rt:' + g.r.route) ? '暫無到站資訊' : '即時資料載入中…' };
     if (row.plate && row.plate !== '-1' && !Nav.plate) Nav.plate = row.plate;
-    if (row.dl === null) return { txt: row.status === 1 && row.next ? `表定 ${new Date(row.next).toTimeString().slice(0, 5)} 發車` : (STATUS[row.status] || '--'), sch: row.status === 1 && row.next ? Date.parse(row.next) : null, nx: row.status === 1 || row.status === 2 ? navSchedNext(g) : null, row };
+    if (row.dl === null) return { txt: row.status === 1 && row.next ? `表定 ${new Date(row.next).toTimeString().slice(0, 5)} ${navAtOrigin(g) ? '發車' : '到站'}` : (STATUS[row.status] || '--'), sch: row.status === 1 && row.next ? Date.parse(row.next) : null, nx: row.status === 1 || row.status === 2 ? navSchedNext(g) : null, row };
     return { dl: row.dl, cmp: navSchedOk(g) ? compareEta(g.r, g.b.name, row) : null, row, plate: row.plate };
 }
 // 早/遲要等每日營運時刻表載入後才比 (只有路線班表時，取消／改點的班次會被配錯)
@@ -3998,7 +4112,7 @@ function navWhen(g, w) {
     if (w.dl) return at(w.src ? '推估' : '即時', w.dl);
     // 沒有即時：已發車／未依時刻表發車＋下一班
     if (w.nx) return `${navStTag(w.nx)}下一班 ${at(w.nx.src, w.nx.ms)}`;
-    if (w.sch) return `${tsrc('表定')}${hmOf(w.sch)} 發車`;
+    if (w.sch) return `${tsrc('表定')}${hmOf(w.sch)} ${navAtOrigin(g) ? '發車' : '到站'}`;
     return esc(w.txt || '');
 }
 // 某段上車時刻 { ms, src, cmp }：目前這段＝即時到站 (起點＝表定發車)；之後的轉乘段＝依前段下車接得上的那一班
@@ -4269,7 +4383,7 @@ function navIssue() {
         if (w.row && w.row.dl === null && (w.row.status === 3 || w.row.status === 4)) return { ...base, key: `w${gi}:dead`, msg: `${g.label} ${STATUS[w.row.status]}，搭不到`, ban: [[g.r.sub, g.r.dir]] };
         if (w.dl && w.dl - now > NAV_WAIT_LONG * 60000) return { ...base, key: `w${gi}:long`, msg: `${g.label} 還要等 ${Math.round((w.dl - now) / 60000)} 分 (即時 ${hmOf(w.dl)} 到站)`, ban: [], skip: [g.r.sub, g.r.dir] };
         if (!w.dl && w.nx && w.nx.ms - now > NAV_WAIT_LONG * 60000) return { ...base, key: `w${gi}:nodep`, msg: `${g.label} ${w.nx.st || '尚未發車'}，下一班 ${w.nx.src} ${hmOf(w.nx.ms)} ${navAtOrigin(g) ? '發車' : '到站'}`, ban: [], skip: [g.r.sub, g.r.dir] };
-        if (!w.dl && !w.nx && w.row && w.row.status === 1 && w.row.next && Date.parse(w.row.next) - now > NAV_WAIT_LONG * 60000) return { ...base, key: `w${gi}:nodep`, msg: `${g.label} 尚未發車，表定 ${hmOf(Date.parse(w.row.next))} 才發車`, ban: [], skip: [g.r.sub, g.r.dir] };
+        if (!w.dl && !w.nx && w.row && w.row.status === 1 && w.row.next && Date.parse(w.row.next) - now > NAV_WAIT_LONG * 60000) return { ...base, key: `w${gi}:nodep`, msg: `${g.label} 尚未發車，表定 ${hmOf(Date.parse(w.row.next))} ${navAtOrigin(g) ? '才發車' : '才到站'}`, ban: [], skip: [g.r.sub, g.r.dir] };
     }
     // 下一個轉乘 (Nav.xfer / Nav.xinfo 由 navXferCalc 先算好)；只在前段下車是即時預估時才警示，避免推估誤報
     const h = Nav.legs[gi + 1], xi = Nav.xinfo && Nav.xinfo[gi + 1];
