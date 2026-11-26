@@ -76,6 +76,9 @@
     .list-item:hover { background: #26292d; }
     .list-item .sub { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .badge { display: inline-block; min-width: 34px; text-align: center; padding: 2px 7px; border-radius: 5px; font-weight: bold; font-size: 13px; color: #fff; white-space: nowrap; }
+    .badge[style*="#F0DE00"] { color: #111; }   /* 700 崇德幹線黃底：深色字 */
+    .badge .tk-ic { width: 1.15em; height: 1.15em; vertical-align: -0.2em; margin: 0 3px 0 -2px; background: #fff; border-radius: 50%; padding: 1px; box-sizing: content-box; }
+    .tk-nm { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 9px; border: 1px solid currentColor; opacity: .8; margin-left: 4px; vertical-align: 1px; white-space: nowrap; }
     h2 { font-size: 18px; margin: 4px 0 2px; }
     /* 路線頁標題：捲動時置頂 (蓋住 #panel 的內距) */
     .rt-head { position: sticky; top: -10px; z-index: 5; margin: -10px -12px 4px; padding: 8px 12px 6px; background: var(--bg); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; }
@@ -102,7 +105,7 @@
     .list-item > .badge { flex-shrink: 0; }
     .gdir-sw { display: inline-flex; border-radius: 8px; overflow: hidden; border: 1px solid #555; }
     .gdir-sw button { background: transparent; color: inherit; border: 0; padding: 4px 10px; font: inherit; cursor: pointer; }
-    .gdir-sw button.on { background: var(--gc, #1f6fd1); color: #fff; }
+    .gdir-sw button.on { background: var(--gc, #1E9CC2); color: #fff; }
     .stop-card { background: #222428; border: 1px solid #2f3236; border-radius: 10px; margin: 10px 0; overflow: hidden; }
     .stop-head { padding: 7px 10px; background: #2a2d31; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
     .stop-head b { font-size: 15px; }
@@ -786,12 +789,26 @@ function boardsOf(st) {
 const SUBS = [...new Set(ROUTES.map(r => r.sub))];
 const routeDirs = sub => ROUTES.filter(r => r.sub === sub);
 const destOf = r => STOPS[r.seq[r.seq.length - 1]].name;
-// 路線顏色 (黃金角色相，依路線編號固定)
-const colorOf = sub => { let h = 0; for (const c of sub) h = (h * 31 + c.charCodeAt(0)) >>> 0; const i = SUBS.indexOf(sub); return `hsl(${(i * 137.508) % 360}, 62%, 42%)`; };
+// 幹線：路線號碼底色、幹線名稱、幹線 icon (只加在主線號碼)；taichung.html 同一份規則
+const TRUNK = [
+    { re: /^100$/, c: '#595758', name: '復興幹線', main: '100' },
+    { re: /^200(跳蛙公車)?$/, c: '#987557', name: '中興幹線', main: '200' },
+    { re: /^300$/, c: '#1E9CC2', name: '台灣大道幹線', main: '300' },
+    { re: /^(30[1-9]|310)(?![0-9])/, c: '#1E9CC2' },
+    { re: /^500(?![0-9])/, c: '#E3925D', name: '中清幹線', main: '500' },
+    { re: /^700(?![0-9])/, c: '#F0DE00', name: '崇德幹線', main: '700' },
+    { re: /^900(?![0-9])/, c: '#860000', name: '北屯幹線', main: '900' }
+];
+const trunkOf = sub => { const t = TRUNK.find(x => x.re.test(sub)); return t ? { c: t.c, name: t.name || '', icon: t.main === sub } : null; };
+const TRUNK_ICON = 'data/trunk.png';
+const trunkIc = sub => { const t = trunkOf(sub); return t && t.icon ? `<img class="tk-ic" src="${TRUNK_ICON}" alt="">` : ''; };
+const trunkName = sub => { const t = trunkOf(sub); return t && t.name ? `<span class="tk-nm">${t.name}</span>` : ''; };
+// 路線顏色：幹線用指定色；其餘黃金角色相，依路線編號固定
+const colorOf = sub => { const t = trunkOf(sub); if (t) return t.c; let h = 0; for (const c of sub) h = (h * 31 + c.charCodeAt(0)) >>> 0; const i = SUBS.indexOf(sub); return `hsl(${(i * 137.508) % 360}, 62%, 42%)`; };
 // 夜間公車 (凌晨 00～04 點有 2 個以上不同時刻從起點發車；規劃資料載入後依班表補上) → 路線號碼旁加 🌙
 const NIGHT_SUBS = new Set(['326']);
 const nightMark = sub => NIGHT_SUBS.has(sub) ? '🌙' : '';
-const badge = sub => `<span class="badge" style="background:${colorOf(sub)}">${esc(sub)}${nightMark(sub)}</span>`;
+const badge = sub => { const t = trunkOf(sub); return `<span class="badge" style="background:${colorOf(sub)}"${t && t.name ? ` title="${t.name}"` : ''}>${trunkIc(sub)}${esc(sub)}${nightMark(sub)}</span>`; };
 
 // 兩點方位角 → 八方位
 function bearing(a, b) {
@@ -2103,14 +2120,14 @@ function renderSearch() {
         const hits = [...STATIONS.values()].filter(s => s.name.includes(q)).sort((a, b) => (a.name === q ? -1 : 0) - (b.name === q ? -1 : 0) || b.routes.size - a.routes.size).slice(0, 60);
         listStations(hits, `「${esc(q)}」${hits.length >= 60 ? '前 60 個' : hits.length + ' 個'}站位`);
     } else {
-        const subs = SUBS.filter(s => !q || s.includes(q)).sort((a, b) => a.localeCompare(b, 'zh-Hant', { numeric: true }));
+        const subs = SUBS.filter(s => !q || s.includes(q) || (trunkOf(s) && trunkOf(s).name && trunkOf(s).name.includes(q))).sort((a, b) => a.localeCompare(b, 'zh-Hant', { numeric: true }));
         const showMrt = !q || '捷運綠線'.includes(q) || /綠|捷運|mrt/i.test(q);
         const bar = multiCount() ? `<div class="row multi-bar">已選 ${multiCount()} 條：${multiMrt ? mrtBadge() : ''}${multiGrp ? grpBadge(multiGrp) : ''}${multi.map(m => badge(m.sub)).join('')}<button class="btn" id="b-multi">在地圖顯示</button><button class="btn" id="b-mclr">清除</button></div>`
             : '<div class="hint">勾選右側方框可多選路線，同時顯示在地圖上。</div>';
         const keep = panel.scrollTop;
         panel.innerHTML = bar + (showMrt ? `<div class="list-item" data-mrt="1">${mrtBadge()}<div style="min-width:0;flex:1"><div>臺中捷運綠線</div><div class="sub">北屯總站 ↔ 高鐵臺中站 · 18 站</div></div><label class="msel" title="多選"><input type="checkbox" data-mmrt="1"${multiMrt ? ' checked' : ''}></label></div>` : '') +
             grpItems(q) +
-            subs.slice(0, 200).map(s => { const ds = routeDirs(s); return `<div class="list-item" data-sub="${esc(s)}">${badge(s)}<div style="min-width:0;flex:1"><div class="sub">${ds.map(r => '往 ' + esc(destOf(r))).join(' ／ ')}</div></div><label class="msel" title="多選"><input type="checkbox" data-msub="${esc(s)}"${inMulti(s) ? ' checked' : ''}></label></div>`; }).join('') +
+            subs.slice(0, 200).map(s => { const ds = routeDirs(s); return `<div class="list-item" data-sub="${esc(s)}">${badge(s)}<div style="min-width:0;flex:1">${trunkOf(s) && trunkOf(s).name ? `<div>${trunkName(s)}</div>` : ''}<div class="sub">${ds.map(r => '往 ' + esc(destOf(r))).join(' ／ ')}</div></div><label class="msel" title="多選"><input type="checkbox" data-msub="${esc(s)}"${inMulti(s) ? ' checked' : ''}></label></div>`; }).join('') +
             (subs.length > 200 ? `<div class="hint">還有 ${subs.length - 200} 條，請輸入更多字</div>` : '');
         if (q === lastQ) panel.scrollTop = keep;
         lastQ = q;
@@ -2765,7 +2782,7 @@ let multiMrtDir = store.get('txg_multi_mrtdir_v1') === 'north' ? 'north' : 'sout
 const mrtDest = dk => dk === 'south' ? '高鐵臺中站' : '北屯總站';
 const saveMulti = () => { store.set(MULTI_KEY, multi); store.set(MULTI_MRT_KEY, multiMrt); store.set(MULTI_GRP_KEY, multiGrp); store.set('txg_multi_grpdir_v1', multiGrpDir); store.set('txg_multi_mrtdir_v1', multiMrtDir); };
 const multiCount = () => multi.length + (multiMrt ? 1 : 0) + (multiGrp ? 1 : 0);
-const grpBadge = id => { const g = grpOf(id); return `<span class="badge" style="background:${g ? g.color : '#1f6fd1'}">${esc(g ? g.name : '藍線')}</span>`; };
+const grpBadge = id => { const g = grpOf(id); return `<span class="badge" style="background:${g ? g.color : '#1E9CC2'}">${esc(g ? g.name : '藍線')}</span>`; };
 const mrtBadge = () => `<span class="badge" style="background:${NET.mrt.color || '#8cc540'}">綠線</span>`;
 const inMulti = sub => multi.some(m => m.sub === sub);
 function toggleMulti(sub, dir) {
@@ -3393,7 +3410,7 @@ function renderRoute() {
     }).join('');
     const busy = autoBusy([r.route]);
     const bk = view.back && grpOf(view.back.grp);
-    panel.innerHTML = `<div class="rt-head"><h2>${badge(r.sub)} 往 ${esc(destOf(r))}</h2>
+    panel.innerHTML = `<div class="rt-head"><h2>${badge(r.sub)} 往 ${esc(destOf(r))}${trunkName(r.sub)}</h2>
         ${other ? `<button class="rev" id="b-rev" title="切換方向">⇄ 往 ${esc(destOf(other))}</button>` : ''}</div>
         ${isToday ? `<div class="row live-row"><span class="live-pill">即時</span><span class="muted">${eta ? new Date(eta.at).toLocaleTimeString('zh-TW', { hour12: false }) : '載入中…'}</span>${autoBtn(busy, '即時到站＋班次配對＋公車位置，每次 3 次 API')}</div>`
             : `<div class="muted">${ds} 時刻表</div>`}

@@ -214,8 +214,8 @@ const LINE_META = {
     mrt: { kind: 'mrt', plan: true, code: 'G', name: '綠線', full: '臺中捷運綠線（營運中）', color: '#8CC540', ends: ['北屯端', '高鐵端'] },
     ge: { kind: 'bus', plan: true, code: 'G', name: '綠線東延', full: '綠線延伸大坑（規劃，以東山路公車呈現）', color: '#8CC540', ext: true, ends: ['大坑端', '北屯端'] },
     gs: { kind: 'bus', plan: true, code: 'G', name: '綠線南延', full: '綠線延伸彰化（規劃，以 101 等公車呈現）', color: '#8CC540', ext: true, ends: ['高鐵端', '彰化端'] },
-    bl: { kind: 'bus', plan: true, code: 'BL', name: '藍線', full: '藍線 臺中港─臺灣大道─臺中車站─東平（以 300 系列等公車呈現）', color: '#0070BD', ends: ['臺中港端', '東平端'] },
-    or: { kind: 'bus', plan: true, code: 'O', name: '橘線', full: '橘線 臺中機場─中清路─臺中車站─國光路─霧峰（以 500、200 等公車呈現）', color: '#F8B61C', ends: ['機場端', '霧峰端'] },
+    bl: { kind: 'bus', plan: true, code: 'BL', name: '藍線', full: '藍線 臺中港─臺灣大道─臺中車站─東平（以 300 系列等公車呈現）', color: '#1E9CC2', ends: ['臺中港端', '東平端'] },
+    or: { kind: 'bus', plan: true, code: 'O', name: '橘線', full: '橘線 臺中機場─中清路─臺中車站─國光路─霧峰（以 500、200 等公車呈現）', color: '#E3925D', ends: ['機場端', '霧峰端'] },
     rd: { kind: 'bus', plan: true, code: 'R', name: '紅線', full: '紅線 豐原─崇德路─三民錦新（以 700 等公車呈現）', color: '#E3002C', ends: ['豐原端', '三民端'] },
     pp: { kind: 'bus', plan: true, code: 'P', name: '紫線', full: '紫線 屯區環狀 大慶─大里─太平─大坑（以 73、3、51 等公車呈現）', color: '#8E5BB5', ends: ['大慶端', '大坑端'] },
 };

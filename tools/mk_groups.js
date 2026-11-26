@@ -13,7 +13,7 @@ const fs = require('fs'), path = require('path'), vm = require('vm');
 const ROOT = path.join(__dirname, '..');
 const OUT = path.join(ROOT, 'data', 'groups.json');
 const GROUPS = [
-    { id: 'blue', name: '藍線', desc: '臺中捷運藍線 (規劃) 沿線', color: '#1f6fd1',
+    { id: 'blue', name: '藍線', desc: '臺中捷運藍線 (規劃) 沿線', color: '#1E9CC2',
       src: path.join(ROOT, '..', 'metro route', 'BlueLine.geojson'), feature: '藍線', buf: 300, min: 3000,
       ends: ['臺中港', '臺中車站'] }   // 參考線 [起點, 終點] 方向名稱
 ];
