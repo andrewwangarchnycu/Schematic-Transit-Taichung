@@ -476,7 +476,10 @@
     .pd-t { border: 1px solid var(--line, rgba(255,255,255,.2)); background: transparent; color: var(--text, #fff); border-radius: 12px; padding: 4px 10px; font-size: 13px; cursor: pointer; }
     .pd-t.on { background: #0a84ff; border-color: #0a84ff; color: #fff; } .pd-t small { opacity: .75; }
     .pd-tab .mins span { cursor: pointer; font-weight: 600; }
-    .pd-m.dir { font-weight: 900 !important; text-decoration: underline; text-underline-offset: 3px; }
+    .pd-tab .mins { gap: 2px 10px; align-items: flex-start; }
+    .pd-m { display: inline-flex; flex-direction: column; align-items: center; line-height: 1.05; padding: 1px 1px 2px; }
+    .pd-m .mm { font-size: 17px; font-variant-numeric: tabular-nums; } .pd-m small { font-size: 10px; font-weight: 500; opacity: .85; margin-top: 1px; }
+    .pd-m.dir { font-weight: 900 !important; } .pd-m.dir .mm { text-decoration: underline; text-underline-offset: 3px; }
     .pd-m.past { opacity: .35; } .pd-m.next { outline: 2px solid #0a84ff; border-radius: 4px; } .pd-m.sel { background: rgba(10,132,255,.3); border-radius: 4px; }
     .pd-leg { display: flex; align-items: center; gap: 8px; font-size: 12px; margin: 6px 0; } .pd-grad { flex: 1; height: 8px; border-radius: 4px; }
     .pd-dir { text-decoration: underline; } .pd-bar { height: 6px; background: rgba(127,127,127,.25); border-radius: 3px; overflow: hidden; } .pd-bar span { display: block; height: 100%; background: #0a84ff; transition: width .2s; }
@@ -1992,7 +1995,7 @@ function onLoc(p) {
     updateMeArrow();
     Loc.marker.setTooltipContent(`我的位置 (誤差約 ${Math.round(accuracy)} 公尺)`);
     if (Loc.follow) {
-        if (Loc.first) map.setView(ll, Math.max(map.getZoom(), 17)); else map.panTo(ll, { animate: true });
+        if (Loc.first) mapCenterOn(ll, Math.max(map.getZoom(), 17)); else mapCenterOn(ll, map.getZoom(), { animate: true });
     }
     Loc.first = false;
     locBtnState();
@@ -2022,8 +2025,8 @@ function stopLoc() {
 function toggleLoc() {
     if (Loc.watch === null) startLoc();
     // 自動恢復定位時 (非點按) iOS 無法取得指北針權限，點一下按鈕時再要一次
-    else if (!Loc.follow) { Loc.follow = true; startCompass(); if (Loc.pos) map.setView([Loc.pos.lat, Loc.pos.lng], Math.max(map.getZoom(), 17)); locBtnState(); }
-    else if (!Loc.compassMode) { Loc.compassMode = true; startCompass(); if (Loc.pos) map.setView([Loc.pos.lat, Loc.pos.lng], Math.max(map.getZoom(), 17)); locBtnState(); }
+    else if (!Loc.follow) { Loc.follow = true; startCompass(); if (Loc.pos) mapCenterOn([Loc.pos.lat, Loc.pos.lng], Math.max(map.getZoom(), 17)); locBtnState(); }
+    else if (!Loc.compassMode) { Loc.compassMode = true; startCompass(); if (Loc.pos) mapCenterOn([Loc.pos.lat, Loc.pos.lng], Math.max(map.getZoom(), 17)); locBtnState(); }
     else stopLoc();
 }
 // 手動拖曳地圖＝暫停跟隨 (定位持續更新)
@@ -2162,10 +2165,41 @@ function trackBtn() {
     b.classList.toggle('tracking', Track.on);
     b.innerHTML = Track.on ? '📍 停止追蹤' : '📍 附近';
 }
+// 追蹤的最近站標記 (綠框圓)
+function trackMark(s) {
+    if (Track.mk) Track.mk.setLatLng([s.lat, s.lng]);
+    else Track.mk = L.marker([s.lat, s.lng], { icon: L.divIcon({ className: 'trk-ico', html: '<div></div>', iconSize: [22, 22], iconAnchor: [11, 11] }), interactive: false, zIndexOffset: 2500 }).addTo(map);
+    mapCenterOn([s.lat, s.lng], Math.max(map.getZoom(), 16));
+}
+const TRACK_VIEWS = ['route', 'mrt', 'grp'];
 function onTrack(lat, lng) {
     if (!Track.on) return;
-    if (!view || view.type !== 'route') { stopTrack(); return; }
+    if (!view || !TRACK_VIEWS.includes(view.type)) { stopTrack(); return; }
     Track.ll = [lat, lng];
+    const dd = (a, b) => Math.hypot((a.lng - lng) * 101700, (a.lat - lat) * 110900);
+    // 綠線：最近車站 → 展開該站全日時刻表 (目前方向)
+    if (view.type === 'mrt') {
+        let bi = 0; M.stations.forEach((s, i) => { if (dd(s) < dd(M.stations[bi])) bi = i; });
+        const key = 'mrt:' + bi;
+        if (key === Track.key) return;
+        Track.key = key; open.clear(); open.add('m' + bi); renderMrt(); panel.scrollTop = 0;
+        trackMark(M.stations[bi]);
+        return;
+    }
+    // 藍線路廊：最近車站 → 打開車站視窗 (目前方向最近兩班)
+    if (view.type === 'grp') {
+        const g = grpOf(view.id), sts = (g && g.stations) || [];
+        if (!sts.length) return;
+        let bi = 0; sts.forEach((st, i) => { if (dd({ lat: st[1], lng: st[2] }) < dd({ lat: sts[bi][1], lng: sts[bi][2] })) bi = i; });
+        const key = 'grp:' + g.id + ':' + bi;
+        if (key === Track.key) return;
+        Track.key = key;
+        const st = sts[bi];
+        trackMark({ lat: st[1], lng: st[2] });
+        const mk = GrpSta.get(st[0] + '|' + st[1]);
+        if (mk) setTimeout(() => mk.openPopup(), 300);
+        return;
+    }
     const r = ROUTES.find(x => x.sub === view.sub && x.dir === view.dir), t = trackInfo(r);
     if (!t) return;
     const key = r.i + ':' + t.pos, s = STOPS[r.seq[t.pos]];
@@ -2175,7 +2209,7 @@ function onTrack(lat, lng) {
     Track.key = key;
     if (Track.mk) Track.mk.setLatLng([s.lat, s.lng]);
     else Track.mk = L.marker([s.lat, s.lng], { icon: L.divIcon({ className: 'trk-ico', html: '<div></div>', iconSize: [22, 22], iconAnchor: [11, 11] }), interactive: false, zIndexOffset: 2500 }).addTo(map);
-    map.setView([s.lat, s.lng], Math.max(map.getZoom(), 17));
+    mapCenterOn([s.lat, s.lng], Math.max(map.getZoom(), 17));
     const row = panel.querySelector('.seq-row.track');
     if (row) {
         // 手機版 (面板在地圖下方、高度小)：該站置於面板正中 (比桌面版多往上捲約 2.5 站)
@@ -2201,10 +2235,12 @@ function stopTrack() {
     Object.assign(Track, { on: false, watch: null, ll: null, key: '', mk: null });
     trackBtn();
     if (view && view.type === 'route') renderRoute();
+    else if (view && view.type === 'mrt') { open.clear(); renderMrt(); }
+    else if (view && view.type === 'grp') map.closePopup();
 }
 function nearClick() {
     if (Track.on) { stopTrack(); return; }
-    if (view && view.type === 'route') { startTrack(); return; }
+    if (view && TRACK_VIEWS.includes(view.type)) { startTrack(); return; }
     if (view && view.type === 'multi' && MultiNear.on) { multiNearOff(); renderMulti(); return; }
     if (view && view.type === 'multi') {
         if (!navigator.geolocation) { alert('此裝置不支援定位'); return; }
@@ -2485,7 +2521,7 @@ function clearBikes() { layerBike.clearLayers(); bikeDrawn = ''; }
 //   範圍內最近的 40 支站牌一次查即時 (1 次 API)；每條路線每方向取最近的站牌 (不含終點站)
 const NEAR_R = 500, NEAR_MAX_STOPS = 40;
 // 地圖可見範圍 (扣掉浮動面板、標題列、手機抽屜；與 fitBounds 預留相同)
-function visibleMapArea() {
+function visPad() {
     const sz = map.getSize(), mob = isMobile(), app = $('app');
     let tl = [0, 0], br = [0, 0];
     if (!mob) tl = [476, 0];
@@ -2495,8 +2531,18 @@ function visibleMapArea() {
         tl = [0, hh]; br = [0, sh + 8];
     }
     if (sz.x - tl[0] - br[0] < 80 || sz.y - tl[1] - br[1] < 80) { tl = [0, 0]; br = [0, 0]; }   // 太窄就用整張地圖
+    return { sz, tl, br };
+}
+function visibleMapArea() {
+    const { sz, tl, br } = visPad();
     const a = L.point(tl[0], tl[1]), b = L.point(sz.x - br[0], sz.y - br[1]);
     return { bounds: L.latLngBounds(map.containerPointToLatLng(a), map.containerPointToLatLng(b)), center: map.containerPointToLatLng(a.add(b).divideBy(2)) };
+}
+// 把某點放在可見地圖的正中間 (手機直式：標題列與抽屜之間；桌面版：扣掉左側面板)
+function mapCenterOn(ll, z = map.getZoom(), opt) {
+    const { tl, br } = visPad(), d = L.point((tl[0] - br[0]) / 2, (tl[1] - br[1]) / 2);
+    const c = map.unproject(map.project(L.latLng(ll), z).subtract(d), z);
+    map.setView(c, z, opt);
 }
 // 「附近」搜尋點：定位點在畫面中＝以定位點；否則以畫面中心 → open(lat, lng, center)
 function nearHere(open) {
@@ -2837,8 +2883,10 @@ function grpStaHtml(g, st, gd) {
 // 開啟車站視窗：1 次即時到站 (站牌 StopUID 串 or)＋各路線靜態時刻表 (data/r*.json，不耗 API)
 //   gds()：要顯示的方向清單 (路廊檢視＝[目前方向]；多選＝[1, -1] 兩個方向)
 const grpStaPopup = (g, st, gds) => gds().map(gd => grpStaHtml(g, st, gd)).join('<hr style="border:0;border-top:1px solid #8885;margin:7px 0">');
+const GrpSta = new Map();   // 站名|緯度 → 路廊車站標記
 function grpStaMarker(g, st, gds) {
     const mk = L.circleMarker([st[1], st[2]], { radius: 5, color: g.color, weight: 2.5, fillColor: '#fff', fillOpacity: 1 }).bindTooltip(st[0]);
+    GrpSta.set(st[0] + '|' + st[1], mk);
     mk.bindPopup(() => grpStaPopup(g, st, gds), { maxWidth: 300 });
     mk.on('popupopen', () => grpStaLoad(g, st, mk, gds));
     return mk;
@@ -5759,7 +5807,7 @@ function planDayTable(list, lo, hi, isToday, nm, selI) {
     for (let h = h0; h <= h1; h++) {
         const mins = (byH.get(h) || []).map(e => {
             const r = Math.round(e.b), past = isToday && r < nm - 0.5, next = isToday && !past && !nextMarked && (nextMarked = true);
-            return `<span class="pd-m${e.x === 0 ? ' dir' : ''}${past ? ' past' : ''}${next ? ' next' : ''}${e.i === selI ? ' sel' : ''}" data-i="${e.i}" style="color:${planDurColor(e.dur, lo, hi)}" title="${esc(planPatLabel(e.p))} · ${Math.round(e.dur)} 分">${pad(r % 60)}</span>`;
+            return `<span class="pd-m${e.x === 0 ? ' dir' : ''}${past ? ' past' : ''}${next ? ' next' : ''}${e.i === selI ? ' sel' : ''}" data-i="${e.i}" style="color:${planDurColor(e.dur, lo, hi)}" title="${esc(planPatLabel(e.p))} · ${esc(ptName(e.p.rides[0].b))} 上車 · ${Math.round(e.dur)} 分"><span class="mm">${pad(r % 60)}</span><small>${esc([...ptName(e.p.rides[0].b)][0] || '')}</small></span>`;
         }).join('');
         rows.push(`<div class="hr${isToday && h === Math.floor(nm / 60) ? ' cur' : ''}${mins ? '' : ' empty'}"><b>${pad(h % 24)}</b><span class="mins">${mins || '—'}</span></div>`);
     }
@@ -5890,7 +5938,7 @@ let jsPdfP = null;
 const planLoadJsPdf = () => jsPdfP || (jsPdfP = new Promise((ok, no) => { if (window.jspdf) return ok(); const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'; s.onload = ok; s.onerror = () => { jsPdfP = null; no(new Error('PDF 元件載入失敗')); }; document.head.appendChild(s); }));
 // 畫成固定大小的頁面 (canvas)：標題、各組 (星期) 的各頁籤時刻表、色條
 function planDrawPages(groups, lo, hi, { W, H, f }) {
-    const P = Math.round(f * 1.4), lh = Math.round(f * 1.55), hw = Math.round(f * 2.4), cw = Math.round(f * 1.75), per = Math.max(4, Math.floor((W - P * 2 - hw) / cw));
+    const P = Math.round(f * 1.4), lh = Math.round(f * 2.2), hw = Math.round(f * 2.4), cw = Math.round(f * 1.75), per = Math.max(4, Math.floor((W - P * 2 - hw) / cw));
     const items = [];   // { h, draw(ctx, y) }
     const font = (s, b) => `${b ? 'bold ' : ''}${s}px system-ui, -apple-system, "Noto Sans TC", sans-serif`;
     const text = (ctx, t, x, y, s, c, b) => { ctx.font = font(s, b); ctx.fillStyle = c; ctx.fillText(t, x, y); };
@@ -5911,11 +5959,14 @@ function planDrawPages(groups, lo, hi, { W, H, f }) {
             [...byH.keys()].sort((a, b) => a - b).forEach(h => {
                 const l = byH.get(h), lines = Math.ceil(l.length / per);
                 items.push({ h: lines * lh + 4, draw: (c, y) => {
-                    c.fillStyle = '#f2f2f7'; c.fillRect(P, y, W - P * 2, lines * lh); text(c, pad(h % 24), P + f * 0.3, y + lh * 0.72, f * 0.9, '#333', true);
+                    c.fillStyle = '#f2f2f7'; c.fillRect(P, y, W - P * 2, lines * lh); text(c, pad(h % 24), P + f * 0.3, y + lh * 0.55, f * 0.9, '#333', true);
                     l.forEach((e, i) => {
-                        const x = P + hw + (i % per) * cw, yy = y + Math.floor(i / per) * lh + lh * 0.72, mm = pad(Math.round(e.b) % 60);
+                        const x = P + hw + (i % per) * cw, yy = y + Math.floor(i / per) * lh + lh * 0.55, mm = pad(Math.round(e.b) % 60);
                         text(c, mm, x, yy, f, planDurColor(e.dur, lo, hi), e.x === 0);
-                        if (e.x === 0) { c.fillStyle = planDurColor(e.dur, lo, hi); c.fillRect(x, yy + f * 0.15, c.measureText(mm).width, Math.max(2, f * 0.09)); }
+                        const mw = c.measureText(mm).width;
+                        if (e.x === 0) { c.fillStyle = planDurColor(e.dur, lo, hi); c.fillRect(x, yy + f * 0.15, mw, Math.max(2, f * 0.09)); }
+                        const ch = [...ptName(e.p.rides[0].b)][0] || '';   // 上車站第一個字
+                        c.font = font(f * 0.5); c.fillStyle = '#666'; c.fillText(ch, x + (mw - c.measureText(ch).width) / 2, yy + f * 0.8);
                     });
                 } });
             });
