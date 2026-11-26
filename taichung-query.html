@@ -77,8 +77,10 @@
     .list-item .sub { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .badge { display: inline-block; min-width: 34px; text-align: center; padding: 2px 7px; border-radius: 5px; font-weight: bold; font-size: 13px; color: #fff; white-space: nowrap; }
     .badge[style*="#F0DE00"] { color: #111; }   /* 700 崇德幹線黃底：深色字 */
-    .badge .tk-ic { width: 1.15em; height: 1.15em; vertical-align: -0.2em; margin: 0 3px 0 -2px; background: #fff; border-radius: 50%; padding: 1px; box-sizing: content-box; }
-    .tk-nm { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 9px; border: 1px solid currentColor; opacity: .8; margin-left: 4px; vertical-align: 1px; white-space: nowrap; }
+    .badge .tk-ic { display: inline-block; width: 1.15em; height: 1.15em; vertical-align: -0.2em; margin: 0 3px 0 -2px; }
+    .badge .tk-moon { height: auto; vertical-align: baseline; line-height: inherit; font-size: .95em; text-align: center; font-weight: normal; }
+    .tk-nm { display: inline-block; font-size: 13px; font-weight: bold; padding: 2px 7px; border-radius: 5px; box-shadow: inset 0 0 0 1px currentColor; white-space: nowrap; flex-shrink: 0; }
+    h2 .tk-nm { margin-left: 2px; }
     h2 { font-size: 18px; margin: 4px 0 2px; }
     /* 路線頁標題：捲動時置頂 (蓋住 #panel 的內距) */
     .rt-head { position: sticky; top: -10px; z-index: 5; margin: -10px -12px 4px; padding: 8px 12px 6px; background: var(--bg); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; }
@@ -87,10 +89,24 @@
     .rt-head button:hover { color: var(--text); background: #26292d; }
     .rt-head .rev { font-size: 12px; max-width: 42%; overflow: hidden; text-overflow: ellipsis; }
     /* 🔄 自動更新開關：開＝立即更新並每分鐘更新即時到站、班次配對、公車位置 */
-    .live-row { align-items: center; gap: 8px; }
+    .live-row { align-items: center; gap: 8px; flex-wrap: nowrap; }
+    .fam-bar { display: flex; gap: 5px; overflow-x: auto; flex: 1 1 auto; min-width: 0; scrollbar-width: none; padding: 1px 0; }
+    .fam-bar::-webkit-scrollbar { display: none; }
+    .fam-chip { flex: 0 0 auto; font: inherit; font-size: 13px; font-weight: bold; padding: 3px 9px; border-radius: 5px; border: 0; cursor: pointer; background: transparent; color: inherit; box-shadow: inset 0 0 0 1.5px var(--fc); }
+    .fam-chip.on { background: var(--fc); color: #fff; }
+    .fam-chip.on[style*="#F0DE00"] { color: #111; }
+    .fam-t { display: inline-block; font-size: 10px; font-weight: bold; line-height: 1.3; padding: 0 4px; margin-left: 2px; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--fc); vertical-align: 1px; white-space: nowrap; }
+    .fam-list { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; }
+    .fam-list .fam-t { margin-left: 0; }
+    .fam-only { color: #9aa0a6; font-size: 11px; }
+    .seq-row.fam-br .seq-name { opacity: .85; }
+    .daytab sub.ft { font-size: 9px; margin-left: 1px; opacity: .8; vertical-align: baseline; }
     .live-pill { background: #2e9d4a; color: #fff; border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 700; }
     button.auto { display: inline-flex; align-items: center; gap: 6px; background: none; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; padding: 3px 8px; white-space: nowrap; }
-    button.auto .ic { font-size: 15px; line-height: 1; display: inline-block; }
+    button.auto .ic { font-size: 15px; line-height: 0; display: inline-block; }
+    .act-row { align-items: center; gap: 8px; }
+    .live-st { display: inline-flex; align-items: center; gap: 6px; }
+    .live-st .tsrc { margin-right: 0; vertical-align: 0; font-size: 11px; padding: 3px 5px; }
     button.auto.spin .ic { animation: spin 1s linear infinite; }
     button.auto .sw { position: relative; width: 28px; height: 16px; border-radius: 8px; background: #555; transition: background .2s; }
     button.auto .sw::after { content: ''; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff; transition: left .2s; }
@@ -808,7 +824,70 @@ const colorOf = sub => { const t = trunkOf(sub); if (t) return t.c; let h = 0; f
 // 夜間公車 (凌晨 00～04 點有 2 個以上不同時刻從起點發車；規劃資料載入後依班表補上) → 路線號碼旁加 🌙
 const NIGHT_SUBS = new Set(['326']);
 const nightMark = sub => NIGHT_SUBS.has(sub) ? '🌙' : '';
-const badge = sub => { const t = trunkOf(sub); return `<span class="badge" style="background:${colorOf(sub)}"${t && t.name ? ` title="${t.name}"` : ''}>${trunkIc(sub)}${esc(sub)}${nightMark(sub)}</span>`; };
+// 夜間公車月亮與幹線 icon 同位置、同大小 (路線號碼前)
+const nightIc = sub => NIGHT_SUBS.has(sub) ? '<span class="tk-ic tk-moon">🌙</span>' : '';
+// ---------- 路線家族：同一路線號碼的主線＋支線 (延、副、區、繞、跳蛙公車、E/W…) 收在一起 ----------
+//   家族＝路線名稱開頭到第一段數字 (例 500延區1 → 500；黃20 → 黃20)；主線＝與家族同名者 (沒有就取第一個)
+const famKey = sub => { const m = String(sub).match(/^\D*\d+/); return m ? m[0] : String(sub); };
+const FAM = new Map();
+SUBS.forEach(x => { const k = famKey(x); if (!FAM.has(k)) FAM.set(k, []); FAM.get(k).push(x); });
+FAM.forEach((l, k) => l.sort((a, b) => (a === k ? -1 : b === k ? 1 : 0) || a.localeCompare(b, 'zh-Hant', { numeric: true })));
+const famSubs = sub => FAM.get(famKey(sub)) || [sub];
+const famShort = sub => { const k = famKey(sub), t = String(sub).slice(k.length).replace(/公車$/, ''); return t || String(sub); };   // 500延區1 → 延區1、500跳蛙公車 → 跳蛙
+// 兩串站名的最長共同子序列 → [[i, j]…]
+function lcsPairs(a, b) {
+    const n = a.length, m = b.length, f = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) f[i][j] = a[i] === b[j] ? f[i + 1][j + 1] + 1 : Math.max(f[i + 1][j], f[i][j + 1]);
+    const out = []; let i = 0, j = 0;
+    while (i < n && j < m) { if (a[i] === b[j]) { out.push([i, j]); i++; j++; } else if (f[i + 1][j] >= f[i][j + 1]) i++; else j++; }
+    return out;
+}
+const seqNames = r => r.seq.map(si => STOPS[si].name);
+// 家族合併檢視 (以 ref＝目前打開的子路線方向為準)：
+//   ms＝同方向的成員 (主線在前)：各支線取與 ref 站序重疊最多、且比對向更像的那個方向
+//   rows＝合併站序：依共同子序列把各支線獨有的站插在對應位置；at＝成員序號 → 該成員的站序
+//   V＝合併後的虛擬路線 (站序、追蹤、沿線里程用)
+const famMemo = new Map();
+function famView(ref) {
+    if (famMemo.has(ref.i)) return famMemo.get(ref.i);
+    const subs = famSubs(ref.sub), refN = seqNames(ref), oth = ROUTES.find(x => x.sub === ref.sub && x.dir !== ref.dir), othN = oth ? seqNames(oth) : null;
+    const ms = [];
+    subs.forEach(sub => {
+        if (sub === ref.sub) { ms.push(ref); return; }
+        let best = null;
+        ROUTES.filter(x => x.sub === sub).forEach(c => {
+            const cN = seqNames(c), sc = lcsPairs(refN, cN).length, so = othN ? lcsPairs(othN, cN).length : 0;
+            if (sc >= 2 && sc >= so && (!best || sc > best.sc)) best = { c, sc };
+        });
+        if (best) ms.push(best.c);
+    });
+    const mi = ms.findIndex(r => r.sub === famKey(ref.sub));
+    if (mi > 0) ms.unshift(ms.splice(mi, 1)[0]);
+    let A = ms[0].seq.map((si, k) => ({ si, name: STOPS[si].name, at: new Map([[0, k]]) }));
+    ms.slice(1).forEach((r, q) => {
+        const id = q + 1, B = seqNames(r), P = lcsPairs(A.map(x => x.name), B), out = [];
+        let ia = 0, jb = 0;
+        const pushB = j => out.push({ si: r.seq[j], name: B[j], at: new Map([[id, j]]) });
+        P.forEach(([i, j]) => { while (ia < i) out.push(A[ia++]); while (jb < j) pushB(jb++); A[i].at.set(id, j); out.push(A[i]); ia = i + 1; jb = j + 1; });
+        while (ia < A.length) out.push(A[ia++]);
+        while (jb < B.length) pushB(jb++);
+        A = out;
+    });
+    const V = { i: 'fam:' + ref.i, sub: ms[0].sub, dir: ms[0].dir, route: ms[0].route, seq: A.map(x => x.si), fam: true };
+    const v = { key: famKey(ref.sub), ref, ms, rows: A, V };
+    famMemo.set(ref.i, v);
+    return v;
+}
+const routeRef = () => view && view.type === 'route' ? ROUTES.find(x => x.sub === view.sub && x.dir === view.dir) : null;
+// 目前路線頁是家族「全部」合併檢視 → famView；否則 null
+function famOn() {
+    const r = routeRef();
+    if (!r || view.pick !== 'all' || famSubs(r.sub).length < 2) return null;
+    const f = famView(r);
+    return f.ms.length > 1 ? f : null;
+}
+const famRoutes = f => [...new Set(f.ms.map(r => r.route))];
+const badge = sub => { const t = trunkOf(sub); return `<span class="badge" style="background:${colorOf(sub)}"${t && t.name ? ` title="${t.name}"` : ''}>${trunkIc(sub)}${nightIc(sub)}${esc(sub)}</span>`; };
 
 // 兩點方位角 → 八方位
 function bearing(a, b) {
@@ -1409,22 +1488,22 @@ function timesAt(r, pos, dateStr) {
 const TAG = { sched: '<span class="tag sched">表定</span>', est: '<span class="tag est">推估</span>', ref: '<span class="tag est">參考</span>', origin: '<span class="tag">起站</span>', none: '' };
 // 全日時刻表：00 到 24 時由上而下，每列一小時列出分鐘 (24 時＝跨午夜班次)
 function dayTable(times, isToday, nm, note, col, mk = null) {
-    const byH = new Map(), add = mk && mk.added || new Set(), cx = mk && mk.cancel || [];
-    const put = (x, c) => { const r = Math.round(x), h = Math.min(24, Math.floor(r / 60)); if (!byH.has(h)) byH.set(h, []); byH.get(h).push({ r, c }); };
-    times.forEach(x => put(x, false)); cx.forEach(x => put(x, true));
+    const byH = new Map(), add = mk && mk.added || new Set(), cx = mk && mk.cancel || [], tags = mk && mk.tags || null;   // tags：與 times 對應的支線標記 (家族合併)
+    const put = (x, c, g) => { const r = Math.round(x), h = Math.min(24, Math.floor(r / 60)); if (!byH.has(h)) byH.set(h, []); byH.get(h).push({ r, c, g }); };
+    times.forEach((x, i) => put(x, false, tags ? tags[i] : '')); cx.forEach(x => put(x, true, ''));
     byH.forEach(l => l.sort((a, b) => a.r - b.r));
     const curH = isToday ? Math.floor(nm / 60) : -1;
     let nextMarked = false;
     const rows = [];
     for (let h = 0; h <= 24; h++) {
         const list = byH.get(h) || [];
-        const mins = list.map(({ r, c }) => {
+        const mins = list.map(({ r, c, g }) => {
             const mm = pad(h === 24 ? r - 1440 : r % 60);
             if (c) return `<s class="cx" title="取消班次">${mm}</s>`;
             let cls = add.has(r) ? 'ad' : '';
             if (isToday && r < nm - 0.5) cls += ' past';
             else if (isToday && !nextMarked) { cls += ' next'; nextMarked = true; }
-            return `<span class="${cls.trim()}"${add.has(r) ? ' title="增調班次"' : ''}>${mm}</span>`;
+            return `<span class="${cls.trim()}"${add.has(r) ? ' title="增調班次"' : g ? ` title="${esc(g)}"` : ''}>${mm}${g ? `<sub class="ft">${esc(g)}</sub>` : ''}</span>`;
         }).join('');
         rows.push(`<div class="hr${h === curH ? ' cur' : ''}${list.length ? '' : ' empty'}"><b>${pad(h)}</b><span class="mins">${mins || '—'}</span></div>`);
     }
@@ -1454,6 +1533,19 @@ function loadEta(key, path, params, label, force = false) {
         const at = Date.now(), v = { at, rows: js.map(x => etaRow(x, at)) };
         etaCache.set(key, v);
         return v;
+    });
+}
+// 多條路線的即時到站合併 1 次查詢 (路線家族)：結果依路線名稱拆回各路線的快取 'rt:路線'
+function etaRouteMany(routes, label, force = false) {
+    routes = [...new Set(routes)];
+    if (routes.length <= 1) return etaRoute(routes[0], label, force);
+    const need = routes.filter(rt => { const c = etaCache.get('rt:' + rt); return force || !c || Date.now() - c.at >= FRESH_MS; });
+    if (!need.length) return Promise.resolve();
+    return loadOnce('e:rtm:' + need.join(','), async () => {
+        const js = await Api.run('EstimatedTimeOfArrival/City/Taichung', { '$select': ETA_SELECT, '$filter': need.map(rt => routeEq(rt)['$filter']).join(' or ') }, { high: true, label });
+        const at = Date.now(), by = new Map(need.map(rt => [rt, []]));
+        js.forEach(x => { const l = by.get(x.RouteName && x.RouteName.Zh_tw); if (l) l.push(etaRow(x, at)); });
+        by.forEach((rows, rt) => etaCache.set('rt:' + rt, { at, rows }));
     });
 }
 // ---- 用當下的預估到站 (N1)：只用已載入的路線即時 (etaCache 'rt:')，不另外呼叫 API ----
@@ -2120,18 +2212,19 @@ function renderSearch() {
         const hits = [...STATIONS.values()].filter(s => s.name.includes(q)).sort((a, b) => (a.name === q ? -1 : 0) - (b.name === q ? -1 : 0) || b.routes.size - a.routes.size).slice(0, 60);
         listStations(hits, `「${esc(q)}」${hits.length >= 60 ? '前 60 個' : hits.length + ' 個'}站位`);
     } else {
-        const subs = SUBS.filter(s => !q || s.includes(q) || (trunkOf(s) && trunkOf(s).name && trunkOf(s).name.includes(q))).sort((a, b) => a.localeCompare(b, 'zh-Hant', { numeric: true }));
+        const hitSub = s => !q || s.includes(q) || (trunkOf(s) && trunkOf(s).name && trunkOf(s).name.includes(q));
+        const subs = [...FAM.values()].filter(l => l.some(hitSub)).map(l => l[0]).sort((a, b) => a.localeCompare(b, 'zh-Hant', { numeric: true }));   // 每個路線號碼一筆 (主線)
         const showMrt = !q || '捷運綠線'.includes(q) || /綠|捷運|mrt/i.test(q);
         const bar = multiCount() ? `<div class="row multi-bar">已選 ${multiCount()} 條：${multiMrt ? mrtBadge() : ''}${multiGrp ? grpBadge(multiGrp) : ''}${multi.map(m => badge(m.sub)).join('')}<button class="btn" id="b-multi">在地圖顯示</button><button class="btn" id="b-mclr">清除</button></div>`
             : '<div class="hint">勾選右側方框可多選路線，同時顯示在地圖上。</div>';
         const keep = panel.scrollTop;
         panel.innerHTML = bar + (showMrt ? `<div class="list-item" data-mrt="1">${mrtBadge()}<div style="min-width:0;flex:1"><div>臺中捷運綠線</div><div class="sub">北屯總站 ↔ 高鐵臺中站 · 18 站</div></div><label class="msel" title="多選"><input type="checkbox" data-mmrt="1"${multiMrt ? ' checked' : ''}></label></div>` : '') +
             grpItems(q) +
-            subs.slice(0, 200).map(s => { const ds = routeDirs(s); return `<div class="list-item" data-sub="${esc(s)}">${badge(s)}<div style="min-width:0;flex:1">${trunkOf(s) && trunkOf(s).name ? `<div>${trunkName(s)}</div>` : ''}<div class="sub">${ds.map(r => '往 ' + esc(destOf(r))).join(' ／ ')}</div></div><label class="msel" title="多選"><input type="checkbox" data-msub="${esc(s)}"${inMulti(s) ? ' checked' : ''}></label></div>`; }).join('') +
+            subs.slice(0, 200).map(s => { const ds = routeDirs(s); return `<div class="list-item" data-sub="${esc(s)}">${badge(s)}${trunkName(s)}<div style="min-width:0;flex:1"><div class="sub">${ds.map(r => '往 ' + esc(destOf(r))).join(' ／ ')}</div>${famSubs(s).length > 1 ? `<div class="fam-list">${famSubs(s).slice(1).map(x => `<span class="fam-t" style="--fc:${colorOf(x)}">${esc(famShort(x))}</span>`).join('')}</div>` : ''}</div><label class="msel" title="多選"><input type="checkbox" data-msub="${esc(s)}"${inMulti(s) ? ' checked' : ''}></label></div>`; }).join('') +
             (subs.length > 200 ? `<div class="hint">還有 ${subs.length - 200} 條，請輸入更多字</div>` : '');
         if (q === lastQ) panel.scrollTop = keep;
         lastQ = q;
-        panel.querySelectorAll('[data-sub]').forEach(e => e.onclick = ev => { if (ev.target.closest('.msel')) return; openRoute(e.dataset.sub, routeDirs(e.dataset.sub)[0].dir); });
+        panel.querySelectorAll('[data-sub]').forEach(e => e.onclick = ev => { if (ev.target.closest('.msel')) return; openRoute(e.dataset.sub, routeDirs(e.dataset.sub)[0].dir, undefined, undefined, true); });
         panel.querySelectorAll('[data-msub]').forEach(e => e.onchange = () => { toggleMulti(e.dataset.msub); renderSearch(); });
         if ($('b-multi')) $('b-multi').onclick = openMulti;
         if ($('b-mclr')) $('b-mclr').onclick = () => { multi = []; multiMrt = false; multiGrp = null; GRP.on = null; saveMulti(); renderSearch(); };
@@ -2231,7 +2324,7 @@ function onTrack(lat, lng) {
         if (mk) setTimeout(() => mk.openPopup(), 300);
         return;
     }
-    const r = ROUTES.find(x => x.sub === view.sub && x.dir === view.dir), t = trackInfo(r);
+    const f = famOn(), r = f ? f.V : ROUTES.find(x => x.sub === view.sub && x.dir === view.dir), t = trackInfo(r);
     if (!t) return;
     const key = r.i + ':' + t.pos, s = STOPS[r.seq[t.pos]];
     renderRoute();
@@ -2690,7 +2783,7 @@ function shapeOf(r) {
 }
 function redrawLines() {
     if (!view) return;
-    if (view.type === 'route') { drawRouteMap(ROUTES.find(x => x.sub === view.sub && x.dir === view.dir), false); renderRoute(); }
+    if (view.type === 'route') { drawRouteMap(routeRef(), false); renderRoute(); }
     else if (view.type === 'multi') drawMultiMap(false);
     else if (view.type === 'near') drawNearMap(false);
     else if (view.type === 'grp') drawGroupMap(false);
@@ -2737,22 +2830,23 @@ function drawArrows() {
 map.on('zoomend moveend', drawArrows);
 
 // ---------- 2. 路線 ----------
-function openRoute(sub, dir, here, back) {
+// all＝打開路線家族「全部」(主線＋各支線合併)；否則只看這條子路線 (仍可在路線頁切換)
+function openRoute(sub, dir, here, back, all = false) {
     clearBikes();
     if (mode !== 'route') { mode = 'route'; $('tab-route').classList.add('on'); $('tab-station').classList.remove('on'); layerAll.clearLayers(); }
-    view = { type: 'route', sub, dir, here, back, scrolled: false };
+    view = { type: 'route', sub, dir, here, back, scrolled: false, pick: all ? 'all' : sub };
     MrtTrain.clear();
     open.clear();
-    const r = ROUTES.find(x => x.sub === sub && x.dir === dir);
+    const r = ROUTES.find(x => x.sub === sub && x.dir === dir), f = famOn(), rts = f ? famRoutes(f) : [r.route];
     // 第一步先打即時到站 (優先顯示)，完成後才載入時刻表、公車位置、線上班次
     const rest = () => {
-        loadDay(r.route).catch(() => {});
-        if (back) loadVehiclesMany(selRoutes().filter(Boolean).map(x => x.route)).then(drawVehicles).catch(() => {});
+        rts.forEach(rt => loadDay(rt).catch(() => {}));
+        if (back || f) loadVehiclesMany(selRoutes().filter(Boolean).map(x => x.route)).then(drawVehicles).catch(() => {});
         else loadVehicles(r.route).catch(() => {});
         if (selDate() === todayKey()) loadA2(r.route).catch(() => {});
-        if (selDate() === todayKey() && depWatched(r.route)) depLoad(r.route).then(() => view && view.type === 'route' && renderRoute());   // 監測路線：今日發車紀錄 (GitHub，不耗 TDX)
+        rts.filter(rt => selDate() === todayKey() && depWatched(rt)).forEach(rt => depLoad(rt).then(() => view && view.type === 'route' && renderRoute()));   // 監測路線：今日發車紀錄 (GitHub，不耗 TDX)
     };
-    etaRoute(r.route, `${r.route} 即時`).then(rest, rest);
+    etaRouteMany(rts, `${f ? f.key + ' 全部' : r.route} 即時`).then(rest, rest);
     drawRouteMap(r);
     renderRoute();
     if (Track.on && Track.ll) { Track.key = ''; onTrack(...Track.ll); }
@@ -2761,6 +2855,21 @@ function drawRouteMap(r, fit = true) {
     layerSel.clearLayers();
     const bg = view && view.type === 'route' && view.back && grpOf(view.back.grp);
     if (bg) drawGroupLine(bg, true);   // 從路廊進入：參考線淡化墊底
+    const f = famOn();
+    if (f) {   // 家族全部：各支線先畫 (細)、主線最後畫在上面
+        const all = [], pts = [], seen = new Set();
+        f.ms.slice().reverse().forEach((m, k) => {
+            const main = k === f.ms.length - 1, c = colorOf(m.sub), sh = shapeOf(m), lp = m.seq.map(si => [STOPS[si].lat, STOPS[si].lng]), lines = sh || [lp], w = main ? 6 : 4;
+            lines.forEach(line => L.polyline(line, sh ? { color: c, weight: w, opacity: main ? .9 : .7 } : { color: c, weight: w - 1, opacity: .7, dashArray: '8 6' }).addTo(layerSel));
+            all.push({ lines, w }); pts.push(...lp);
+            m.seq.forEach((si, q) => { if (seen.has(si)) return; seen.add(si);
+                L.circleMarker([STOPS[si].lat, STOPS[si].lng], { radius: q === 0 || q === m.seq.length - 1 ? 7 : 5, color: c, weight: 3, fillColor: '#fff', fillOpacity: 1 })
+                    .bindTooltip(`${STOPS[si].name}${main ? '' : ` (${m.sub})`}`).on('click', () => openStation(SAME_OF[si])).addTo(layerSel); });
+        });
+        setArrows(all);
+        if (fit) map.fitBounds(L.latLngBounds(pts).pad(0.1));
+        return;
+    }
     const c = colorOf(r.sub), pts = r.seq.map(si => [STOPS[si].lat, STOPS[si].lng]);
     const sh = shapeOf(r), lines = sh || [pts];
     lines.forEach(line => L.polyline(line, sh ? { color: c, weight: 6, opacity: .85 } : { color: c, weight: 5, opacity: .8, dashArray: '8 6' }).addTo(layerSel));
@@ -3263,16 +3372,21 @@ function seqBuses() {
     if (!view || view.type !== 'route') return;
     const box = panel.querySelector('.seq');
     if (!box) return;
-    const r = ROUTES.find(x => x.sub === view.sub && x.dir === view.dir), rows = box.querySelectorAll('.seq-row');
-    if (!r || rows.length !== r.seq.length || rows.length < 2) return;
-    const c = selDate() === todayKey() ? vehCache.get(r.route) : null, M = alongOf(r);
+    const r0 = ROUTES.find(x => x.sub === view.sub && x.dir === view.dir), rows = box.querySelectorAll('.seq-row'), f = famOn();
+    if (!r0 || rows.length !== (f ? f.rows.length : r0.seq.length) || rows.length < 2) return;
     const ys = [...rows].map(e => e.offsetTop + 15);   // 站圓圈中心
-    const yOf = m => { let k = 0; while (k < M.length - 2 && m > M[k + 1]) k++; const seg = M[k + 1] - M[k] || 1; return ys[k] + Math.max(0, Math.min(1, (m - M[k]) / seg)) * (ys[k + 1] - ys[k]); };
     const want = new Map();
-    if (c) c.rows.filter(v => v.sub === r.sub && v.dir === r.dir).forEach(v => { const st = vehState(r, v); if (st) want.set(v.plate, { v, st, y: yOf(st.mNow) }); });
+    (f ? f.ms : [r0]).forEach((r, id) => {
+        const c = selDate() === todayKey() ? vehCache.get(r.route) : null, M = alongOf(r);
+        if (!c) return;
+        // 成員站序 → 清單列 (單一路線＝同序)
+        const row = f ? r.seq.map((_, k) => f.rows.findIndex(x => x.at.get(id) === k)) : r.seq.map((_, k) => k);
+        const yOf = m => { let k = 0; while (k < M.length - 2 && m > M[k + 1]) k++; const seg = M[k + 1] - M[k] || 1; return ys[row[k]] + Math.max(0, Math.min(1, (m - M[k]) / seg)) * (ys[row[k + 1]] - ys[row[k]]); };
+        c.rows.filter(v => v.sub === r.sub && v.dir === r.dir).forEach(v => { const st = vehState(r, v); if (st && !want.has(v.plate)) want.set(v.plate, { v, st, y: yOf(st.mNow), r }); });
+    });
     box.querySelectorAll('.seq-bus').forEach(e => { if (!want.has(e.dataset.plate)) e.remove(); });
-    const color = colorOf(r.sub);
-    want.forEach(({ v, st, y }, plate) => {
+    want.forEach(({ v, st, y, r }, plate) => {
+        const color = colorOf(r.sub);
         const k = r.i + ':' + plate;
         let e = [...box.querySelectorAll('.seq-bus')].find(x => x.dataset.plate === plate);
         if (!e) {
@@ -3313,8 +3427,9 @@ let vehDrawn = '';
 const selRoutes = () => {
     if (!view) return [];
     if (view.type === 'route') {
-        const r = ROUTES.find(x => x.sub === view.sub && x.dir === view.dir), g = view.back && grpOf(view.back.grp);
-        return g ? [r, ...grpRoutes(g).filter(x => x !== r)] : [r];
+        const r = ROUTES.find(x => x.sub === view.sub && x.dir === view.dir), g = view.back && grpOf(view.back.grp), f = famOn();
+        const own = f ? f.ms : [r];
+        return g ? [...own, ...grpRoutes(g).filter(x => !own.includes(x))] : own;
     }
     if (view.type === 'grp') { const g = grpOf(view.id); return g ? grpRoutes(g) : []; }
     return view.type === 'multi' ? multiSelRoutes() : [];
@@ -3364,8 +3479,8 @@ setInterval(() => document.querySelectorAll('[data-ago]').forEach(e => { e.textC
 function refreshLive() {
     if (!view || selDate() !== todayKey()) return;
     if (view.type === 'route') {
-        const r = ROUTES.find(x => x.sub === view.sub && x.dir === view.dir);
-        etaRoute(r.route, `${r.route} 即時`, true).catch(() => {});
+        const r = ROUTES.find(x => x.sub === view.sub && x.dir === view.dir), f = famOn();
+        etaRouteMany(f ? famRoutes(f) : [r.route], `${f ? f.key + ' 全部' : r.route} 即時`, true).catch(() => {});
         loadA2(r.route, true, true).catch(() => {});
     }
     loadVehiclesMany(selRoutes().filter(Boolean).map(r => r.route), true).then(drawVehicles).catch(() => {});
@@ -3378,12 +3493,113 @@ function setVehAuto(on) {
     if (on) { refreshLive(); vehTimer = setInterval(() => { if (document.visibilityState === 'visible') refreshLive(); }, 60000); }
     else rerender();
 }
-const autoBusy = routes => routes.some(rt => loading.has('e:rt:' + rt) || loading.has('a2:' + rt) || loading.has('v:' + rt));
-const autoBtn = (busy, api) => `<button class="auto${vehAuto ? ' on' : ''}${busy ? ' spin' : ''}" id="b-auto" title="自動更新${vehAuto ? '：開' : '：關'} — 開啟時立即更新，之後每分鐘更新 (${api})"><span class="ic">🔄</span><span class="sw"></span></button>`;
+const autoBusy = routes => routes.some(rt => loading.has('e:rt:' + rt) || loading.has('a2:' + rt) || loading.has('v:' + rt)) || [...loading.keys()].some(k => k.startsWith('e:rtm:'));
+const autoBtn = (busy, api) => `<button class="auto${vehAuto ? ' on' : ''}${busy ? ' spin' : ''}" id="b-auto" title="自動更新${vehAuto ? '：開' : '：關'} — 開啟時立即更新，之後每分鐘更新 (${api})"><span class="ic"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg></span><span class="sw"></span></button>`;
 // 上次開著就恢復計時器 (開路線時本來就會載入一次)
 if (vehAuto) vehTimer = setInterval(() => { if (document.visibilityState === 'visible') refreshLive(); }, 60000);
 
+// 即時標籤：資料超過 1 分鐘沒更新 → 橙色「未更新」(每秒檢查，不必重畫頁面)
+const LIVE_STALE = 60000;
+const liveTag = at => { const old = !(at && isFinite(at)) || Date.now() - at > LIVE_STALE; return `<span class="tsrc ${old && at && isFinite(at) ? 'est' : 'live'}" data-live-at="${at && isFinite(at) ? at : ''}">${old && at && isFinite(at) ? '未更新' : '即時'}</span>`; };
+setInterval(() => document.querySelectorAll('[data-live-at]').forEach(e => {
+    const at = +e.dataset.liveAt; if (!at) return;
+    const old = Date.now() - at > LIVE_STALE;
+    if (e.classList.contains('est') !== old) { e.classList.toggle('est', old); e.classList.toggle('live', !old); e.textContent = old ? '未更新' : '即時'; }
+}), 1000);
+// 路線頁的即時狀態：導航同款「即時」標籤＋更新時間＋自動更新開關 (非今日＝日期)
+const liveHtml = (isToday, at, busy, api, ds) => isToday
+    ? `<span class="live-st">${liveTag(at)}<span class="muted">${at && isFinite(at) ? new Date(at).toLocaleTimeString('zh-TW', { hour12: false }) : '載入中…'}</span>${autoBtn(busy, api)}</span>`
+    : `<span class="muted">${ds} 時刻表</span>`;
+// 路線頁上方：全部／主線／各支線切換 (原即時列的位置)；家族只有一條就不顯示
+function famBar(r) {
+    if (famSubs(r.sub).length < 2) return '';
+    const f = famView(r);
+    if (f.ms.length < 2) return '';
+    return `<div class="fam-bar">${[['all', '全部'], ...f.ms.map(m => [m.sub, m.sub])].map(([k, t]) => `<button class="fam-chip${view.pick === k ? ' on' : ''}" data-fam="${esc(k)}" style="--fc:${k === 'all' ? colorOf(f.ms[0].sub) : colorOf(k)}">${esc(t)}</button>`).join('')}</div>`;
+}
+function famBarWire(r) {
+    panel.querySelectorAll('[data-fam]').forEach(b => b.onclick = () => {
+        const k = b.dataset.fam, f = famView(r);
+        if (k === 'all') { if (view.pick !== 'all') openRoute(r.sub, r.dir, view.here, view.back, true); return; }
+        const m = f.ms.find(x => x.sub === k);
+        if (m && !(view.pick === k && view.sub === m.sub && view.dir === m.dir)) openRoute(m.sub, m.dir, view.here, view.back);
+    });
+}
+// 底部：時刻依據 (站間旅行時間／V3)
+function ttRowHtml(route) {
+    const v3 = ttSrc() === 'v3', E = estGet(route);
+    return `<div class="row tt-row"><label class="muted">時刻依據 <select id="tt-src"><option value="s2s"${v3 ? '' : ' selected'}>站間旅行時間 (TDX)</option><option value="v3"${v3 ? ' selected' : ''}>站站班表 V3 ⚠️大流量</option></select></label>
+            ${E ? `<span class="muted">此裝置已有 V3${v3 ? '' : '（未使用）'}</span>` : v3 ? (loading.has('esapi:' + route) ? '<span class="muted">V3 下載中…</span>'
+                : `<button class="btn v3-btn" id="b-v3" title="本月 V3 已用約 ${mbTxt(v3Usage().bytes)}／上限 ${mbTxt(v3Cap())}">⚠️ 下載此路線 V3（約 ${mbTxt(v3Estimate(route))}）</button><span class="muted">未下載前使用站間旅行時間</span>`) : ''}</div>`;
+}
+function ttRowWire(routes, rerun) {
+    $('tt-src').onchange = e => {
+        try { localStorage.setItem(TT_KEY, e.target.value); } catch (er) {}
+        dayMemo.clear(); matchCache.clear();
+        if (e.target.value === 'v3') routes.forEach(rt => loadEst(rt).catch(() => {}));   // 只讀裝置快取 / 靜態檔
+        rerun();
+    };
+    if ($('b-v3')) $('b-v3').onclick = () => downloadV3(routes[0]);
+}
+// 家族「全部」：合併站序；到站取各成員最早一班 (支線標簡稱)；時刻表合併各成員 (支線標簡稱)
+function renderRouteFam(f) {
+    const r = f.ref, base = f.ms[0], mainSub = base.sub;
+    const ds = selDate(), isToday = ds === todayKey(), nm = isToday ? nowMin() : -1, c = colorOf(mainSub);
+    const keep = panel.scrollTop, trk = trackInfo(f.V), other = ROUTES.find(x => x.sub === r.sub && x.dir !== r.dir);
+    const tag = sub => sub === mainSub ? '' : famShort(sub);
+    const tagHtml = sub => sub === mainSub ? '' : `<small class="fam-t" style="--fc:${colorOf(sub)}">${esc(famShort(sub))}</small>`;
+    const rows = f.rows.map((x, p) => {
+        const s = STOPS[x.si], mem = [...x.at].map(([id, pos]) => ({ m: f.ms[id], pos }));
+        const lives = mem.map(o => { const eta = etaCache.get('rt:' + o.m.route); return { ...o, row: eta && eta.rows.filter(w => w.name === s.name && w.sub === o.m.sub && w.dir === o.m.dir).sort((a, b) => (a.dl ?? Infinity) - (b.dl ?? Infinity))[0] }; });
+        const best = lives.filter(o => o.row).sort((a, b) => etaSortKey(a.row) - etaSortKey(b.row))[0] || null;
+        const ts = mem.map(o => ({ ...o, t: timesAt(o.m, o.pos, ds) }));
+        const all = []; ts.forEach(o => (o.t.times || []).forEach(t => all.push({ t, sub: o.m.sub })));
+        all.sort((a, b) => a.t - b.t);
+        let tt;
+        if (ts.some(o => o.t.pending)) tt = '<span class="muted">時刻表載入中…</span>';
+        else if (!all.length) tt = `<span class="muted">${esc((ts[0] && ts[0].t.note) || '無資料')}</span>`;
+        else if (isToday) {
+            const cmp = best ? compareEta(best.m, s.name, best.row) : null, nx = all.find(q => q.t >= nm - 0.5), cur = cmp ? cmp.sched : nx ? nx.t : null;
+            if (cur === null) tt = '<span class="muted">今日已收班</span>';
+            else { const last = all[all.length - 1].t, after = all.filter(q => q.t > cur + 0.01).slice(0, 3);
+                tt = after.length ? after.map(q => `${fmt(q.t)}${tagHtml(q.sub)}${Math.abs(q.t - last) < 0.01 ? '<span class="last">末班</span>' : ''}`).join('、') : '<span class="last">末班</span>'; }
+        } else tt = all.slice(0, 3).map(q => fmt(q.t) + tagHtml(q.sub)).join('、');
+        const key = 'r' + p;
+        const full = open.has(key) ? (all.length ? dayTable(all.map(q => q.t), isToday, nm, `${mem.map(o => o.m.sub).join('、')} 合併`, '2/-1', { tags: all.map(q => tag(q.sub)) })
+            : `<div class="times muted">${ts.some(o => o.t.pending) ? '載入中…' : '無資料'}</div>`) : '';
+        const tk = trk && trk.pos === p;
+        const only = !x.at.has(0) ? ` <small class="fam-only">僅 ${mem.map(o => esc(famShort(o.m.sub))).join('、')}</small>` : '';
+        return `<div class="seq-row${view.here === s.name ? ' here' : ''}${tk ? ' track' : ''}${x.at.has(0) ? '' : ' fam-br'}" data-key="${key}" data-sid="${esc(s.sid)}"><div class="seq-dot" style="border-color:${x.at.has(0) ? c : colorOf(mem[0].m.sub)}"></div>
+            <div class="seq-name">${esc(s.name)}${only}${tk ? ` <small class="trk-d">📍 距你 ${Math.round(trk.d)} m</small>` : ''}<br><small>${tt}</small></div><div class="seq-eta">${isToday ? (best ? etaHtml(best.row) + tagHtml(best.m.sub) + cmpHtml(compareEta(best.m, s.name, best.row)) : etaHtml(null)) : ''}</div>${full}</div>`;
+    }).join('');
+    const rts = famRoutes(f), busy = autoBusy(rts), bk = view.back && grpOf(view.back.grp);
+    const at = Math.min(...rts.map(rt => (etaCache.get('rt:' + rt) || { at: Infinity }).at));
+    panel.innerHTML = `<div class="rt-head"><h2>${badge(f.key === mainSub ? mainSub : f.key)}${trunkName(mainSub)} 往 ${esc(destOf(base))}</h2>
+        ${other ? `<button class="rev" id="b-rev" title="切換方向">⇄ 往 ${esc(destOf(other))}</button>` : ''}</div>
+        <div class="row live-row">${famBar(r)}</div>
+        <div class="row act-row">${liveHtml(isToday, at, busy, `即時到站 (${rts.length} 條合併 1 次)＋班次配對＋公車位置，每次 3 次 API`, ds)}<button class="btn" id="b-madd">${multi.some(m => m.sub === r.sub && m.dir === r.dir) ? '✓ 已在多選' : '＋ 加入多選'}</button>${bk ? `<button class="btn" id="b-gback" style="background:${bk.color};color:#fff">← 返回 ${esc(bk.name)}</button>` : ''}${multi.length ? `<button class="btn" id="b-mopen">多選 (${multi.length})</button>` : ''}</div>
+        ${isToday ? f.ms.map(m => routeAnomHtml(m)).join('') : ''}
+        <div class="seq" style="--rc:${c}">${rows}</div>
+        ${ttRowHtml(base.route)}`;
+    if (!view.scrolled && view.here) { const h = panel.querySelector('.seq-row.here'); if (h) { panel.scrollTop = h.offsetTop - panel.clientHeight / 3; view.scrolled = true; } } else panel.scrollTop = keep;
+    famBarWire(r);
+    if ($('b-rev')) $('b-rev').onclick = () => openRoute(r.sub, other.dir, view.here, view.back, true);
+    if ($('b-gback')) $('b-gback').onclick = () => openGroup(view.back.grp, true, view.back.gdir);
+    if ($('b-auto')) $('b-auto').onclick = () => setVehAuto(!vehAuto);
+    if ($('b-mopen')) $('b-mopen').onclick = openMulti;
+    $('b-madd').onclick = () => {
+        const i = multi.findIndex(m => m.sub === r.sub);
+        if (i >= 0 && multi[i].dir === r.dir) multi.splice(i, 1); else if (i >= 0) multi[i].dir = r.dir; else multi.push({ sub: r.sub, dir: r.dir });
+        saveMulti(); renderRoute();
+    };
+    ttRowWire(rts, renderRoute);
+    drawVehicles();
+    panel.querySelectorAll('.seq-row').forEach(e => e.onclick = () => { open.has(e.dataset.key) ? open.delete(e.dataset.key) : open.add(e.dataset.key); renderRoute(); });
+    seqBuses();
+}
 function renderRoute() {
+    const f0 = famOn();
+    if (f0) { renderRouteFam(f0); return; }
     const r = ROUTES.find(x => x.sub === view.sub && x.dir === view.dir);
     const ds = selDate(), isToday = ds === todayKey(), nm = isToday ? nowMin() : -1, c = colorOf(r.sub);
     const eta = etaCache.get('rt:' + r.route);
@@ -3410,33 +3626,23 @@ function renderRoute() {
     }).join('');
     const busy = autoBusy([r.route]);
     const bk = view.back && grpOf(view.back.grp);
-    panel.innerHTML = `<div class="rt-head"><h2>${badge(r.sub)} 往 ${esc(destOf(r))}${trunkName(r.sub)}</h2>
+    panel.innerHTML = `<div class="rt-head"><h2>${badge(r.sub)}${trunkName(r.sub)} 往 ${esc(destOf(r))}</h2>
         ${other ? `<button class="rev" id="b-rev" title="切換方向">⇄ 往 ${esc(destOf(other))}</button>` : ''}</div>
-        ${isToday ? `<div class="row live-row"><span class="live-pill">即時</span><span class="muted">${eta ? new Date(eta.at).toLocaleTimeString('zh-TW', { hour12: false }) : '載入中…'}</span>${autoBtn(busy, '即時到站＋班次配對＋公車位置，每次 3 次 API')}</div>`
-            : `<div class="muted">${ds} 時刻表</div>`}
-        ${(() => { const v3 = ttSrc() === 'v3', E = estGet(r.route);
-            return `<div class="row tt-row"><label class="muted">時刻依據 <select id="tt-src"><option value="s2s"${v3 ? '' : ' selected'}>站間旅行時間 (TDX)</option><option value="v3"${v3 ? ' selected' : ''}>站站班表 V3 ⚠️大流量</option></select></label>
-            ${E ? `<span class="muted">此裝置已有 V3${v3 ? '' : '（未使用）'}</span>` : v3 ? (loading.has('esapi:' + r.route) ? '<span class="muted">V3 下載中…</span>'
-                : `<button class="btn v3-btn" id="b-v3" title="本月 V3 已用約 ${mbTxt(v3Usage().bytes)}／上限 ${mbTxt(v3Cap())}">⚠️ 下載此路線 V3（約 ${mbTxt(v3Estimate(r.route))}）</button><span class="muted">未下載前使用站間旅行時間</span>`) : ''}</div>`; })()}
-        <div class="row">        <button class="btn" id="b-madd">${multi.some(m => m.sub === r.sub && m.dir === r.dir) ? '✓ 已在多選' : '＋ 加入多選'}</button>
+        ${famBar(r) ? `<div class="row live-row">${famBar(r)}</div>` : ''}
+        <div class="row act-row">${liveHtml(isToday, eta && eta.at, busy, '即時到站＋班次配對＋公車位置，每次 3 次 API', ds)}<button class="btn" id="b-madd">${multi.some(m => m.sub === r.sub && m.dir === r.dir) ? '✓ 已在多選' : '＋ 加入多選'}</button>
         ${bk ? `<button class="btn" id="b-gback" style="background:${bk.color};color:#fff">← 返回 ${esc(bk.name)}</button>` : ''}
         ${multi.length ? `<button class="btn" id="b-mopen">多選 (${multi.length})</button>` : ''}</div>
         ${(() => { const e = daySched(r.route, ds); const x = e && e.subs[r.sub] && e.subs[r.sub][r.dir];
             return x && ((x.cancel && x.cancel.length) || (x.added && x.added.size)) ? `<div class="mk-legend">今日比對每日營運時刻表：<s class="cx">HH:MM</s> 紅字劃掉＝取消班次${x.cancel.length ? ` ${x.cancel.length} 班` : ''}　<span class="ad">HH:MM</span> 橘字＝增調班次${x.added && x.added.size ? ` ${x.added.size} 班` : ''}</div>` : ''; })()}
         ${isToday ? routeAnomHtml(r) : ''}
-        <div class="hint">點站名展開該站全日時刻表；地圖上點站牌可查該站位。${hasShape ? '地圖小箭頭為行駛方向。' : SHAPES ? '此路線無道路線形資料，地圖虛線為站牌連線。' : '道路線形載入中…'}</div>
-        <div class="seq" style="--rc:${c}">${rows}</div>`;
+        <div class="seq" style="--rc:${c}">${rows}</div>
+        ${ttRowHtml(r.route)}`;
     if (!view.scrolled && view.here) { const h = panel.querySelector('.seq-row.here'); if (h) { panel.scrollTop = h.offsetTop - panel.clientHeight / 3; view.scrolled = true; } } else panel.scrollTop = keep;
+    famBarWire(r);
     if ($('b-rev')) $('b-rev').onclick = () => openRoute(r.sub, other.dir, view.here, view.back);
     if ($('b-gback')) $('b-gback').onclick = () => openGroup(view.back.grp, true, view.back.gdir);
     if ($('b-auto')) $('b-auto').onclick = () => setVehAuto(!vehAuto);
-    $('tt-src').onchange = e => {
-        try { localStorage.setItem(TT_KEY, e.target.value); } catch (er) {}
-        dayMemo.clear(); matchCache.clear();
-        if (e.target.value === 'v3') loadEst(r.route).catch(() => {});   // 只讀裝置快取 / 靜態檔
-        renderRoute();
-    };
-    if ($('b-v3')) $('b-v3').onclick = () => downloadV3(r.route);
+    ttRowWire([r.route], renderRoute);
     $('b-madd').onclick = () => {
         const i = multi.findIndex(m => m.sub === r.sub);
         if (i >= 0 && multi[i].dir === r.dir) multi.splice(i, 1); else if (i >= 0) multi[i].dir = r.dir; else multi.push({ sub: r.sub, dir: r.dir });
@@ -5780,7 +5986,7 @@ function planLive(l) {
     const tb = l.tb, best = dls.reduce((a, v) => Math.abs(minOfMs(v) - tb) < Math.abs(minOfMs(a) - tb) ? v : a, dls[0]);
     return Math.abs(minOfMs(best) - tb) <= 25 ? best : null;
 }
-const legName = l => l.R.kind === 'mrt' ? '綠線' : l.R.r.sub + nightMark(l.R.r.sub);
+const legName = l => l.R.kind === 'mrt' ? '綠線' : nightMark(l.R.r.sub) + l.R.r.sub;
 const legColor = l => l.R.kind === 'mrt' ? (M.color || '#8cc540') : colorOf(l.R.r.sub);
 const legDest = l => l.R.kind === 'mrt' ? (l.R.dirKey === 'south' ? '高鐵臺中站' : '北屯總站') : destOf(l.R.r);
 const ptName = s => planGraph().pts[s].name;
