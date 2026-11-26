@@ -1286,6 +1286,22 @@ function dailyRows(o, oi) {
     const known = o.kind === 'interp' && o.known ? new Set(o.known) : null;
     return o.trips.map(row => (oi || row.map((_, j) => j)).map(j => j >= 0 && (!known || known.has(j)) && row[j] !== undefined ? row[j] : null));
 }
+// 市政府公告的班距 (取代 TDX 路線班表 Frequencys 的時段與班距；營運起訖仍用 TDX)：
+//   尖峰只在平日 (週一～五)；其餘營運時段 (含例假日全天) 為離峰。[起, 迄] 分鐘；班距 [最短, 最長] 分
+//   國定假日沒有行事曆資料，週一～五一律當平日
+const HW_CITY = {
+    '35': { peak: [[360, 450], [990, 1080]], pk: [5, 20], off: [20, 30] }   // 尖峰 06:00–07:30、16:30–18:00 班距 5–20 分；離峰 20–30 分
+};
+function hwCity(route, wd, hw) {
+    const c = HW_CITY[route];
+    if (!c || !hw.length) return hw;
+    const s0 = Math.min(...hw.map(h => h[0])), e1 = Math.max(...hw.map(h => h[1])), out = [];
+    const pk = wd >= 1 && wd <= 5 ? c.peak.map(([a, b]) => [Math.max(a, s0), Math.min(b, e1)]).filter(([a, b]) => b > a) : [];
+    let t = s0;
+    pk.forEach(([a, b]) => { if (a > t) out.push([t, a, ...c.off]); out.push([a, b, ...c.pk]); t = b; });
+    if (t < e1) out.push([t, e1, ...c.off]);
+    return out;
+}
 function daySched(route, ds) {
     const S = schedGet(route), E = estGet(route), T = s2sGet(route), v3 = ttSrc() === 'v3', useV3 = v3 && !!E;
     if (!S && !E) return ds === todayKey() && todayOld(route) ? todayOld(route) : null;
@@ -1394,7 +1410,7 @@ function daySched(route, ds) {
             rows = et.trips.map(er => stops.map((_, i) => eIdx[i] >= 0 ? er[eIdx[i]] : null)).filter(row => row.some(x => x !== null && x !== undefined));
             ids = rows.map((_, k) => 'E' + (k + 1));
         }
-        const hw = s ? s.freq.filter(f => f.days[wd]).map(f => [f.s, f.e, f.min, f.max]) : [];
+        const hw = hwCity(route, wd, s ? s.freq.filter(f => f.days[wd]).map(f => [f.s, f.e, f.min, f.max]) : []);
         // 沒有班次可列、但路線班表有當日班距：只顯示班距 (不依班距排出班次)
         if (!rows || !rows.length) { if (hw.length && (ds !== todayKey() || (!o && !loading.has('t:' + route)))) (v.subs[sub] = v.subs[sub] || {})[dir] = { kind: 'hw', stops, trips: [], ids: [], hw, cancel: [], added: null, src: 'none' }; return; }
         (v.subs[sub] = v.subs[sub] || {})[dir] = { kind, stops, trips: rows, ids, hw, cancel, added, refDate, src: kind === 'est' ? 'v3' : s2sFn ? 's2s' : prof.length ? 'v3' : 'none' };
@@ -3917,7 +3933,7 @@ function anomItem(x) {
     return `<div class="an-row" data-sub="${esc(x.sub)}" data-dir="${x.dir}"><span class="an-t" style="background:${T[1]}">${T[0]}</span>
         <span class="badge" style="background:${colorOf(x.sub)}">${esc(x.sub)}</span><span class="an-m"><span class="small">${r ? '往 ' + esc(destOf(r)) : ''}${x.plate ? ` · 車牌 <b>${esc(x.plate)}</b>` : ''}</span><br>${what}</span></div>`;
 }
-const ANOM_NOTE = '判定：當日每日營運時刻表的表定發車 vs 車輛的發車時刻 (TDX；TripStartTimeType 0＝實際、1＝TDX 預估、2＝無法推估 → 依位置反推)。非營運或已到終點結束的車不列入。早發＝早 5 分以上；誤點＝遲 5～10 分；脫班＝遲 11～30 分；漏班＝遲超過 30 分或表定後 35 分仍未偵測到發車。車機回報的發車時刻是司機操作的，與「車輛出現在哪站、什麼時間」依時刻表站間時間反推的發車差 10 分以上 (或回報晚於車已在途中的時間) 時，改用反推值並標「依位置推算」(只用離起點 15 分內的位置，較遠的位置只在回報不可能成立時採用)；差距可能是途中塞車、反推誤差可能較大或推不出來時保留並標「疑似」。班距制路線 (路線班表只有班距，如 35)：首末班依每日營運時刻表判定 (與班距時段起訖對不上時改查 TDX 首末班資料)；其他班次看與前一班的發車間隔，比該時段最短班距短 5 分以上＝早發 (串車)，超過最長班距 5～10 分＝誤點、11～30 分＝脫班、超過 30 分或前一班後超過「最長班距＋30 分」仍沒有下一班＝漏班；每日營運時刻表的逐班時刻只供參考。發車紀錄每 15 分鐘記錄一次，紀錄中斷或路線沒有車機回報時不判漏班；「未偵測到發車」不等於確定未發車，請以業者公告為準。';
+const ANOM_NOTE = '判定：當日每日營運時刻表的表定發車 vs 車輛的發車時刻 (TDX；TripStartTimeType 0＝實際、1＝TDX 預估、2＝無法推估 → 依位置反推)。非營運或已到終點結束的車不列入。早發＝早 5 分以上；誤點＝遲 5～10 分；脫班＝遲 11～30 分；漏班＝遲超過 30 分或表定後 35 分仍未偵測到發車。車機回報的發車時刻是司機操作的，與「車輛出現在哪站、什麼時間」依時刻表站間時間反推的發車差 10 分以上 (或回報晚於車已在途中的時間) 時，改用反推值並標「依位置推算」(只用離起點 15 分內的位置，較遠的位置只在回報不可能成立時採用)；差距可能是途中塞車、反推誤差可能較大或推不出來時保留並標「疑似」。班距制路線 (路線班表只有班距，如 35)：首末班依每日營運時刻表判定 (與班距時段起訖對不上時改查 TDX 首末班資料)；其他班次看與前一班的發車間隔，比該時段最短班距短 5 分以上＝早發 (串車)，超過最長班距 5～10 分＝誤點、11～30 分＝脫班、超過 30 分或前一班後超過「最長班距＋30 分」仍沒有下一班＝漏班；每日營運時刻表的逐班時刻只供參考；35 的班距依市政府公告：平日 06:00–07:30、16:30–18:00 尖峰 5～20 分，其餘時段與例假日全天離峰 20～30 分 (國定假日無行事曆資料，週一～五當平日)。發車紀錄每 15 分鐘記錄一次，紀錄中斷或路線沒有車機回報時不判漏班；「未偵測到發車」不等於確定未發車，請以業者公告為準。';
 // 路線頁：本路線本方向今日異常 (監測路線才有)
 function routeAnomHtml(r) {
     if (!depWatched(r.route)) return '';
