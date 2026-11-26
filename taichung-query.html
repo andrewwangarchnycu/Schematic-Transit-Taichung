@@ -665,8 +665,8 @@ const Api = {
     q: [], busy: false, timer: null, lastError: null, label: '',
     // api：'Bus' (預設) 或 'Bike' (公共自行車)
     run(path, params, { high = false, label = '', api = 'Bus' } = {}) {
-        const base = api === 'Bus' ? TDX.bus : api === 'V3Map' ? 'https://tdx.transportdata.tw/api/premium/V3/Map' : TDX.bus.replace(/\/Bus$/, '/' + api);
-        const url = `${base}/${path}?` + new URLSearchParams({ ...params, '$format': 'JSON' });
+        const base = api === 'Bus' ? TDX.bus : api === 'V3Map' ? 'https://tdx.transportdata.tw/api/premium/V3/Map' : api === 'GeoAdv' ? 'https://tdx.transportdata.tw/api/advanced/V3/Map' : TDX.bus.replace(/\/Bus$/, '/' + api);
+        const url = `${base}/${path}?` + new URLSearchParams({ ...params, [api === 'GeoAdv' ? 'format' : '$format']: 'JSON' });
         return new Promise((resolve, reject) => {
             const t = { url, resolve, reject, high, label };
             if (high) this.q.unshift(t); else this.q.push(t);
@@ -2185,6 +2185,12 @@ $('tab-station').onclick = () => setMode('station');
 $('tab-route').onclick = () => setMode('route');
 $('tab-plan').onclick = () => setMode('plan');
 $('q').oninput = () => { view = null; renderSearch(); };
+// Enter：站位模式下是座標／地址就直接定位
+$('q').addEventListener('keydown', e => {
+    if (e.key !== 'Enter' || mode !== 'station') return;
+    const li = locItem($('q').value.trim(), '');
+    if (li && li.go) { e.preventDefault(); $('q').blur(); goLocItem(li); }
+});
 // 日期：今日 + 未來 6 日
 (function () {
     const s = $('date');
@@ -2209,8 +2215,10 @@ function renderSearch() {
     const q = $('q').value.trim();
     if (mode === 'station') {
         if (!q) { panel.innerHTML = `<div class="hint">輸入站名搜尋、按「📍 附近」，或把地圖放大後點選站位。<br>全市 ${STATIONS.size} 個同名站（${SID_COUNT} 個站位、${STOPS.length} 筆站牌）、${SUBS.length} 條路線 (靜態資料 ${NET.gen})。</div>`; return; }
-        const hits = [...STATIONS.values()].filter(s => s.name.includes(q)).sort((a, b) => (a.name === q ? -1 : 0) - (b.name === q ? -1 : 0) || b.routes.size - a.routes.size).slice(0, 60);
+        const li = locItem(q, 'data-loc="1"');
+        const hits = li && li.go && !isAddrQ(q) ? [] : [...STATIONS.values()].filter(s => s.name.includes(q)).sort((a, b) => (a.name === q ? -1 : 0) - (b.name === q ? -1 : 0) || b.routes.size - a.routes.size).slice(0, 60);
         listStations(hits, `「${esc(q)}」${hits.length >= 60 ? '前 60 個' : hits.length + ' 個'}站位`);
+        if (li) { panel.insertAdjacentHTML('afterbegin', li.html); const e = panel.querySelector('[data-loc]'); if (e) e.onclick = () => goLocItem(li); }
     } else {
         const hitSub = s => !q || s.includes(q) || (trunkOf(s) && trunkOf(s).name && trunkOf(s).name.includes(q));
         const subs = [...FAM.values()].filter(l => l.some(hitSub)).map(l => l[0]).sort((a, b) => a.localeCompare(b, 'zh-Hant', { numeric: true }));   // 每個路線號碼一筆 (主線)
@@ -2378,16 +2386,56 @@ function nearClick() {
     else nearHere(openNearStations);
 }
 // 站位模式「附近」：定位＝最近 20 個站位；畫面中心＝半徑 NEAR_R 內的站位。並列半徑內 YouBike (首次 2 次 API，站點清單快取後 1 次)
-function openNearStations(lat, lng, center = false) {
+function openNearStations(lat, lng, center = false, label = '') {
     setMode('station');
     const all = [...STATIONS.values()].map(s => ({ ...s, dist: Math.hypot((s.lng - lng) * 101700, (s.lat - lat) * 110900) })).sort((a, b) => a.dist - b.dist);
     const list = center ? all.filter(s => s.dist <= NEAR_R).slice(0, 40) : all.slice(0, 20);
     const place = { id: `near:${lat.toFixed(4)},${lng.toFixed(4)}`, name: '附近', lat, lng, r: NEAR_BIKE_R, center };
-    view = { type: 'stlist', list, place, head: center ? `地圖中心（藍色圖釘）${NEAR_R} 公尺內 ${list.length} 個公車站位與 YouBike 站` : '附近 20 個公車站位與 YouBike 站' };
+    view = { type: 'stlist', list, place, head: center ? `${label ? esc(label) : '地圖中心'}（藍色圖釘）${NEAR_R} 公尺內 ${list.length} 個公車站位與 YouBike 站` : '附近 20 個公車站位與 YouBike 站' };
     updLayout();   // 先升起抽屜，縮放時才會預留抽屜高度
     listStations(list, view.head, place);
     if (!center && !Loc.marker) L.circleMarker([lat, lng], { radius: 8, color: '#1a73e8', fillColor: '#1a73e8', fillOpacity: .6 }).addTo(layerSel);
     loadBikes(place).catch(() => {});
+}
+// ---------- 地址／座標 → 位置 ----------
+//   Google 地圖完整網址 (@緯,經、!3d…!4d…、q=／destination=…)、純座標「緯, 經」：直接解析，不呼叫 API
+//   地址 (含路／街／段／巷／弄／號與數字)：TDX 地理編碼 (地址轉坐標，每次約 170 B)，只在點選或按 Enter 時查；沒寫縣市＝臺中市
+//   Google 地圖短網址 (maps.app.goo.gl)：網頁無法讀取轉址 (跨網域限制)，提示改貼完整網址或座標
+function parseLoc(q) {
+    const t = String(q || '').trim();
+    const m = t.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/) || t.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/)
+        || t.match(/[?&](?:q|query|ll|destination|center|daddr)=(-?\d+\.\d+)(?:,|%2C)\s*(-?\d+\.\d+)/i) || t.match(/^(-?\d{1,2}\.\d+)\s*[,，\s]\s*(-?\d{2,3}\.\d+)$/);
+    if (!m) return null;
+    const lat = +m[1], lng = +m[2];
+    return lat > 20 && lat < 27 && lng > 118 && lng < 123 ? { lat, lng } : null;
+}
+const isShortGmap = q => /maps\.app\.goo\.gl|goo\.gl\/maps/i.test(q || '');
+const isAddrQ = q => !!q && q.length >= 4 && /\d/.test(q) && /(路|街|大道|段|巷|弄|號)/.test(q) && !/^https?:/i.test(q);
+const geoCache = new Map();
+function geocode(q) {
+    let a = String(q).trim().replace(/\s+/g, '').replace(/^台/, '臺');
+    if (!/^..[市縣]/.test(a)) a = '臺中市' + a;
+    if (geoCache.has(a)) return Promise.resolve(geoCache.get(a));
+    return Api.run('GeoCode/Coordinate/Address/' + encodeURIComponent(a), {}, { high: true, label: '地址定位', api: 'GeoAdv' }).then(js => {
+        const x = js && js[0], m = x && /POINT\s*\(\s*([-\d.]+)\s+([-\d.]+)\s*\)/.exec(x.Geometry || '');
+        const v = m ? { lat: +m[2], lng: +m[1], addr: x.Address || a } : null;
+        geoCache.set(a, v);
+        return v;
+    });
+}
+// 搜尋清單最上方的「位置」項目 (站位模式、規劃起訖) → { html, go: () => Promise<{lat,lng,name}|null> } | null
+function locItem(q, attr) {
+    const ll = parseLoc(q);
+    if (ll) return { html: `<div class="list-item loc-item" ${attr}><span class="ico poi">📍</span><div style="min-width:0"><div>座標 ${ll.lat.toFixed(5)}, ${ll.lng.toFixed(5)}</div><div class="sub">Google 地圖連結／座標</div></div></div>`, go: () => Promise.resolve({ ...ll, name: `座標 ${ll.lat.toFixed(4)}, ${ll.lng.toFixed(4)}` }) };
+    if (isShortGmap(q)) return { html: `<div class="hint">Google 地圖短網址無法在網頁解析：請在瀏覽器打開連結後複製網址列的完整網址，或在 Google 地圖長按該點複製座標後貼上。</div>`, go: null };
+    if (isAddrQ(q)) return { html: `<div class="list-item loc-item" ${attr}><span class="ico poi">🏠</span><div style="min-width:0"><div>地址：${esc(q)}</div><div class="sub">按 Enter 或點這裡定位 (TDX 地址定位)</div></div></div>`,
+        go: () => geocode(q).then(v => v ? { lat: v.lat, lng: v.lng, name: v.addr } : (alert('找不到這個地址'), null), e => { alert('地址定位失敗：' + e.message); return null; }) };
+    return null;
+}
+// 站位模式：定位後列出該點 500 公尺內站位
+function goLocItem(it) {
+    if (!it || !it.go) return;
+    it.go().then(p => { if (p) openNearStations(p.lat, p.lng, true, p.name); });
 }
 // 「附近」以地圖中心搜尋：藍色圖釘 (針尖＝中心) ＋搜尋半徑
 function drawCenterPin(lat, lng, r, layer) {
@@ -6457,6 +6505,7 @@ function planSugg() {
     // 符合程度：完全相同 0、開頭相同 1、包含 2
     const rank = k => k === nq ? 0 : k.startsWith(nq) ? 1 : 2;
     let items = [], html = '';
+    const li = q ? locItem(q.trim(), 'data-ploc="1"') : null;
     if (q) {
         const bus = [...STATIONS.values()].map(s => ({ s, k: rank(plNorm(s.name)), m: plNorm(s.name).includes(nq) })).filter(x => x.m)
             .sort((a, b) => a.k - b.k || b.s.routes.size - a.s.routes.size).slice(0, 8).map(x => x.s);
@@ -6468,7 +6517,7 @@ function planSugg() {
         const poiHtml = poi.map((p, i) => ptItem(p, i, 'data-pt')).join(''), busHtml = bus.map(s => busItem(s)).join('');
         html = (poiFirst ? poiHtml + busHtml : busHtml + poiHtml) + yb.map((p, i) => ptItem(p, poi.length + i, 'data-pt')).join('');
         const loadingTxt = !YBS || !POI ? ' (地標／YouBike 站載入中…)' : '';
-        box.innerHTML = html ? `<div class="pl-sugg">${html}</div>${poi.length ? '<div class="hint">地標、店名：© OpenStreetMap 貢獻者</div>' : ''}` : `<div class="hint">找不到符合的站名或地標${loadingTxt}</div>`;
+        box.innerHTML = (li ? (li.go ? `<div class="pl-sugg">${li.html}</div>` : li.html) : '') + (html ? `<div class="pl-sugg">${html}</div>${poi.length ? '<div class="hint">地標、店名：© OpenStreetMap 貢獻者</div>' : ''}` : li ? '' : `<div class="hint">找不到符合的站名或地標${loadingTxt}</div>`);
     } else if (typing) {
         // 空白輸入框：最近選過的站、地標
         const rec = plRecent();
@@ -6479,6 +6528,8 @@ function planSugg() {
     box.querySelectorAll('[data-rc]').forEach(e => e.onclick = () => planSet(PL.active, items[+e.dataset.rc]));
     box.querySelectorAll('[data-st]:not([data-rc])').forEach(e => e.onclick = () => planSet(PL.active, { type: 'station', id: e.dataset.st }));
     box.querySelectorAll('[data-pt]').forEach(e => e.onclick = () => planSet(PL.active, items[+e.dataset.pt]));
+    const pe = box.querySelector('[data-ploc]'), which = PL.active;
+    if (pe && li && li.go) pe.onclick = () => li.go().then(p => { if (p) planSet(which, { type: 'point', name: p.name, lat: p.lat, lng: p.lng, sub: '地址／座標' }); });
 }
 // ---- 回家／上班上課：位置存在這台裝置；按下＝從目前位置規劃到那裡 ----
 const PL_PLACE_KEY = 'txg_pl_place', PL_PLACES = [['home', '🏠', '回家'], ['work', '🏢', '上班上課']];
