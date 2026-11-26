@@ -2116,6 +2116,14 @@ function renderSearch() {
         const mm = panel.querySelector('[data-mmrt]'); if (mm) mm.onchange = () => { multiMrt = mm.checked; saveMulti(); renderSearch(); };
         panel.querySelectorAll('[data-grp]').forEach(e => e.onclick = ev => { if (ev.target.closest('.msel')) return; openGroup(e.dataset.grp); });
         panel.querySelectorAll('[data-mgrp]').forEach(e => e.onchange = () => { multiGrp = e.checked ? e.dataset.mgrp : null; saveMulti(); renderSearch(); });
+        // 勾選多選方框不收鍵盤：按下時不讓搜尋框失焦 (勾選照常)；萬一失焦了，勾完再聚焦回去 (仍在同一次點擊內，手機鍵盤會留著)
+        const typing = document.activeElement === $('q');
+        panel.querySelectorAll('.msel').forEach(l => {
+            l.addEventListener('pointerdown', ev => { if (document.activeElement === $('q')) ev.preventDefault(); });
+            l.addEventListener('mousedown', ev => { if (document.activeElement === $('q')) ev.preventDefault(); });
+            const inp = l.querySelector('input');
+            if (inp) inp.addEventListener('change', () => { if (typing) $('q').focus({ preventScroll: true }); });
+        });
     }
 }
 // 前往：Google 地圖步行導航 (起點＝目前位置)
