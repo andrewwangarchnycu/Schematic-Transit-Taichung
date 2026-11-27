@@ -244,6 +244,13 @@
         font: 15px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang TC", "Microsoft JhengHei", sans-serif; }
     #nav.on { display: block; }
     #nav-map { position: absolute; inset: 0; }
+    .nav-ind { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); z-index: 5; display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 6px; border-radius: 12px; background: rgba(28,28,30,.82); color: #fff; font-size: 12px; box-shadow: 0 2px 10px rgba(0,0,0,.35); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+    .nav-ind[hidden] { display: none; }
+    .nav-ind b { font-size: 11px; text-align: center; max-width: 64px; line-height: 1.2; }
+    .nav-ind button { font: inherit; font-weight: 700; border: 0; border-radius: 8px; padding: 6px 8px; background: rgba(255,255,255,.12); color: #fff; cursor: pointer; }
+    .nav-ind button.on { background: #0a84ff; }
+    html[data-theme="glass"] .nav-ind { background: rgba(255,255,255,.85); color: #111; }
+    html[data-theme="glass"] .nav-ind button { background: rgba(0,0,0,.07); color: #111; } html[data-theme="glass"] .nav-ind button.on { background: #0a84ff; color: #fff; }
     .nav-top, .nav-sheet { border: 1px solid var(--glass-edge, rgba(255,255,255,.14)); box-shadow: inset 0 1px 0 var(--glass-hi, rgba(255,255,255,.12)), var(--shadow, 0 14px 44px rgba(0,0,0,.45));
         -webkit-backdrop-filter: blur(30px) saturate(190%); backdrop-filter: blur(30px) saturate(190%); }
     .nav-top { position: absolute; z-index: 2; top: max(10px, env(safe-area-inset-top)); left: 10px; right: 10px; max-width: 560px; margin: 0 auto; display: flex; gap: 14px; align-items: center;
@@ -585,7 +592,7 @@
 <div id="api-detail"></div>
 <div id="base-set"></div>
 <div id="key-dlg"></div>
-<div id="nav"><div id="nav-map"></div><div id="nav-top" class="nav-top"></div><div id="nav-sheet" class="nav-sheet"></div></div>
+<div id="nav"><div id="nav-map"></div><div id="nav-ind" class="nav-ind" hidden></div><div id="nav-top" class="nav-top"></div><div id="nav-sheet" class="nav-sheet"></div></div>
 <script src="taichung-network.js"></script>
 <script src="taichung-ids.js"></script>
 <script src="bus3d.js"></script>
@@ -5153,16 +5160,84 @@ function navMap() {
     const pre = !Nav.started;
     const m = Nav.map = new mapboxgl.Map({ container: 'nav-map', style: 'mapbox://styles/mapbox/standard', bounds: b, fitBoundsOptions: { padding: navPrePad() }, pitch: pre ? 0 : 45, bearing: 0, antialias: true });
     m.once('load', () => navPreCam(true));
+    m.on('moveend', indoorUi);
     m.on('style.load', () => {
         const h = new Date().getHours();
         // 光線依外觀：淺色＝白天 (傍晚 dusk)、深色＝夜間
         const light = document.documentElement.dataset.theme === 'glass';
         try { m.setConfigProperty('basemap', 'lightPreset', light ? (h >= 17 && h < 19 ? 'dusk' : 'day') : 'night'); } catch (e) {}
-        navLayers(); navDraw();
+        navLayers(); navDraw(); Indoor.clean = null; indoorRefresh();
     });
     ['dragstart', 'rotatestart', 'pitchstart', 'zoomstart'].forEach(ev => m.on(ev, e => { if (!e.originalEvent) return; Nav.free = true; if (Nav.started) navRender(); else navCdStop(); }));
     m.on('error', e => { if (e && e.error && /401|403|token/i.test(String(e.error.message || e.error.status))) $('nav-top').innerHTML = '<div class="small">Mapbox token 無效或網址受限</div>'; });
 }
+// ---------- 轉乘站室內多樓層 (data/indoor/)：導航地圖上各層疊成 3D，目前層不透明、其他層半透明 ----------
+//   index.json：{ "stations": [{ "id", "name", "file", "lat", "lng", "r" (範圍公尺，預設 150), "focus" (預設亮的樓層), "levels": [{ "level", "name" }] (選填) }] }
+//   <file>：GeoJSON Polygon／MultiPolygon (WGS84)；properties：level (整數 1＝1F、2＝2F、-1＝B1、-2＝B2，沒有 0)、kind、name、height (公尺，選填)、color (選填)
+//   kind：floor 樓板、platform 月台、concourse 大廳、corridor 通道、room 房間、stairs 樓梯、escalator 電扶梯、elevator 電梯、exit 出入口、gate 閘門、shop 店舖、toilet 廁所、wall 牆、void 挑空 (不畫)
+//   Mapbox 立體不能畫到地面以下：地下層也依序疊在地面上 (最下層在地面)，是示意的分層圖
+const IND_FLOOR_H = 6, IND_SLAB = 0.5;
+const IND_KIND = { floor: ['#8e8e93', 0], platform: ['#30d158', 1.2], concourse: ['#64d2ff', 0.3], corridor: ['#a2a2a7', 0.2], room: ['#bf9f7a', 2.4], stairs: ['#ff9f0a', 1.5],
+    escalator: ['#ffd60a', 1.5], elevator: ['#0a84ff', 3], exit: ['#ff453a', 1.5], gate: ['#5e5ce6', 1], shop: ['#ac8e68', 2.4], toilet: ['#9b59b6', 2.4], wall: ['#636366', 3] };
+const Indoor = { idx: null, p: null, data: new Map(), lit: new Map(), on: [], near: null, clean: null };
+function indoorIndex() {
+    return Indoor.p || (Indoor.p = fetch('data/indoor/index.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).catch(() => null).then(j => (Indoor.idx = (j && j.stations) || [])));
+}
+function indoorLoad(st) {
+    if (!Indoor.data.has(st.id)) Indoor.data.set(st.id, fetch('data/indoor/' + encodeURIComponent(st.file)).then(r => r.ok ? r.json() : null).catch(() => null));
+    return Indoor.data.get(st.id);
+}
+const indLvName = (st, L) => { const x = (st.levels || []).find(v => +v.level === L); return x && x.name ? x.name : L > 0 ? L + 'F' : 'B' + (-L); };
+const indLevels = gj => [...new Set(((gj && gj.features) || []).map(f => +(f.properties || {}).level).filter(v => isFinite(v) && v !== 0))].sort((a, b) => a - b);
+const indLit = (st, lv) => Indoor.lit.has(st.id) ? Indoor.lit.get(st.id) : lv.includes(+st.focus) ? +st.focus : lv.includes(1) ? 1 : lv[0];
+// 某站的 3D 面：樓層依序疊放 (最下層 z＝0)；lit＝目前亮的樓層
+function indoorFeatures(st, gj) {
+    const lv = indLevels(gj), lit = indLit(st, lv), out = [];
+    ((gj && gj.features) || []).forEach(f => {
+        const q = f.properties || {}, L = +q.level;
+        if (!f.geometry || !/Polygon/.test(f.geometry.type) || !isFinite(L) || q.kind === 'void') return;
+        const k = IND_KIND[q.kind] ? q.kind : 'floor', z = lv.indexOf(L) * IND_FLOOR_H, [c, h] = IND_KIND[k], hh = q.height !== undefined && q.height !== null && isFinite(+q.height) ? +q.height : h;
+        out.push({ type: 'Feature', geometry: f.geometry, properties: { st: st.id, level: L, lit: L === lit, c: q.color || c,
+            b: k === 'floor' ? z : z + IND_SLAB, h: k === 'floor' ? z + IND_SLAB : z + IND_SLAB + Math.max(0.1, hh) } });
+    });
+    return out;
+}
+// 導航路線經過 (或目的地在) 範圍附近的站才載入
+function indoorRefresh() {
+    const m = Nav.map;
+    if (!m || !m.getSource('nav-indoor')) return;
+    indoorIndex().then(list => {
+        if (!Nav.map || !list.length) return;
+        const pts = Nav.legs.flatMap(g => g.path).concat([[Nav.dest.lat, Nav.dest.lng]]);
+        const use = list.filter(st => pts.some(p => Math.hypot((p[1] - st.lng) * 101700, (p[0] - st.lat) * 110900) <= (st.r || 150) + 500));
+        return Promise.all(use.map(st => indoorLoad(st).then(gj => ({ st, gj })))).then(arr => {
+            Indoor.on = arr.filter(x => x.gj);
+            indoorDraw();
+        });
+    });
+}
+function indoorDraw() {
+    const m = Nav.map, src = m && m.getSource('nav-indoor');
+    if (!src) return;
+    src.setData({ type: 'FeatureCollection', features: Indoor.on.flatMap(x => indoorFeatures(x.st, x.gj)) });
+    indoorUi();
+}
+// 畫面中心在某站範圍內 (放大到 15.5 以上)：右側樓層切換；Standard 的 3D 建物先隱藏 (乾淨底圖)
+function indoorUi() {
+    const m = Nav.map, box = $('nav-ind');
+    if (!m || !box) return;
+    const c = m.getCenter(), near = m.getZoom() >= 15.5 ? Indoor.on.find(x => Math.hypot((c.lng - x.st.lng) * 101700, (c.lat - x.st.lat) * 110900) <= (x.st.r || 150) + 250) : null;
+    const clean = !!near;
+    if (clean !== Indoor.clean) { Indoor.clean = clean; try { m.setConfigProperty('basemap', 'show3dObjects', !clean); } catch (e) {} }
+    Indoor.near = near ? near.st.id : null;
+    if (!near) { box.hidden = true; box.innerHTML = ''; return; }
+    const lv = indLevels(near.gj), lit = indLit(near.st, lv);
+    box.innerHTML = `<b>${esc(near.st.name || '')}</b>` + lv.slice().reverse().map(L => `<button data-lv="${L}" class="${L === lit ? 'on' : ''}">${esc(indLvName(near.st, L))}</button>`).join('');
+    box.hidden = false;
+    box.querySelectorAll('[data-lv]').forEach(b => b.onclick = () => { Indoor.lit.set(near.st.id, +b.dataset.lv); indoorDraw(); });
+}
+// 某位置是否在室內站範圍內 (導航鏡頭拉高用)
+const indoorAt = ll => ll ? Indoor.on.find(x => Math.hypot((ll.lng - x.st.lng) * 101700, (ll.lat - x.st.lat) * 110900) <= (x.st.r || 150)) : null;
 function navArrowImg() {
     const c = document.createElement('canvas'); c.width = c.height = 32;
     const x = c.getContext('2d'); x.fillStyle = '#fff'; x.beginPath(); x.moveTo(26, 16); x.lineTo(8, 6); x.lineTo(12, 16); x.lineTo(8, 26); x.closePath(); x.fill();
@@ -5184,6 +5259,12 @@ function navLayers() {
     m.addLayer({ id: 'nav-arrows', type: 'symbol', source: 'nav-legs', slot: 'top',
         layout: { 'symbol-placement': 'line', 'symbol-spacing': 40, 'icon-image': 'nav-arrow', 'icon-size': 0.55, 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-rotation-alignment': 'map', 'icon-pitch-alignment': 'map' },
         paint: { 'icon-emissive-strength': 1 } });
+    // 轉乘站室內樓層：其他層半透明、目前層不透明
+    m.addSource('nav-indoor', { type: 'geojson', data: E });
+    const indPaint = op => ({ 'fill-extrusion-color': ['get', 'c'], 'fill-extrusion-base': ['get', 'b'], 'fill-extrusion-height': ['get', 'h'], 'fill-extrusion-opacity': op,
+        'fill-extrusion-vertical-gradient': false, 'fill-extrusion-emissive-strength': 0.6 });
+    m.addLayer({ id: 'nav-indoor-dim', type: 'fill-extrusion', source: 'nav-indoor', slot: 'middle', filter: ['!', ['get', 'lit']], paint: indPaint(0.18) });
+    m.addLayer({ id: 'nav-indoor-lit', type: 'fill-extrusion', source: 'nav-indoor', slot: 'middle', filter: ['get', 'lit'], paint: indPaint(0.92) });
     // 3D 公車 (主車不透明、附近其他車半透明)；點擊看路線
     ['nav-bus3d', 'nav-bus3d-dim'].forEach(id => m.addSource(id, { type: 'geojson', data: E }));
     const busPaint = op => ({ 'fill-extrusion-color': ['get', 'c'], 'fill-extrusion-base': ['get', 'b'], 'fill-extrusion-height': ['get', 'h'], 'fill-extrusion-opacity': op,
@@ -5336,6 +5417,7 @@ function navCam() {
     } else {
         c = Nav.pos || st.to || (st.g && st.g.b);
         brg = Loc.compass !== null && Loc.compass !== undefined ? Loc.compass : Nav.pos && Nav.pos.hd;
+        if (indoorAt(c)) pitch = 72;   // 轉乘站內：拉高俯角看各樓層
     }
     if (!c) return;
     const cur = Nav.map.getBearing();
@@ -5583,6 +5665,14 @@ function planStopLive(R, pos) {
     }
     return planStopLiveMemo.get(mk);
 }
+// 即時車對應的表定上車時刻：只限有正式時刻表的公車 (班距估的發車不算表定)，取發車最接近的一班 (±20 分內)
+function planSchAt(R, ri, ds, dep, off) {
+    if (R.kind !== 'bus' || !R.plan || !R.plan.d.length || R.loop) return null;
+    const deps = planDeps(R, ri, ds);
+    if (!deps.length) return null;
+    const best = deps.reduce((a, v) => Math.abs(v - dep) < Math.abs(a - dep) ? v : a, deps[0]);
+    return Math.abs(best - dep) <= 20 ? best + off : null;
+}
 // 最早可搭的班次 (在 pos 站、t 之後)
 function planBoard(R, ri, pos, s, t, ds, first) {
     if (R.kind === 'bus' && !planHasTT(R)) {
@@ -5665,7 +5755,8 @@ function planTrace(lab, arr, k, s, end, ds) {
         if (L.type === 'start') { go = L.go || 0; if (L.bk) legs.unshift(...planBikeLegs(L.bk, true, s)); else if (L.w > 0.2) legs.unshift({ type: 'walk', to: s, min: L.w, start: true }); break; }
         if (L.type === 'walk') { legs.unshift({ type: 'walk', from: L.from, to: s, min: L.w }); s = L.from; continue; }
         const R = g.routes[L.ri], dep = L.dep;
-        legs.unshift({ type: 'ride', ri: L.ri, R, b: L.bStop, a: s, bPos: L.bPos, aPos: L.pos, tb: planBoardAt(R, L, L.bPos), ta: planArrAt(R, L, L.pos), dep, live: L.live, lt: L.lt });
+        legs.unshift({ type: 'ride', ri: L.ri, R, b: L.bStop, a: s, bPos: L.bPos, aPos: L.pos, tb: planBoardAt(R, L, L.bPos), ta: planArrAt(R, L, L.pos), dep, live: L.live, lt: L.lt,
+            sch: L.live && !L.lt ? planSchAt(R, L.ri, ds, dep, planOff(R, L.bPos)) : undefined });
         s = L.bStop; k--;
     }
     const last = legs[legs.length - 1];
@@ -5983,10 +6074,12 @@ function planXferInfo(p, l) {
     const dls = rows.flatMap(x => [x.dl, ...(x.ests || []).map(q => q.dl)]).filter(v => v !== null && v !== undefined).map(minOfMs).sort((a, b) => a - b);
     const nx = dls.find(m => m >= ready - 0.3);
     if (nx !== undefined) {
-        const d = Math.round(nx - l.tb);
-        return d > 2 ? { html: ` <span class="dly late">⚠️ ${sh}即時 ${fmt(nx)} 才到 (晚 ${d} 分)</span>`, fail: d >= 5 }
-            : d < -2 ? { html: ` <span class="dly early">${sh}即時 ${fmt(nx)} 到 (早 ${-d} 分)</span>` }
-            : { html: ` <span class="dly ontime">${sh}即時 ${fmt(nx)} 接得上</span>` };
+        // 上車時刻改顯示 N1：與表定不同時表定劃掉，標早／遲 (表定＝正式時刻表；規劃時已用即時上車的車取最接近的表定班次)
+        const late = Math.round(nx - l.tb);
+        const base = l.live ? (l.sch === undefined ? null : l.sch) : legTimes(l).cls === 'sched' && !l.lt ? l.tb : null;
+        const dd = base === null ? 0 : Math.round(nx - base);
+        const board = `${dd ? `<s class="muted">${fmt(base)}</s> ` : ''}${fmt(nx)} <span class="tag api">即時</span>${dd ? ` <span class="dly ${dd > 0 ? 'late' : 'early'}">${dd > 0 ? '遲' : '早'} ${Math.abs(dd)} 分</span>` : ''}`;
+        return { board, html: sh ? ` <span class="dly late">${sh.slice(0, -1)}</span>` : '', fail: late >= 5 };
     }
     if (rows.length && rows.every(x => x.dl === null && (x.status === 3 || x.status === 4))) return { html: ` <span class="dly late">⚠️ ${STATUS[rows[0].status]}，接不上</span>`, fail: true };
     if (dls.length) return { html: ` <span class="dly late">⚠️ ${sh}即時班次都在你到達前，下一班尚未發車</span>`, fail: true };
@@ -6070,7 +6163,7 @@ function planCardHtml(p, k, t0 = PL.t0) {
         const alt = xi.fail ? planAltHtml(p, l) : '';
         const rtb = l.R.kind === 'bus' ? ` pl-rtb" data-li="${li}" title="看 ${esc(legName(l))} 路線資訊 (${esc(ptName(l.b))})` : '';
         return `<div class="pl-leg ride" style="--c:${legColor(l)}"><span class="pl-ic${rtb}"><span class="badge" style="background:${legColor(l)}">${esc(legName(l))}</span></span>
-            <span><b>${esc(ptName(l.b))}</b> 上車 ${lv ? `<span data-dl="${lv}">${remain(lv)}</span> <span class="tag api">即時</span>` : `${fmt(T.tb)} <span class="tag ${T.cls}">${T.txt}</span>`}
+            <span><b>${esc(ptName(l.b))}</b> 上車 ${lv ? `<span data-dl="${lv}">${remain(lv)}</span> <span class="tag api">即時</span>` : xi.board || `${fmt(T.tb)} <span class="tag ${T.cls}">${T.txt}</span>`}
 ${xf}
             <br><small>往 ${esc(legDest(l))} · 搭 ${l.aPos - l.bPos} 站 · 約 ${fmt(T.ta)} 到 <b>${esc(ptName(l.a))}</b></small></span></div>${alt}`;
     }).join('')}
