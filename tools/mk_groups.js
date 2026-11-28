@@ -15,14 +15,19 @@ const OUT = path.join(ROOT, 'data', 'groups.json');
 const GROUPS = [
     { id: 'blue', name: '藍線', desc: '臺中捷運藍線 (規劃) 沿線', color: '#1E9CC2',
       src: path.join(ROOT, '..', 'metro route', 'BlueLine.geojson'), feature: '藍線', buf: 300, min: 3000,
-      ends: ['臺中港', '臺中車站'] }   // 參考線 [起點, 終點] 方向名稱
+      ends: ['臺中港', '臺中車站'] },   // 參考線 [起點, 終點] 方向名稱
+    // 紫線：指定子路線 (analysis/purple_line_corridor.py 紫線 1 km 緩衝內、涵蓋紫線比例最高的前十條路線，含副線/繞駛)
+    { id: 'purple', name: '紫線', desc: '臺中捷運紫線 屯區環狀線 (規劃) 沿線', color: '#8E5BB5', dash: true, kw: '紫|purple|屯區',
+      src: path.join(ROOT, '..', 'metro route', 'PurpleLine.geojson'), feature: '紫線(屯區捷運環狀線)', buf: 1000, min: 0, staBuf: 1000,
+      subs: ['3', '243', '133', '74', '74繞', '51', '51副', '249', '291', '綠3', '39', '158'], rule: '紫線 1 km 緩衝涵蓋最高的 10 條路線 (3、243、133、74、51、249、291、綠3、39、158)',
+      ends: ['東山松竹', '大慶'] }
 ];
 
 const win = {};
 vm.runInNewContext(fs.readFileSync(path.join(ROOT, 'taichung-network.js'), 'utf8') + ';' + fs.readFileSync(path.join(ROOT, 'taichung-shapes.js'), 'utf8'), { window: win });
 const NET = win.TXG_NET, SHAPES = win.TXG_SHAPES || {};
 const STOPS = NET.stops.map(([, , lat, lng]) => [lat, lng]);
-const STA_BUF = 100;   // 車站：離參考線 m
+const STA_BUF = 100;   // 車站：離參考線 m (群組可用 staBuf 另訂，例：紫線 1000)
 const ROUTES = NET.routes.map(([sub, route, dir, seq]) => ({ sub, route, dir, seq }));
 
 function decPoly(str) {
@@ -105,8 +110,9 @@ for (const G of GROUPS) {
         const polys = e ? e.map(decPoly) : [r.seq.map(si => STOPS[si])];
         polysOf.set(r.sub + '|' + r.dir, polys);
         const cov = covered(samples, segsOf(polys, G.buf), G.buf);
-        if (cov >= G.min && (!best.has(r.sub) || best.get(r.sub).cov < cov)) best.set(r.sub, { dir: r.dir, cov });
+        if ((G.subs ? G.subs.includes(r.sub) : cov >= G.min) && (!best.has(r.sub) || best.get(r.sub).cov < cov)) best.set(r.sub, { dir: r.dir, cov });
     }
+    if (G.subs) G.subs.filter(x => !best.has(x)).forEach(x => console.warn(`  ${G.name}：找不到子路線 ${x}`));
     const routes = [...best].sort((a, b) => a[0].localeCompare(b[0], 'zh-Hant', { numeric: true }))
         .map(([sub, x]) => [sub, x.dir, Math.round(x.cov),
             Object.fromEntries(ROUTES.filter(r => r.sub === sub).map(r => [r.dir, sense(polysOf.get(r.sub + '|' + r.dir), line, cum, G.buf)]))]);
@@ -115,7 +121,7 @@ for (const G of GROUPS) {
     for (const [sub] of routes) ROUTES.filter(r => r.sub === sub).forEach(r => r.seq.forEach(si => { if (!subsAt.has(si)) subsAt.set(si, new Set()); subsAt.get(si).add(sub); }));
     const cands = [];
     for (const [si, subs] of subsAt) {
-        const ch = chainage(STOPS[si], line, cum, STA_BUF);
+        const ch = chainage(STOPS[si], line, cum, G.staBuf || STA_BUF);
         if (ch === null) continue;
         const nm = NET.stops[si][1];
         let c = cands.find(x => x.name === nm && meters(x.pts[0], STOPS[si]) < 250);
@@ -127,7 +133,7 @@ for (const G of GROUPS) {
     const stations = picked.map(c => [c.name, r5(c.lat), r5(c.lng), Math.round(c.s), c.subs.size, c.uids]);
     console.log(`  車站 ${stations.length} 站 (候選 ${cands.length})：${stations.map(x => `${x[0]}(${x[4]})`).join('、')}`);
     out.groups.push({ id: G.id, name: G.name, desc: G.desc, color: G.color, buf: G.buf, min: G.min, len: Math.round(total),
-        ends: G.ends, line: line.map(p => [r5(p[0]), r5(p[1])]), routes, stations });
+        ends: G.ends, dash: !!G.dash, kw: G.kw || '', rule: G.rule || '', line: line.map(p => [r5(p[0]), r5(p[1])]), routes, stations });
     console.log(`${G.name}：參考線 ${(total / 1000).toFixed(1)} km，兩側 ${G.buf} m、重疊 ≥ ${G.min / 1000} km → ${routes.length} 條子路線 (無線形改用站牌連線 ${noShape} 個方向)`);
     console.log(routes.map(([s, , c, d]) => `${s}(${(c / 1000).toFixed(1)} ${Object.values(d).map(v => v > 0 ? '→' : v < 0 ? '←' : '?').join('')})`).join(' '));
 }

@@ -2990,12 +2990,13 @@ function loadGroups() {
         .then(j => (GRP.data = j && j.groups || [])));
 }
 const grpOf = id => (GRP.data || []).find(g => g.id === id);
+const grpDash = g => g.dash ? '12 9' : null;   // 參考線虛線 (例：紫線)
 // 路線清單上方的群組按鈕；群組資料未載入時先載入再重畫清單
 function grpItems(q) {
     if (!GRP.data) { loadGroups().then(() => { if (mode === 'route' && !view) renderSearch(); }); return ''; }
-    return GRP.data.filter(g => !q || g.name.includes(q) || (g.id === 'blue' && /藍|blue/i.test(q))).map(g => {
+    return GRP.data.filter(g => !q || g.name.includes(q) || (g.kw && new RegExp(g.kw, 'i').test(q)) || (g.id === 'blue' && /藍|blue/i.test(q))).map(g => {
         const n = g.routes.filter(([sub, dir]) => ROUTES.some(x => x.sub === sub && x.dir === dir)).length;
-        return `<div class="list-item" data-grp="${esc(g.id)}"><span class="badge" style="background:${g.color}">${esc(g.name)}</span><div style="min-width:0;flex:1"><div>捷運${esc(g.name)} 路廊公車</div><div class="sub">${n} 條路線 · ${esc(g.name)}兩側 ${g.buf} m、重疊 ≥ ${g.min / 1000} km</div></div><label class="msel" title="多選"><input type="checkbox" data-mgrp="${esc(g.id)}"${multiGrp === g.id ? ' checked' : ''}></label></div>`;
+        return `<div class="list-item" data-grp="${esc(g.id)}"><span class="badge" style="background:${g.color}">${esc(g.name)}</span><div style="min-width:0;flex:1"><div>捷運${esc(g.name)} 路廊公車</div><div class="sub">${n} 條路線 · ${g.rule ? esc(g.rule) : `${esc(g.name)}兩側 ${g.buf} m、重疊 ≥ ${g.min / 1000} km`}</div></div><label class="msel" title="多選"><input type="checkbox" data-mgrp="${esc(g.id)}"${multiGrp === g.id ? ' checked' : ''}></label></div>`;
     }).join('');
 }
 // 群組路線全部載入多選 (取代目前多選)，多選地圖同時畫出參考線
@@ -3038,13 +3039,13 @@ function openGroup(id, fit = true, gdir) {
 function drawGroupLine(g, dim) {
     if (dim) {
         // 淡色參考線：點擊回到路廊檢視 (保留原方向)
-        L.polyline(g.line, { color: '#9aa4ae', weight: 9, opacity: .3, lineCap: 'round' })
+        L.polyline(g.line, { color: '#9aa4ae', weight: 9, opacity: .3, lineCap: 'round', dashArray: grpDash(g) })
             .bindTooltip(`回 ${g.name}路廊`, { sticky: true })
             .on('click', () => openGroup(g.id, true, view && view.back ? view.back.gdir : 1)).addTo(layerSel);
         (g.stations || []).forEach(st => L.circleMarker([st[1], st[2]], { radius: 3, color: "#9aa4ae", weight: 1.5, opacity: .5, fillColor: '#fff', fillOpacity: .5, interactive: false }).addTo(layerSel));
         return;
     }
-    L.polyline(g.line, { color: g.color, weight: 7, opacity: .9, interactive: false }).addTo(layerSel);
+    L.polyline(g.line, { color: g.color, weight: 7, opacity: .9, interactive: false, dashArray: grpDash(g) }).addTo(layerSel);
     setArrows([{ lines: [view.gdir > 0 ? g.line : g.line.slice().reverse()], w: 7 }]);   // 目前方向的箭頭
     // 車站 (沿線公車站位)：點擊顯示目前方向最近兩班
     (g.stations || []).forEach(st => {
@@ -3139,7 +3140,7 @@ function renderGroup() {
             <span class="muted">此方向 ${dirList.length} 條路線${isToday ? ` · 公車 ${total} 輛` : ''}</span></div>
         <div class="row">${isToday ? autoBtn(autoBusy(routes), `路廊公車位置，每次 ${vehCalls(routes.length)} 次 API${routes.length > VEH_BATCH ? ' (全市一次查詢)' : ''}`) : ''}<span class="muted">${vehAuto ? '每分鐘自動更新' : '自動更新已關'}</span>
             ${vt ? `<span class="muted">${Math.round((Date.now() - vt) / 1000)} 秒前查詢</span>` : ''}<button class="btn" id="b-gmulti">全部加入多選</button></div>
-        <div class="hint">${list.length} 條路線：${esc(g.name)}兩側 ${g.buf} m 內、沿線重疊 ≥ ${g.min / 1000} km 的子路線 (不論方向)。地圖只畫${esc(g.name)}與這些路線往 ${esc(grpEnd(g, gd))} 的公車；點路線或公車看完整資訊。</div>${rows}`;
+        <div class="hint">${list.length} 條路線：${g.rule ? esc(g.rule) : `${esc(g.name)}兩側 ${g.buf} m 內、沿線重疊 ≥ ${g.min / 1000} km 的子路線`} (不論方向)。地圖只畫${esc(g.name)}與這些路線往 ${esc(grpEnd(g, gd))} 的公車；點路線或公車看完整資訊。</div>${rows}`;
     panel.querySelectorAll('[data-gd]').forEach(b => b.onclick = () => { view.gdir = +b.dataset.gd; vehDrawn = ''; drawGroupMap(false); renderGroup(); });
     if ($('b-auto')) $('b-auto').onclick = () => setVehAuto(!vehAuto);
     $('b-gmulti').onclick = () => groupToMulti(g.id);
@@ -3152,7 +3153,7 @@ function drawMultiMap(fit = true) {
     const all = [], sets = [];
     const mg = multiGrp && grpOf(multiGrp);
     if (mg) {   // 路廊 (藍線)：參考線＋車站 (車站視窗顯示兩個方向)；點線＝路廊檢視
-        L.polyline(mg.line, { color: mg.color, weight: 6, opacity: .85 }).bindTooltip(`捷運${mg.name} 路廊 往 ${grpEnd(mg, multiGrpDir)}`, { sticky: true }).on('click', () => openGroup(mg.id, true, multiGrpDir)).addTo(layerSel);
+        L.polyline(mg.line, { color: mg.color, weight: 6, opacity: .85, dashArray: grpDash(mg) }).bindTooltip(`捷運${mg.name} 路廊 往 ${grpEnd(mg, multiGrpDir)}`, { sticky: true }).on('click', () => openGroup(mg.id, true, multiGrpDir)).addTo(layerSel);
         (mg.stations || []).forEach(st => grpStaMarker(mg, st, () => [multiGrpDir]).addTo(layerSel));
         sets.push({ lines: [multiGrpDir > 0 ? mg.line : mg.line.slice().reverse()], w: 6 });   // 目前方向的箭頭
         all.push(...mg.line);
